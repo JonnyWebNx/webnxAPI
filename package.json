@@ -1,0 +1,19 @@
+{
+  "name": "webnxapi",
+  "version": "1.0.0",
+  "description": "RESTful API for communicating with the WebNX internal database",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon index.js"
+  },
+  "author": "Cameron McKay",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^8.5.1",
+    "mongoose": "^6.6.5"
+  }
+}
