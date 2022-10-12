@@ -29,25 +29,43 @@ const partManager = {
         /**
          * @TODO Add part validation logic
          */
-        try{
-            // Send part to database
-            Part.create({nxid, manufacturer, name, attributes});
-            // Success
-            return res.status(200).send("Created part\t");
-        }catch(error){
-            // Return and send error to client side for prompt
-            return res.status(500).send("Could not add part to database: "+err);
-        }
-        
+        // Send part to database
+        await Part.create({nxid, manufacturer, name, attributes}, (err, part)=>{
+            if(err){
+                // Return and send error to client side for prompt
+                return res.status(500).send("API could not handle your request: "+err);
+            }
+            // Succesful query
+            return res.status(200).send(`Created part: ${part.manufacturer} ${part.name}`);
+        });
     },
     // Read
     getPart: async (req, res)  => {
-        console.log(req.params);
-        return res.status(201).send("Got part\t" + req.query.name);
+        // Query the database
+        await Part.find(req.query, (err, parts) => {
+            if(err){
+                // Query failed
+                return res.status(500).send("API could not handle your request: "+err);
+            }
+            // Query success
+            return res.status(200).json(parts);
+        });
     },
     // Update
     updatePart: async (req, res)  => {
-        return res.status(201).send("Updated part\t" + req.params);    
+        await Part.findByIdAndUpdate(req.query, (err, part) => {
+            if(err){
+                return res.status(500).send("API could not handle your request: "+err);
+            }
+            /**
+             * 
+             * @note STOPPED HERE
+             * 
+             * @todo fix query
+             * 
+             */
+            return res.status(201).send(`Updated part: ${part.manufacturer} ${part.name}`);    
+        })
     },
     // Delete
     deletePart: async (req, res) => {
@@ -58,15 +76,15 @@ const partManager = {
             return res.status(401).send("Invalid permissions");
         }
         // Continue if user is admin
-        try{
-            // Try to find and delete by ID
-            Part.findByIdAndDelete(req.body.part_id);
-            return res.status(200).send("Deleted part\t" + req.url);
-        } catch(err)
-        {
-            // Return and send error to client side for prompt.
-            return res.status(400).send("Bad request: "+err);
-        }
+        // Try to find and delete by ID
+        await Part.findByIdAndDelete(req.body.part_id, (err, part) => {
+            if(err){
+                // Fail to query database
+                return res.status(500).send("API could not handle your request: ")
+            }
+            // Successful query
+            return res.status(200).send(`Deleted part: ${part.manufacturer} ${part.name}`);
+        });
     },
 };
 module.exports = partManager;

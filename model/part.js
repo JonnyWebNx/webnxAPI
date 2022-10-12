@@ -5,7 +5,13 @@ const partSchema = new mongoose.Schema({
     manufacturer: { type: String, default: null},
     name: { type: String, default: null},
     type: { type: String, default: null},
-    attributes: { type: Object, default: {}},
+    capacity: { type: Number, default: null},
+    capacity_unit: { type: String, default: null},
+    ports: { type: Number, default: null},
+    port_type: { type: String, default: null},
+    cable_end1: { type: String, default: null},
+    cabled_end2: { type: String, default: null},
+    created_by: { type: String, default: "Cornelius"},
     date_created: { type: Date, default: Date.now },
 });
 
