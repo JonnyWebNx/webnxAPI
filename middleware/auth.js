@@ -6,7 +6,7 @@ const verifyToken = (req, res, next) => {
         req.body.token || req.query.token || req.headers["x-access-token"];
     // If no token
     if(!token) {
-        return res.status(403).send("A token is required for authentication.");
+        return res.status(401).send("A token is required for authentication.");
     }
     try {
         // Decode user token

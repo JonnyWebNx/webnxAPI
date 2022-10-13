@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema({
     last_name: { type: String, default: null },
     email: { type: String, unique: true },
     password: { type: String },
-    admin: { type: Boolean },
+    admin: { type: Boolean, default: false },
     date_created: { type: Date, default: Date.now },
     token: { type: String },
 });
