@@ -58,13 +58,13 @@ app.delete("/part", auth, partManager.deletePart);
 // ***   Users   ***
 //
 // Create
-app.post("/user/:args", auth, userManager.createUser);
+app.post("/user", auth, userManager.createUser);
 // Read
-app.get("/user/:args", auth, userManager.getUser);
+app.get("/user", auth, userManager.getUser);
 // Update
-app.put("/user/:args", auth, userManager.updateUser);
+app.put("/user", auth, userManager.updateUser);
 // Delete
-app.delete("/user/:args", auth, userManager.deleteUser);
+app.delete("/user", auth, userManager.deleteUser);
 
 
 // Catch all - BAD REQUEST

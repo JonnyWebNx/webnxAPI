@@ -9,6 +9,7 @@
  * 
  */
 // Import user schema
+const bcrypt = require("bcryptjs/dist/bcrypt");
 const User = require("../model/user");
 
 // Main object containing functions
@@ -34,7 +35,7 @@ const userManager = {
         // Encrypt user password
         encryptedPassword  = await bcrypt.hash(password, 10);
         // Send user data to database
-        User.create({first_name, last_name, email, encryptedPassword}, (err, user) => {
+        User.create({first_name, last_name, email, password: encryptedPassword}, (err, user) => {
             // If database insertion fails
             if(err){
                 return res.status(500).send("API could not handle your request: "+err);
@@ -50,9 +51,13 @@ const userManager = {
         if(id){
             try{
                 // Find user in database
-                var user = User.findById(id);
+                var user = await User.findById(id);
                 if(user){
                     // If user is found
+                    // remove pasword from response
+                    user = user._doc;
+                    delete user.password;
+                    // Send response
                     return res.status(200).json(user);
                 }
                 // If user is not found
@@ -76,6 +81,7 @@ const userManager = {
             var users = await User.find();
             // Remove password from data
             for (const user of users){
+                user = user._doc;
                 delete user.password;
             }
             // Success
@@ -88,10 +94,12 @@ const userManager = {
     // Update - id required in query string
     updateUser: async (req, res) => {
         // Save user id from query string
-        var { user_id, admin } = req.body;
-        if (!user_id){
-            // Missing user id
-        } else if((user_id != req.query.id)&&!admin){
+        var { id } = req.query;
+        const { admin, user_id } = req.user;
+        if (!id){
+           // Missing user id
+           return res.status(400).send("Invalid request.");
+        } else if((id != user_id)&&!admin){
             // User is trying to edit another user without permissions or 
             // a non admin user is trying to make themselves an admin.
             return res.status(403).send("Invalid permissions.");
@@ -100,9 +108,10 @@ const userManager = {
         try{
             // Check database to see if email already exists
             var emailExists = await User.findOne({email: req.body.email});
-            if (emailExists&&user_id!=emailExists.user_id){
+            if (emailExists&&id!=emailExists._id){
+                console.log(emailExists);
                 // Email already exists in database and does not belong to user
-                return res.status(403).send("Invalid permissions.")
+                return res.status(403).send("Email taken.")
             }
             // Delete password from request
             delete req.body.password;
@@ -120,10 +129,24 @@ const userManager = {
         }
     },
     updatePassword: async (req, res) => {
-        // get user id
-        const { user_id }= req.body;
-        const { admin } = req.user;
-
+        const { user_id } = req.user;
+        // get password
+        const { password } = req.body;
+        try {
+            if(!password){
+                return res.status(400).send("Invalid request.");
+            }
+            const encryptedPassword = await bcrypt.hash(password, 10);
+            const user = User.findByIdAndUpdate(user_id, { password: encryptedPassword });
+            if(user){
+                // remove password from response
+                delete user.password;
+                return res.status(200).send(user);
+            }
+            return res.status(400).send("User not found");
+        } catch(err) {
+            return res.status(500).send("API could not handle your request: "+err);
+        }
     },
     // Delete - id required in query string
     deleteUser: async (req, res) => {

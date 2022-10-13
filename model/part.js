@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
 
 const partSchema = new mongoose.Schema({
-    nxid: { type: String, default: null},
-    manufacturer: { type: String, default: null},
-    name: { type: String, default: null},
-    type: { type: String, default: null},
+    nxid: { type: String, required: true, default: null},
+    manufacturer: { type: String, required: true, default: null},
+    name: { type: String, required: true, default: null},
+    type: { type: String, required: true, default: null},
     quantity: { type: Number, default: 0 },
     frequncy: { type: Number },
     capacity: { type: Number},
