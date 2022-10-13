@@ -13,7 +13,7 @@ const partManager = {
     // Create
     createPart: async (req, res)  => {
         // Check database to see if user is admin
-        var { admin } = await User.findById(req.user.user_id);
+        const { admin } = await User.findById(req.user.user_id);
         // If they are not admin, return invalid permissions
         if (!admin){
             return res.status(403).send("Invalid permissions");
@@ -61,7 +61,7 @@ const partManager = {
     updatePart: async (req, res)  => {
         // Check database to see if user is admin
         try{
-            var { admin } = await User.findById(req.user.user_id);
+            const { admin } = await User.findById(req.user.user_id);
             // Return if not admin
             if (!admin){
                 return res.status(403).send("Invalid permissions");
@@ -72,30 +72,45 @@ const partManager = {
             if(part){
                 return res.status(201).send(`Updated part: ${part.manufacturer} ${part.name}`);    
             }
+            // Null is falsey - Part not found
             res.status(400).send("Part not found.");
         }catch(err){
+            // Database error
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
     updateQuantity: async (req, res) => {
         try{
-
+            const { id, quantity } = req.query;
+            // Make sure id and quantify are in the request
+            if(!(id&&quantity)){
+                return res.status(400).send("Invalid request.");
+            }
+            // Find and update in database
+            part = await Part.findByIdAndUpdate(id,{quantity});
+            if(part){
+                // Part found
+                return res.status.json(part);
+            }
+            // Part not part
+            res.status(400).send("Part not found.");
         }catch(err){
-
+            // Database error
+            res.status(500).send("API could not handle your request: "+err);      
         }
     },
     // Delete
     deletePart: async (req, res) => {
         try{
             // Check database to see if user is admin
-            var { admin } = await User.findById(req.user.user_id);
+            const { admin } = await User.findById(req.user.user_id);
             // If user is not admin, return invalid permissions
             if (!admin){
                 return res.status(403).send("Invalid permissions");
             }
             // Continue if user is admin
             // Try to find and delete by ID
-            part = await Part.findByIdAndDelete(req.body.part_id);
+            part = await Part.findByIdAndDelete(req.query.id);
             // Send copy back to user
             res.status(200).json(part);
         } catch(err){
