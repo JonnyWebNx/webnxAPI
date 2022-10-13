@@ -13,7 +13,7 @@ const partManager = {
     // Create
     createPart: async (req, res)  => {
         // Check database to see if user is admin
-        const { admin } = await User.findById(req.user.user_id);
+        const { user_id, admin } = req.user;
         // If they are not admin, return invalid permissions
         if (!admin){
             return res.status(403).send("Invalid permissions");
@@ -33,7 +33,7 @@ const partManager = {
         if(req.body.quantity){
             req.body.quantity = Number(req.body.quantity);
         }
-        req.body.created_by = req.user.user_id;
+        req.body.created_by = user_id;
         await Part.create(req.body, (err, part)=>{
             if(err){
                 // Return and send error to client side for prompt
@@ -60,13 +60,12 @@ const partManager = {
     // Update
     updatePart: async (req, res)  => {
         // Check database to see if user is admin
+        const { admin } = req.user;
+        // Return if not admin
+        if (!admin){
+            return res.status(403).send("Invalid permissions");
+        }
         try{
-            const { admin } = await User.findById(req.user.user_id);
-            // Return if not admin
-            if (!admin){
-                return res.status(403).send("Invalid permissions");
-            }
-            // Get nxid
             // Find part
             var part = await Part.findById(req.query.id);
             if(part){
@@ -101,13 +100,12 @@ const partManager = {
     },
     // Delete
     deletePart: async (req, res) => {
+        const { admin } = req.user;
+        // If user is not admin, return invalid permissions
+        if (!admin){
+            return res.status(403).send("Invalid permissions");
+        }
         try{
-            // Check database to see if user is admin
-            const { admin } = await User.findById(req.user.user_id);
-            // If user is not admin, return invalid permissions
-            if (!admin){
-                return res.status(403).send("Invalid permissions");
-            }
             // Continue if user is admin
             // Try to find and delete by ID
             part = await Part.findByIdAndDelete(req.query.id);

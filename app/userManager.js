@@ -9,8 +9,6 @@
  * 
  */
 // Import user schema
-const { findById } = require("../model/user");
-const user = require("../model/user");
 const User = require("../model/user");
 
 // Main object containing functions
@@ -18,7 +16,7 @@ const userManager = {
     // Create
     createUser: async (req, res) => {
         // Check database to see if user is admin
-        var { admin } = await User.findById(req.user.user_id);
+        var { admin } = req.user; 
         // If user is not admin, return invalid permissions
         if (!admin){
             return res.status(401).send("Invalid permissions");
@@ -47,65 +45,84 @@ const userManager = {
     },
     // Read
     getUser: async (req, res) => {
-        if(req.query.id){
-
+        const { id } = req.query;
+        // Make sure query string has id
+        if(id){
+            try{
+                // Find user in database
+                var user = User.findById(id);
+                if(user){
+                    // If user is found
+                    return res.status(200).json(user);
+                }
+                // If user is not found
+                res.status(400).send("User not found."); 
+            } catch(err) {
+                // Database error
+                return res.status(500).send("API could not handle your request: "+err);
+            }
         }
-
+        return res.status(400).send("Invalid request.");
     },
     getAllUsers: async (req, res) => {
-        isAdmin = await User.findById(req.user.id).admin;
-        if(isAdmin){
-            User.find((err, users)=>{
-                if(err){
-                    // Database error
-                    return res.status(500).send("API could not handle your request: "+err);
-                }
-                // Remove password from data
-                for (const user of users){
-                    delete user.password;
-                }
-                // Success
-                res.status(200).json(users);
-            });
+        // check if user is admin
+        const { admin } = req.user; 
+        // Return if user is not admin
+        if(!admin){
+            return res.status(403).send("Invalid permissions");
         }
-        res.status(401).send("Invalid permissions");
+        try{
+            // Get all users
+            var users = await User.find();
+            // Remove password from data
+            for (const user of users){
+                delete user.password;
+            }
+            // Success
+            return res.status(200).json(users);
+        } catch(err) {
+            // Database error
+            return res.status(500).send("API could not handle your request: "+err);
+        }
     },
     // Update - id required in query string
     updateUser: async (req, res) => {
         // Save user id from query string
-        var { user_id } = req.body;
-        var isUserAdmin = await findById(req.user.user_id);
+        var { user_id, admin } = req.body;
         if (!user_id){
             // Missing user id
-        } else if((req.user.id != user_id)&&!req.user.admin||!req.user.admin&&admin){
+        } else if((user_id != req.query.id)&&!admin){
             // User is trying to edit another user without permissions or 
             // a non admin user is trying to make themselves an admin.
-
+            return res.status(403).send("Invalid permissions.");
         }
         // Check if email is available 
-        var emailExists = await User.findOne({email: req.body.email});
-        if (emailExists&&req.user.user_id!=emailExists.user_id){
-            // Email already exists in database and does not belong to user
-
+        try{
+            // Check database to see if email already exists
+            var emailExists = await User.findOne({email: req.body.email});
+            if (emailExists&&user_id!=emailExists.user_id){
+                // Email already exists in database and does not belong to user
+                return res.status(403).send("Invalid permissions.")
+            }
+            // Delete password from request
+            delete req.body.password;
+            // Send update query to database
+            var user = await User.findByIdAndUpdate(id, req.body)
+            if(user){
+                // User was found and updated
+                return res.status(200).send(`Updated user: ${user.email}`);
+            }
+            // User was not found
+            return res.status(400).send("User not found.");
+        } catch(err) {
+            // Database error
+            return res.status(500).send("API could not handle your request: "+err);
         }
-        // Send update query to database
-        User.findByIdAndUpdate(id, {first_name: req.body.first_name, last_name: req.body.last_name,
-            admin: req.body.admin, email: req.body.email}, (err, user) => {
-                if(err){
-                    // Database error
-                    return res.status(500).send("API could not handle your request: "+err);
-                } else if(user){
-                    // User was found and updated
-                    return res.status(200).send(`Updated user: ${user.email}`);
-                }
-                // User was not found
-                return res.status(400).send("User not found.");
-            })
-
     },
     updatePassword: async (req, res) => {
         // get user id
-        userToUpdate = req.body.user_id;
+        const { user_id }= req.body;
+        const { admin } = req.user;
 
     },
     // Delete - id required in query string
@@ -113,7 +130,7 @@ const userManager = {
         // Get user id from query string
         var userToDelete = req.query.id;
         // Check database to see if user is admin
-        var { admin } = await User.findById(req.user.user_id);
+        var { user_id, admin } = req.user;
         // If user is not admin, return invalid permissions
         if (!admin){
             // User is not admin
@@ -121,7 +138,7 @@ const userManager = {
         }else if(!userToDelete){
             // ID query is empty
             return res.status(400).send("Request id empty.");
-        }else if (req.user.user_id == userToDelete){
+        }else if (user_id == userToDelete){
             // User attempting to delete themselves
             return res.status(400).send("You cannot delete yourself.");
         }
