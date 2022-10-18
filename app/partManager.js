@@ -48,14 +48,39 @@ const partManager = {
         try{
             // Query the database
             parts = await Part.find(req.query);
-            if(parts.length==0){
-                return res.status(400).send("No parts found.")
-            }
             res.status(200).json(parts);
         }catch(err){
             // Database error
-            res.status(500).send("API could not handle your request: "+err)
+            res.status(500).send("API could not handle your request: "+err);
         }
+    },
+    searchParts: async(req, res) => {
+        // TODO GET SEARCH STRING AND PAGES/LIMITS
+        // *************************************
+        // Search data
+        const searchString = "";
+        // Limit
+        const pageSize = 0;
+        // Page number
+        const pageNum = 0;
+        // *************************************
+
+        // Find parts
+        // Skip - gets requested page number
+        // Limit - returns only enough elements to fill page
+        Part.find({$text: {$search: searchString}})
+        .skip(pageSize*(pageNum-1))
+        .limit(pageSize)
+        .exec((err, parts) => {
+            if(err) {
+                // Database err
+                return res.status(500).send("API could not handle your request: "+err);
+            }
+            // Get rid of mongoose garbage
+            parts = parts._doc;
+            // Send back to client
+            return res.status(200).json(parts);
+        })
     },
     // Update
     updatePart: async (req, res)  => {

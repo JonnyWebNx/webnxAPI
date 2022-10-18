@@ -1,3 +1,6 @@
+const User = require("../model/user");
+const bcrypt = require('bcryptjs');
+const sign = require("jsonwebtoken/sign");
 const register = async (req, res) => {
     // register logic
     try {
@@ -21,7 +24,7 @@ const register = async (req, res) => {
         encryptedPassword  = await bcrypt.hash(password, 10);
 
         // Create user in our database
-        const user = await User.create({
+        var user = await User.create({
             first_name,
             last_name,
             email: email.toLowerCase(),
@@ -29,7 +32,7 @@ const register = async (req, res) => {
         });
 
         // Create token
-        const token  = jwt.sign(
+        const token  = sign(
             { user_id: user._id, email },
             process.env.JWT_SECRET,
             {
@@ -38,7 +41,9 @@ const register = async (req, res) => {
         );
         // Save user token 
         user.token = token;
-        
+        // Get rid of mongoose garbage and delete password
+        user = user._doc;
+        delete user.password;
         // return new user
         return res.status(201).json(user);
     } catch(err) {

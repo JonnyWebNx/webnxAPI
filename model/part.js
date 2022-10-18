@@ -16,5 +16,5 @@ const partSchema = new mongoose.Schema({
     created_by: { type: String, default: null},
     date_created: { type: Date, default: Date.now },
 });
-
+partSchema.index({'$**': 'text'});
 module.exports = mongoose.model("part", partSchema);

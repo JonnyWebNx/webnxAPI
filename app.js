@@ -28,7 +28,6 @@ const userManager = require("./app/userManager");
 const app = express();
 
 // Set up middleware
-// ***   CRUD only   ***
 app.use(cors({
     "origin": "http://localhost:8080",
     "credentials": true,
@@ -54,10 +53,12 @@ app.post("/api/register", register);
 app.post("/api/part", auth, partManager.createPart);
 // Read
 app.get("/api/part", auth, partManager.getPart);
+app.get("/api/part/search", auth, partManager.searchParts);
 // Update
 app.put("/api/part", auth, partManager.updatePart);
 // Delete
 app.delete("/api/part", auth, partManager.deletePart);
+
 
 // ***   Users   ***
 //
