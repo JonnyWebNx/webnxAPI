@@ -18,6 +18,7 @@ const cors = require("cors");
 const login = require("./app/login");
 const register = require("./app/register");
 const auth = require("./middleware/auth");
+const isAuth = require("./app/isAuth");
 
 // Database modules
 const partManager = require("./app/partManager");
@@ -29,7 +30,8 @@ const app = express();
 // Set up middleware
 // ***   CRUD only   ***
 app.use(cors({
-    "origin": "*",
+    "origin": "http://localhost:8080",
+    "credentials": true,
     "methods": "GET,PUT, POST, DELETE",
     "preflightContinue": false,
     "optionsSuccessStatus": 204
@@ -37,34 +39,36 @@ app.use(cors({
 // JSON middleware...
 app.use(express.json());
 
+app.post("/api/auth", auth, isAuth);
+
 // ***   Authentication   ***
 //
 // Login
-app.post("/login", login);
+app.post("/api/login", login);
 // Register
-app.post("/register", register);
+app.post("/api/register", register);
 
 // ***   Parts   ***
 //
 // Create
-app.post("/part", auth, partManager.createPart);
+app.post("/api/part", auth, partManager.createPart);
 // Read
-app.get("/part", auth, partManager.getPart);
+app.get("/api/part", auth, partManager.getPart);
 // Update
-app.put("/part", auth, partManager.updatePart);
+app.put("/api/part", auth, partManager.updatePart);
 // Delete
-app.delete("/part", auth, partManager.deletePart);
+app.delete("/api/part", auth, partManager.deletePart);
 
 // ***   Users   ***
 //
 // Create
-app.post("/user", auth, userManager.createUser);
+app.post("/api/user", auth, userManager.createUser);
 // Read
-app.get("/user", auth, userManager.getUser);
+app.get("/api/user", auth, userManager.getUser);
 // Update
-app.put("/user", auth, userManager.updateUser);
+app.put("/api/user", auth, userManager.updateUser);
 // Delete
-app.delete("/user", auth, userManager.deleteUser);
+app.delete("/api/user", auth, userManager.deleteUser);
 
 
 // Catch all - BAD REQUEST

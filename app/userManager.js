@@ -46,7 +46,7 @@ const userManager = {
     },
     // Read
     getUser: async (req, res) => {
-        const { id } = req.query;
+        const id = req.query.id || req.user.user_id;
         // Make sure query string has id
         if(id){
             try{
