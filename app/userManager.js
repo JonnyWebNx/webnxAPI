@@ -16,13 +16,7 @@ const User = require("../model/user");
 const userManager = {
     // Create
     createUser: async (req, res) => {
-        // Check database to see if user is admin
-        var { admin } = req.user; 
-        // If user is not admin, return invalid permissions
-        if (!admin){
-            return res.status(401).send("Invalid permissions");
-        }
-        // User is admin
+        // Get required fields from request body
         var { first_name, last_name, email, password } = req.body;
         // Check if all required fields are filled
         if (!(first_name && last_name && email && password)){
@@ -94,7 +88,7 @@ const userManager = {
     // Update - id required in query string
     updateUser: async (req, res) => {
         // Save user id from query string
-        var { id } = req.query;
+        var { id } = req.query || req.user.user_id;
         const { admin, user_id } = req.user;
         if (!id){
            // Missing user id
@@ -140,6 +134,7 @@ const userManager = {
             const user = User.findByIdAndUpdate(user_id, { password: encryptedPassword });
             if(user){
                 // remove password from response
+                user = user._doc;
                 delete user.password;
                 return res.status(200).send(user);
             }
@@ -152,19 +147,6 @@ const userManager = {
     deleteUser: async (req, res) => {
         // Get user id from query string
         var userToDelete = req.query.id;
-        // Check database to see if user is admin
-        var { user_id, admin } = req.user;
-        // If user is not admin, return invalid permissions
-        if (!admin){
-            // User is not admin
-            return res.status(401).send("Invalid permissions");
-        }else if(!userToDelete){
-            // ID query is empty
-            return res.status(400).send("Request id empty.");
-        }else if (user_id == userToDelete){
-            // User attempting to delete themselves
-            return res.status(400).send("You cannot delete yourself.");
-        }
         // Send id to database for deletion
         User.findByIdAndDelete(userToDelete, (err, user) => {
             if(err){

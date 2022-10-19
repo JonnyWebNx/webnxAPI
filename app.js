@@ -19,11 +19,12 @@ const login = require("./app/login");
 const register = require("./app/register");
 const auth = require("./middleware/auth");
 const isAuth = require("./app/isAuth");
+const permissions = require("./middleware/permissions");
 
 // Database modules
 const partManager = require("./app/partManager");
 const userManager = require("./app/userManager");
-
+const sanitize = require("./middleware/sanitize");
 // Create express instance
 const app = express();
 
@@ -50,26 +51,26 @@ app.post("/api/register", register);
 // ***   Parts   ***
 //
 // Create
-app.post("/api/part", auth, partManager.createPart);
+app.post("/api/part", auth, permissions, sanitize, partManager.createPart);
 // Read
-app.get("/api/part", auth, partManager.getPart);
-app.get("/api/part/search", auth, partManager.searchParts);
+app.get("/api/part", auth, sanitize, partManager.getPart);
+app.get("/api/part/search", auth, sanitize, partManager.searchParts);
 // Update
-app.put("/api/part", auth, partManager.updatePart);
+app.put("/api/part", auth, permissions, sanitize, partManager.updatePart);
 // Delete
-app.delete("/api/part", auth, partManager.deletePart);
+app.delete("/api/part", auth, permissions, sanitize, partManager.deletePart);
 
 
 // ***   Users   ***
 //
 // Create
-app.post("/api/user", auth, userManager.createUser);
+app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
 // Read
-app.get("/api/user", auth, userManager.getUser);
+app.get("/api/user", auth, sanitize, userManager.getUser);
 // Update
-app.put("/api/user", auth, userManager.updateUser);
+app.put("/api/user", auth, sanitize, userManager.updateUser);
 // Delete
-app.delete("/api/user", auth, userManager.deleteUser);
+app.delete("/api/user", auth, permissions, sanitize, userManager.deleteUser);
 
 
 // Catch all - BAD REQUEST
