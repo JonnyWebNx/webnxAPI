@@ -13,7 +13,8 @@ const partManager = {
     // Create
     createPart: async (req, res)  => {
         // Get part info from request body
-        const { nxid, manufacturer, name, type, attributes } = req.body;
+        console.log(req.user)
+        const { nxid, manufacturer, name, type} = req.body.part;
         // If any part info is missing, return invalid request
         if(!(nxid, manufacturer, name, type)){
             return res.status(400).send("Invalid request");
@@ -23,11 +24,8 @@ const partManager = {
          * @TODO Add part validation logic
          */
         // Send part to database
-        if(req.body.quantity){
-            req.body.quantity = Number(req.body.quantity);
-        }
-        req.body.created_by = user_id;
-        await Part.create(req.body, (err, part)=>{
+        req.body.part.created_by = req.user.user_id;
+        await Part.create(req.body.part, (err, part)=>{
             if(err){
                 // Return and send error to client side for prompt
                 return res.status(500).send("API could not handle your request: "+err);
@@ -48,16 +46,11 @@ const partManager = {
         }
     },
     searchParts: async(req, res) => {
-        // TODO GET SEARCH STRING AND PAGES/LIMITS
-        // *************************************
         // Search data
-        const searchString = "";
         // Limit
-        const pageSize = 0;
         // Page number
-        const pageNum = 0;
-        // *************************************
-
+        console.log(req.query)
+        const { searchString, pageSize, pageNum } = req.query;
         // Find parts
         // Skip - gets requested page number
         // Limit - returns only enough elements to fill page
@@ -70,7 +63,6 @@ const partManager = {
                 return res.status(500).send("API could not handle your request: "+err);
             }
             // Get rid of mongoose garbage
-            parts = parts._doc;
             // Send back to client
             return res.status(200).json(parts);
         })

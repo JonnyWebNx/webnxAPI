@@ -41,6 +41,8 @@ app.use(express.json());
 
 app.post("/api/auth", auth, isAuth);
 
+app.use("/static", auth, express.static("public"))
+
 // ***   Authentication   ***
 //
 // Login
@@ -75,6 +77,7 @@ app.delete("/api/user", auth, permissions, sanitize, userManager.deleteUser);
 
 // Catch all - BAD REQUEST
 app.post("*", async (req, res) => {
+    console.log(req.url)
     return res.status(400).send("Invalid request.");
 });
 app.get("*", async (req, res) => {

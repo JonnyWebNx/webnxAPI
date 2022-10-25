@@ -1,6 +1,6 @@
 const permissions = (req, res, next) => {
     if(req.user.admin) {
-        next();
+        return next();
     }
     return res.status(403).send("Invalid permissions.");
 }
