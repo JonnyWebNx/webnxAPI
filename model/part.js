@@ -1,14 +1,14 @@
 const mongoose = require("mongoose");
 
 const partSchema = new mongoose.Schema({
-    nxid: { type: String, required: true },
+    nxid: { type: String, required: true, unique: true },
     manufacturer: { type: String, required: true },
     name: { type: String, required: true },
     type: { type: String, required: true },
     location: { type: String, required: true },
     quantity: { type: Number, default: 0 },
     frequency: { type: Number },
-    chipset: { type: Number },
+    chipset: { type: String },
     memory_type: { type: String },
     peripheral_type: { type: String },
     storage_interface: { type: String },
@@ -21,5 +21,5 @@ const partSchema = new mongoose.Schema({
     created_by: { type: String, default: null },
     date_created: { type: Date, default: Date.now },
 });
-partSchema.index({'$**': 'text'});
+partSchema.index({ '$**': 'text' });
 module.exports = mongoose.model("part", partSchema);

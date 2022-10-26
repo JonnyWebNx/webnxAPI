@@ -8,7 +8,7 @@ const register = async (req, res) => {
         const { first_name, last_name, email, password } = req.body;
 
         // Validate user input
-        if(!(email && password && first_name && last_name)) {
+        if (!(email && password && first_name && last_name)) {
             return res.status(400).send("All input is required");
         }
 
@@ -21,7 +21,11 @@ const register = async (req, res) => {
         }
 
         // Encrypt user password
-        encryptedPassword  = await bcrypt.hash(password, 10);
+        encryptedPassword = await bcrypt.hash(password, 10);
+
+        req.body.password = encryptedPassword
+
+        console.log(req.body)
 
         // Create user in our database
         var user = await User.create({
@@ -30,9 +34,8 @@ const register = async (req, res) => {
             email: email.toLowerCase(),
             password: encryptedPassword,
         });
-
         // Create token
-        const token  = sign(
+        const token = sign(
             { user_id: user._id, email },
             process.env.JWT_SECRET,
             {
@@ -44,9 +47,10 @@ const register = async (req, res) => {
         // Get rid of mongoose garbage and delete password
         user = user._doc;
         delete user.password;
+        console.log(user)
         // return new user
         return res.status(201).json(user);
-    } catch(err) {
+    } catch (err) {
         console.log(err);
     }
     // End register logic
