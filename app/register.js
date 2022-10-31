@@ -24,7 +24,7 @@ const register = async (req, res) => {
         encryptedPassword = await bcrypt.hash(password, 10);
 
         req.body.password = encryptedPassword
-
+        delete req.body.password2
         console.log(req.body)
 
         // Create user in our database
