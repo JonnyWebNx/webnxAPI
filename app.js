@@ -54,8 +54,10 @@ app.post("/api/register", register);
 //
 // Create
 app.post("/api/part", auth, permissions, sanitize, partManager.createPart);
+app.post("/api/checkout", auth, sanitize, partManager.checkout);
 // Read
 app.get("/api/part", auth, sanitize, partManager.getPart);
+app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
 app.get("/api/part/search", auth, sanitize, partManager.searchParts);
 // Update
 app.put("/api/part", auth, permissions, sanitize, partManager.updatePart);

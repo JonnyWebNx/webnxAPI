@@ -37,19 +37,51 @@ const partManager = {
     // Read
     getPart: async (req, res) => {
         try {
-            if (req.query.id) {
-                parts = await Part.findById(req.query.id)
+            parts = await Part.find(req.query);
+            console.log(req.query)
+            console.log(parts)
+            // Query the database
+            res.status(200).json(parts);
+        } catch (err) {
+            // Database error
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getPartByID: async (req, res) => {
+        try {
+            // Check if NXID
+            if (/WNX([0-9]{7})+/.test(req.query.id)) 
+            {
+                parts = await Part.findOne({ nxid: { $eq: req.query.id } });
             }
+            // If mongo ID
             else {
-                console.log(req.query)
-                parts = await Part.findOne({ nxid: { $eq: req.query.nxid } });
-                console.log(parts)
+                parts = await Part.findById(req.query.id)
             }
             // Query the database
             res.status(200).json(parts);
         } catch (err) {
             // Database error
             res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    checkout: async (req, res) => {
+        try {
+            // Find each item 
+            for(item of req.body.cart) {
+                // Get database quantity
+                const { quantity } = await Part.findById(item.id);
+                // Get new quantity
+                let newQuantity = quantity - item.quantity;
+                // Update
+                await Part.findByIdAndUpdate(item.id, {quantity: newQuantity});
+            }
+            // Success
+            res.status(200).send("Successfully checked out.")
+        }
+        catch(err) {
+            // Error
+            res.status(500).send("API could not handle your request: "+err);
         }
     },
     searchParts: async (req, res) => {
@@ -61,9 +93,42 @@ const partManager = {
         // Find parts
         // Skip - gets requested page number
         // Limit - returns only enough elements to fill page
-        Part.find({ $text: { $search: searchString } })
+        
+        // Splice keywords from search string
+        let i = 0
+        let keywords = []
+        let spliced = false
+        while(!spliced){
+            // If end of string
+            if(searchString.indexOf(" ", i) == -1) {
+                keywords.push(searchString.substring(i, searchString.length))
+                spliced = true
+            }else {
+                // Add spliced keyword to keyword array
+                keywords.push(searchString.substring(i, searchString.indexOf(" ", i)))
+                i = searchString.indexOf(" ", i) +1
+            }
+        }
+        // Use keywords to build search options
+        let searchOptions = []
+        for (const key of keywords) {
+            searchOptions.push({"name": { $regex: key, $options: "is"}})
+            searchOptions.push({"manufacturer": { $regex: key, $options: "is"}})
+            searchOptions.push({"type": { $regex: key, $options: "is"}})
+            searchOptions.push({"location": { $regex: key, $options: "is"}})
+            searchOptions.push({"storage_interface": { $regex: key, $options: "is"}})
+            searchOptions.push({"port_type": { $regex: key, $options: "is"}})
+            searchOptions.push({"peripheral_type": { $regex: key, $options: "is"}})
+            searchOptions.push({"memory_type": { $regex: key, $options: "is"}})
+            searchOptions.push({"cable_end1": { $regex: key, $options: "is"}})
+            searchOptions.push({"cable_end2": { $regex: key, $options: "is"}})
+            searchOptions.push({"chipset": { $regex: key, $options: "is"}})
+        }
+        console.log(keywords)
+
+        Part.aggregate( [{$match:{$or: searchOptions}}])
             .skip(pageSize * (pageNum - 1))
-            .limit(pageSize)
+            .limit(Number(pageSize))
             .exec((err, parts) => {
                 if (err) {
                     // Database err
