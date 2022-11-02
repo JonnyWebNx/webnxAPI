@@ -55,6 +55,7 @@ app.post("/api/register", register);
 // Create
 app.post("/api/part", auth, permissions, sanitize, partManager.createPart);
 app.post("/api/checkout", auth, sanitize, partManager.checkout);
+app.post("/api/checkin", auth, sanitize, partManager.checkin)
 // Read
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
@@ -71,6 +72,7 @@ app.delete("/api/part", auth, permissions, sanitize, partManager.deletePart);
 app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
 // Read
 app.get("/api/user", auth, sanitize, userManager.getUser);
+app.get("/api/user/all", auth, permissions, userManager.getAllUsers)
 // Update
 app.put("/api/user", auth, sanitize, userManager.updateUser);
 // Delete

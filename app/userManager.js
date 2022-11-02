@@ -64,17 +64,11 @@ const userManager = {
         return res.status(400).send("Invalid request.");
     },
     getAllUsers: async (req, res) => {
-        // check if user is admin
-        const { admin } = req.user; 
-        // Return if user is not admin
-        if(!admin){
-            return res.status(403).send("Invalid permissions");
-        }
         try{
             // Get all users
             var users = await User.find();
             // Remove password from data
-            for (const user of users){
+            for (let user of users){
                 user = user._doc;
                 delete user.password;
             }

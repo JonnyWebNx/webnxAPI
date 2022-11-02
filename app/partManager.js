@@ -68,16 +68,50 @@ const partManager = {
     checkout: async (req, res) => {
         try {
             // Find each item 
+            let quantities = []
+            for(item of req.body.cart) {
+                // Get database quantity
+                let { quantity } = await Part.findById(item.id);
+                if (quantity < item.quantity) {
+                    return res.status(400).send("Insufficient stock.")
+                }
+                quantities.push(quantity)
+            }
+            let i = 0
+            for(item of req.body.cart) {
+                // Get new quantity
+                let newQuantity = quantities[i] - item.quantity;
+                if(newQuantity < 0) {
+                    newQuantity = 0
+                }
+                // Update
+                await Part.findByIdAndUpdate(item.id, {quantity: newQuantity});
+                i++;
+            }
+            // Success
+            res.status(200).send("Successfully checked out.")
+        }
+        catch(err) {
+            // Error
+            res.status(500).send("API could not handle your request: "+err);
+        }
+    },
+    checkin: async (req, res) => {
+        try {
+            // Find each item 
             for(item of req.body.cart) {
                 // Get database quantity
                 const { quantity } = await Part.findById(item.id);
                 // Get new quantity
-                let newQuantity = quantity - item.quantity;
+                let newQuantity = quantity + item.quantity;
+                if(newQuantity < 0) {
+                    newQuantity = 0
+                }
                 // Update
                 await Part.findByIdAndUpdate(item.id, {quantity: newQuantity});
             }
             // Success
-            res.status(200).send("Successfully checked out.")
+            res.status(200).send("Successfully checked in.")
         }
         catch(err) {
             // Error
@@ -101,7 +135,7 @@ const partManager = {
         while(!spliced){
             // If end of string
             if(searchString.indexOf(" ", i) == -1) {
-                keywords.push(searchString.substring(i, searchString.length))
+                keywords.push(searchString.substring(i, searchString.legth))
                 spliced = true
             }else {
                 // Add spliced keyword to keyword array
@@ -144,11 +178,11 @@ const partManager = {
     updatePart: async (req, res) => {
         try {
             // Find part
-            console.log(req.query)
-            var part = await Part.findByIdAndUpdate(req.query.id, req.query);
-            if (part) {
+            const { part } = req.body
+            let updatedPart = await Part.findByIdAndUpdate(part._id, part);
+            if (updatedPart) {
                 console.log(part)
-                return res.status(201).send(`Updated part: ${part.manufacturer} ${part.name}`);
+                return res.status(201).send(`Updated part: ${updatedPart.manufacturer} ${updatedPart.name}`);
             }
             // Null is falsey - Part not found
             res.status(400).send("Part not found.");
@@ -157,31 +191,31 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    updateQuantity: async (req, res) => {
-        try {
-            const { id, quantity } = req.query;
-            // Make sure id and quantify are in the request
-            if (!(id && quantity)) {
-                return res.status(400).send("Invalid request.");
-            }
-            // Find and update in database
-            part = await Part.findByIdAndUpdate(id, { quantity });
-            if (part) {
-                // Part found
-                return res.status.json(part);
-            }
-            // Part not part
-            res.status(400).send("Part not found.");
-        } catch (err) {
-            // Database error
-            res.status(500).send("API could not handle your request: " + err);
-        }
-    },
+    // updateQuantity: async (req, res) => {
+    //     try {
+    //         const { id, quantity } = req.query;
+    //         // Make sure id and quantify are in the request
+    //         if (!(id && quantity)) {
+    //             return res.status(400).send("Invalid request.");
+    //         }
+    //         // Find and update in database
+    //         part = await Part.findByIdAndUpdate(id, { quantity });
+    //         if (part) {
+    //             // Part found
+    //             return res.status.json(part);
+    //         }
+    //         // Part not part
+    //         res.status(400).send("Part not found.");
+    //     } catch (err) {
+    //         // Database error
+    //         res.status(500).send("API could not handle your request: " + err);
+    //     }
+    // },
     // Delete
     deletePart: async (req, res) => {
         try {
             // Try to find and delete by ID
-            part = await Part.findByIdAndDelete(req.query.id);
+            part = await Part.findByIdAndDelete(req.body.part.id);
             // Send copy back to user
             res.status(200).json(part);
         } catch (err) {
