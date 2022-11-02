@@ -74,7 +74,7 @@ app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
 app.get("/api/user", auth, sanitize, userManager.getUser);
 app.get("/api/user/all", auth, permissions, userManager.getAllUsers)
 // Update
-app.put("/api/user", auth, sanitize, userManager.updateUser);
+app.put("/api/user", auth, sanitize, permissions, userManager.updateUser);
 // Delete
 app.delete("/api/user", auth, permissions, sanitize, userManager.deleteUser);
 

@@ -81,22 +81,11 @@ const userManager = {
     },
     // Update - id required in query string
     updateUser: async (req, res) => {
-        // Save user id from query string
-        var { id } = req.query || req.user.user_id;
-        const { admin, user_id } = req.user;
-        if (!id){
-           // Missing user id
-           return res.status(400).send("Invalid request.");
-        } else if((id != user_id)&&!admin){
-            // User is trying to edit another user without permissions or 
-            // a non admin user is trying to make themselves an admin.
-            return res.status(403).send("Invalid permissions.");
-        }
-        // Check if email is available 
         try{
             // Check database to see if email already exists
-            var emailExists = await User.findOne({email: req.body.email});
-            if (emailExists&&id!=emailExists._id){
+            const submittedUser = req.body.user
+            var emailExists = await User.findOne({email: submittedUser.email});
+            if (emailExists&&submittedUser._id!=emailExists._id){
                 console.log(emailExists);
                 // Email already exists in database and does not belong to user
                 return res.status(403).send("Email taken.")
@@ -104,7 +93,7 @@ const userManager = {
             // Delete password from request
             delete req.body.password;
             // Send update query to database
-            var user = await User.findByIdAndUpdate(id, req.body)
+            var user = await User.findByIdAndUpdate(submittedUser._id, submittedUser)
             if(user){
                 // User was found and updated
                 return res.status(200).send(`Updated user: ${user.email}`);
