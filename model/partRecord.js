@@ -3,18 +3,20 @@ const mongoose = require("mongoose");
 const partRecord = new mongoose.Schema({
     // NXID of the associated part
     nxid: { type: String, required: true },
-    // Previous record, null if oldest iteration of record
-    prev: { type: String, required: true },
-    // Next record, null if newest iteration of record
-    next: { type: String, required: true},
-    // Location: LA, OG, NY
-    building: { type: String, required: true },
+    // ID of the previous record, null if oldest iteration of record
+    prev: { type: String, default: null },
+    // ID of the next record, null if newest iteration of record
+    next: { type: String, default: null},
+    // Location: LA - 1, OG - 3, NY - 4
+    building: { type: Number, required: true },
     // Parts Room, Workbench, Testing, Asset, Etc.
     location: { type: String, required: true},
     // Asset tag if associated with an asset
     asset_tag: { type: String },
     // User ID of owner if part is checked out
-    owner: { type: String, required: true },
+    owner: { type: String },
+    // ID of the user who's request created the part record
+    by: { type: String, required: true },
     // Date the part was created
     date_created: { type: Date, default: Date.now },
 });

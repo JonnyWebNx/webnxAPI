@@ -78,7 +78,7 @@ app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
 app.get("/api/part/search", auth, sanitize, partManager.searchParts);
 // Update
-app.put("/api/part", auth, permissions, sanitize, partManager.updatePart);
+app.put("/api/part", auth, permissions, sanitize, partManager.updatePartInfo);
 // Delete
 app.delete("/api/part", auth, permissions, sanitize, partManager.deletePart);
 
