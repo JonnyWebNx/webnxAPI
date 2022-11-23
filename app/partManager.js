@@ -6,7 +6,6 @@
  * @brief Part manager object for querying database and creating responses
  * 
  */
-const part = require("../model/part");
 const Part = require("../model/part");
 const PartRecord = require("../model/partRecord")
 
@@ -25,7 +24,7 @@ const partManager = {
          */
         // Send part to database
         req.body.part.created_by = req.user.user_id;
-        await Part.create(req.body.part, (err, part) => {
+        Part.create(req.body.part, (err, part) => {
             if (err) {
                 // Return and send error to client side for prompt
                 return res.status(500).send("API could not handle your request: " + err);

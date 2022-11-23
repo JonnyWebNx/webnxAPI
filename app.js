@@ -26,6 +26,7 @@ const permissions = require("./middleware/permissions");
 const partManager = require("./app/partManager");
 const userManager = require("./app/userManager");
 const sanitize = require("./middleware/sanitize");
+const assetManager = require("./app/assetManager");
 // Create express instance
 const app = express();
 
@@ -62,9 +63,9 @@ app.post("/api/auth", auth, isAuth);
 // ***   Authentication   ***
 //
 // Login
-app.post("/api/login", login);
+app.post("/api/login", sanitize, login);
 // Register
-app.post("/api/register", register);
+app.post("/api/register", sanitize, register);
 
 // ***   Parts   ***
 //
@@ -91,10 +92,23 @@ app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
 app.get("/api/user", auth, sanitize, userManager.getUser);
 app.get("/api/user/all", auth, permissions, userManager.getAllUsers)
 // Update
-app.put("/api/user", auth, sanitize, permissions, userManager.updateUser);
+app.put("/api/user", auth, permissions, sanitize, userManager.updateUser);
 // Delete
 app.delete("/api/user", auth, permissions, sanitize, userManager.deleteUser);
 
+// ***    Assets    ****
+//Create
+app.post("/api/asset", auth, sanitize, assetManager.createAsset);
+// Read
+app.get("/api/asset", sanitize, assetManager.getAsset);
+app.get("/api/asset/id", sanitize, assetManager.getAssetByID);
+app.get('/api/asset/search', sanitize, assetManager.searchAssets);
+// Update
+app.put("/api/asset", sanitize, assetManager.updateAsset);
+app.put("/api/asset/parts", sanitize, assetManager.addParts);
+// Delete
+app.delete("/api/asset/parts", sanitize, assetManager.removeParts);
+app.delete("/api/asset", sanitize, assetManager.deleteAsset);
 
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {
