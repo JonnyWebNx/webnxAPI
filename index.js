@@ -44,6 +44,6 @@ server.listen(port, () => {
                        /_/  |_|/_/      /___/         
                                                                      
 WebNX API by Cameron McKay`)
-    console.log("\x1b[0m",`Server running on port ${API_PORT}`);
+    console.log("\x1b[0m",`\nServer running on port ${API_PORT}`);
 
 });

@@ -15,7 +15,6 @@ const verifyToken = (req, res, next) => {
         // If token is invalid
         return res.status(401).send("Login expired.");
     }
-    console.log(req.user)
     return next();
 }
 

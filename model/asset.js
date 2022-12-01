@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const asset = new mongoose.Schema({
     // NXID of the associated part
-    nxid: { type: String, required: true, unique: true },
+    asset_tag: { type: String, required: true, unique: true },
     // Location: LA - 1, OG - 3, NY - 4
     building: { type: Number, required: true },
     // Asset type
@@ -27,6 +27,7 @@ const asset = new mongoose.Schema({
     parts: { type: Array },
     // Date the part was created
     date_created: { type: Date, default: Date.now },
+    date_updated: { type: Date, default: Date.now }
 });
 // Add index here
 module.exports = mongoose.model("asset", asset);

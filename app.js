@@ -31,7 +31,7 @@ const assetManager = require("./app/assetManager");
 const app = express();
 
 // SET UP CORS
-var whitelist = ['https://www.cameronmckay.xyz', 'https://cameronmckay.xyz', "http://localhost:3000"]
+var whitelist = ['https://www.cameronmckay.xyz', 'https://cameronmckay.xyz', "http://localhost:8080"]
 var corsOptions = {
     origin: (origin, callback) => {
         if (whitelist.indexOf(origin) !== -1) {
@@ -71,13 +71,16 @@ app.post("/api/register", sanitize, register);
 //
 // Create
 app.post("/api/part", auth, permissions, sanitize, partManager.createPart);
+app.post("/api/part/add", auth, permissions, sanitize, partManager.addToInventory);
 app.post("/api/checkout", auth, sanitize, partManager.checkout);
 app.post("/api/checkin", auth, sanitize, partManager.checkin)
 // Read    throw new TypeError('path must be absolute or specify root to res.sendFile');
-
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
 app.get("/api/part/search", auth, sanitize, partManager.searchParts);
+app.get("/api/part/inventory", auth, sanitize, partManager.getInventory);
+app.get("/api/part/distinct", auth, sanitize, partManager.getDistinctOnPartInfo);
+app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 // Update
 app.put("/api/part", auth, permissions, sanitize, partManager.updatePartInfo);
 // Delete
@@ -98,9 +101,9 @@ app.delete("/api/user", auth, permissions, sanitize, userManager.deleteUser);
 
 // ***    Assets    ****
 //Create
-app.post("/api/asset", auth, sanitize, assetManager.createAsset);
+app.post("/api/asset", auth, sanitize, assetManager.addUntrackedAsset);
 // Read
-app.get("/api/asset", sanitize, assetManager.getAsset);
+app.get("/api/asset", sanitize, assetManager.getAssets);
 app.get("/api/asset/id", sanitize, assetManager.getAssetByID);
 app.get('/api/asset/search', sanitize, assetManager.searchAssets);
 // Update

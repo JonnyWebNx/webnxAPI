@@ -5,11 +5,11 @@ const partSchema = new mongoose.Schema({
     manufacturer: { type: String, required: true },
     name: { type: String, required: true },
     type: { type: String, required: true },
-    location: { type: String, required: true },
-    quantity: { type: Number, default: 0 },
     frequency: { type: Number },
     chipset: { type: String },
     memory_type: { type: String },
+    // new
+    shelf_location: { type: String },
     peripheral_type: { type: String },
     storage_interface: { type: String },
     capacity: { type: Number },

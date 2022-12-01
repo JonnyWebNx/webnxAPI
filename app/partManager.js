@@ -13,7 +13,7 @@ const partManager = {
     // Create
     createPart: async (req, res) => {
         // Get part info from request body
-        const { nxid, manufacturer, name, type, building, location } = req.body.part;
+        const { nxid, manufacturer, name, type, quantity } = req.body.part;
         // If any part info is missing, return invalid request
         if (!(nxid, manufacturer, name, type)) {
             return res.status(400).send("Invalid request");
@@ -24,18 +24,27 @@ const partManager = {
          */
         // Send part to database
         req.body.part.created_by = req.user.user_id;
-        Part.create(req.body.part, (err, part) => {
+        await Part.create(req.body.part, async (err, part) => {
             if (err) {
                 // Return and send error to client side for prompt
                 return res.status(500).send("API could not handle your request: " + err);
             }
-            for (let i = 0; i < req.body.part.quantitity; i++) {
+            for (let i = 0; i < quantity; i++) {
                 // Create part records to match the quantity and location of the part schema creation
-                PartRecord.create({
+                await PartRecord.create({
                     nxid: part.nxid, 
-                    building: building ? building : req.user.building,
-                    location: location ? location : "Parts Room", 
-                    by: req.user.user_id 
+                    /**
+                     * 
+                     * @TODO Implement building on user object
+                     * 
+                     */
+                    building: req.body.building ? req.body.building : 3,/*req.user.building,*/
+                    location: req.body.location ? req.body.location : "Parts Room", 
+                    by: req.user.user_id
+                }, (err, part) => {
+                    if (err) {
+                        console.log(err);
+                    }
                 })
             }
             // Succesful query
@@ -45,14 +54,32 @@ const partManager = {
     // Read
     getPart: async (req, res) => {
         try {
-            parts = await Part.find(req.query);
+            // Destructure request
+            const { location, building } = req.query;
+            const req_part = req.query.part;
+            // Find parts that match request
+            let parts = await Part.find(req_part);
             // Query the database
-            parts.quantity = await PartRecord.count({
-                nxid: req.query.nxid, 
-                next: null, 
-                location: req.query.location ? req.query.location : "Parts Room", 
-                building: req.query.building ? req.query.buiding : req.user.building
-            })
+            console.log(parts)
+            for (part of parts) {
+                part = part._doc;
+                // Count parts in given location or in parts room
+                let count = await PartRecord.count({
+                    nxid: part.nxid,
+                    next: null, 
+                    location: location ? location : "Parts Room",
+                    building: building ? building : req.user.building
+                });
+                // Count total parts
+                let total_count = await PartRecord.count({
+                    nxid: part.nxid,
+                    next: null
+                });
+                // Add quantities to part object
+                part.quantity = count;
+                part.total_quantity = total_count;
+            }
+            // return list of parts
             res.status(200).json(parts);
         } catch (err) {
             // Database error
@@ -61,6 +88,7 @@ const partManager = {
     },
     getPartByID: async (req, res) => {
         try {
+            let part = {}
             // Check if NXID
             if (/WNX([0-9]{7})+/.test(req.query.id)) {
                 part = await Part.findOne({ nxid: { $eq: req.query.id } });
@@ -70,17 +98,20 @@ const partManager = {
                 part = await Part.findById(req.query.id)
             }
             // Get the total quantity
-            part.total_quantity = await PartRecord.count({
+            let total_quantity = await PartRecord.count({
                 nxid: part.nxid, 
                 next: null 
             });
             // Get available quantity in specified building or location - use defaults from ternary if unspecified
-            part.quantitity = await PartRecord.count({ 
+            let quantity = await PartRecord.count({ 
                 nxid: part.nxid, 
                 building: req.query.building ? req.query.building : req.user.building, 
                 location: req.query.location ? req.query.location : "Parts Room", 
                 next: null 
             });
+            part = part._doc;
+            part.total_quantity = total_quantity;
+            part.quantity = quantity;
             res.status(200).json(part);
         } catch (err) {
             // Database error
@@ -92,7 +123,7 @@ const partManager = {
             // Find each item and check quantities before updating
             for (item of req.body.cart) {
                 // Check quantity before
-                let { quantity } = await PartRecord.count({ 
+                let quantity = await PartRecord.count({ 
                     nxid: item.nxid, 
                     location: "Parts Room", 
                     building: item.building, 
@@ -115,7 +146,7 @@ const partManager = {
                 // Loop for quanity of part item
                 for (let j = 0; j < item.quantity; j++) {
                     // Create new iteration
-                    PartRecord.create({ 
+                    await PartRecord.create({ 
                         nxid: item.nxid, 
                         owner: req.user.user_id, 
                         prev: item._id, 
@@ -135,7 +166,7 @@ const partManager = {
         }
         catch (err) {
             // Error
-            res.status(500).send("API could not handle your request: " + err);
+            return res.status(500).send("API could not handle your request: " + err);
         }
     },
     checkin: async (req, res) => {
@@ -153,7 +184,7 @@ const partManager = {
                 });
                 for (let i = 0; i < item.quantitity; i++) {
                     // Create new part record - set prev to old record
-                    PartRecord.create({
+                    await PartRecord.create({
                         nxid: item.nxid,
                         next: null,
                         prev: records[i]._id,
@@ -179,40 +210,11 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getQuantitiesForSearch: async (req, res) => {
-        /**
-         * @TODO add location parameter to requests
-         */
-        try {
-            // Get array of NXIDs
-            const { parts, location, building } = req.body;
-            // Create an array for quanties
-            let quantities = [];
-            // loop through each NXID
-            for (const nxid of parts) {
-                // Count number of matching part records
-                let count = await PartRecord.count({
-                    nxid, 
-                    next: null, 
-                    location: location ? location : "Parts Room",
-                    building: building ? building : req.user.building
-                    // location: 
-                });
-                // add to array in order
-                quantities.push(count)
-            }
-            // send quantities
-            res.status(200).json(quantities);
-        } catch (err) {
-            // Error
-            res.status(500).send("API could not handle your request: " + err);
-        }
-    },
     searchParts: async (req, res) => {
         // Search data
         // Limit
         // Page number
-        const { searchString, pageSize, pageNum } = req.query;
+        const { searchString, pageSize, pageNum, building, location } = req.query;
         // Find parts
         // Skip - gets requested page number
         // Limit - returns only enough elements to fill page
@@ -251,10 +253,24 @@ const partManager = {
         Part.aggregate([{ $match: { $or: searchOptions } }])
             .skip(pageSize * (pageNum - 1))
             .limit(Number(pageSize))
-            .exec((err, parts) => {
+            .exec(async (err, parts) => {
                 if (err) {
                     // Database err
                     return res.status(500).send("API could not handle your request: " + err);
+                }
+                for (part of parts) {
+                    let count = await PartRecord.count({
+                        nxid: part.nxid, 
+                        next: null, 
+                        location: location ? location : "Parts Room",
+                        building: building ? building : req.user.building
+                    });
+                    let total_count = await PartRecord.count({
+                        nxid: part.nxid,
+                        next: null
+                    });
+                    part.quantity = count;
+                    part.total_quantity = total_count;
                 }
                 // Get rid of mongoose garbage
                 // Send back to client
@@ -296,9 +312,10 @@ const partManager = {
     addToInventory: async (req, res) => {
         try {
             // Get info from request
-            const { nxid, quantity, location, building } = req.body.parts;
+            const { id, quantity, location, building } = req.body.part;
             // If any part info is missing, return invalid request
-            if (!(nxid && quantity && location && buiding)) {
+            if (!(id && quantity && location && building)) {
+                console.log(req.body.part)
                 return res.status(400).send("Invalid request");
             }
             // Try to add part to database
@@ -306,19 +323,24 @@ const partManager = {
              * @TODO Add part validation logic
             */
             // Send part to database
-            req.body.part.created_by = req.user.user_id;
-            for (let i = 0; i < quantity; i++) {
-                // Create new parts records to match the quantity
-                PartRecord.create({ 
-                    nxid,
-                    location: location ? location : "Parts Room",
-                    building: building ? building : req.user.building, 
-                    prev: null, 
-                    next: null
-                });
-            }
-            // Success
-            res.status(200).send("Successfully added to inventory")
+            Part.findById(id, (err, part)=> {
+                if (err) {
+                    return res.status(500).send("API could not handle your request: " + err);        
+                }
+                for (let i = 0; i < quantity; i++) {
+                    // Create new parts records to match the quantity
+                    PartRecord.create({ 
+                        nxid: part.nxid,
+                        location: location ? location : "Parts Room",
+                        building: building ? building : req.user.building, 
+                        prev: null, 
+                        next: null,
+                        by: req.user.user_id
+                    });
+                }
+                // Success
+                res.status(200).send("Successfully added to inventory")
+            });
         } catch (err) {
             // Error
             res.status(500).send("API could not handle your request: " + err);
@@ -336,7 +358,7 @@ const partManager = {
             }, (err, parts) => {
                 if (err) {
                     // Error - don't return so other records will be deleted
-                    res.status(500).send("API could not handle your request: " + err);
+                    return res.status(500).send("API could not handle your request: " + err);
                 }
                 // Delete every part record
                 for(const part of parts) {
@@ -350,5 +372,61 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+    getInventory: async (req, res) => {
+        try {
+            // Get user id
+            const id = req.query.id ? req.query.id : req.user.user_id;
+            // Query database
+            PartRecord.find({
+                owner: id,
+                next: null
+            }, (err, records) => {
+                if (err) {
+                    // Error
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                res.status(200).json(records);
+            })
+        } catch (err) {
+            // Error
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getDistinctOnPartRecords: async (req, res) => {
+        try {
+            // Get key to find distinct values
+            const { key } = req.query;
+            // Find all distinct part records
+            PartRecord.find().distinct(key, (err, values) => {
+                if (err) {
+                    // Error
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                // Send distinct values
+                res.status(200).json(values);
+            })
+        } catch (err) {
+            // Error
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getDistinctOnPartInfo: async (req, res) => {
+        try {
+            // Get key to find distinct values
+            const { key } = req.query;
+            // Find all distinct part records
+            Part.find().distinct(key, (err, values) => {
+                if (err) {
+                    // Error
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                // Send distinct values
+                res.status(200).json(values);
+            })
+        } catch (err) {
+            // Error
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    }
 };
 module.exports = partManager;

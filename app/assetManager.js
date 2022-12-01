@@ -138,6 +138,7 @@ const assetManager = {
         /**
          * @TODO figure out how to handle associated parts records
          */
+        asset.date_updated = Date.now;
         Asset.findOneAndUpdate(asset, (err, asset) => {
             if (err) {
                 return res.status(500).send("API could not handle your request: "+err);
