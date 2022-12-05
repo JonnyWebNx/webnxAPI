@@ -123,9 +123,10 @@ const partManager = {
             // Find each item and check quantities before updating
             for (item of req.body.cart) {
                 // Check quantity before
+                console.log(item)
                 let quantity = await PartRecord.count({ 
                     nxid: item.nxid, 
-                    location: "Parts Room", 
+                    location: "Parts Room",
                     building: item.building, 
                     next: null 
                 });
@@ -146,15 +147,18 @@ const partManager = {
                 // Loop for quanity of part item
                 for (let j = 0; j < item.quantity; j++) {
                     // Create new iteration
-                    await PartRecord.create({ 
+                    PartRecord.create({ 
                         nxid: item.nxid, 
-                        owner: req.user.user_id, 
-                        prev: item._id, 
+                        owner: req.user.user_id,
+                        location: "Tech Inventory",
+                        building: item.building,
+                        by: req.user.user_id,
+                        prev: records[j]._id,
                         next: null 
                     }, (err, part) => {
                         if (err) {
                             // Error
-                            return res.status(500).send("API could not handle your request: " + err);
+                            console.log("API could not handle your request: " + err);
                         }
                         // Set next value on old iteration to new part record
                         PartRecord.findByIdAndUpdate(records[j]._id, { next: part._id });
@@ -211,8 +215,10 @@ const partManager = {
         }
     },
     searchParts: async (req, res) => {
-        // Search data
-        // Limit
+        try {
+
+            // Search data
+            // Limit
         // Page number
         const { searchString, pageSize, pageNum, building, location } = req.query;
         // Find parts
@@ -252,7 +258,7 @@ const partManager = {
         }
         Part.aggregate([{ $match: { $or: searchOptions } }])
             .skip(pageSize * (pageNum - 1))
-            .limit(Number(pageSize))
+            .limit(Number(pageSize+1))
             .exec(async (err, parts) => {
                 if (err) {
                     // Database err
@@ -276,6 +282,9 @@ const partManager = {
                 // Send back to client
                 return res.status(200).json(parts);
             })
+        } catch (err) {
+            return res.status(500).send("API could not handle your request: " + err);
+        }
     },
     // Update
     updatePartInfo: async (req, res) => {
@@ -312,25 +321,21 @@ const partManager = {
     addToInventory: async (req, res) => {
         try {
             // Get info from request
-            const { id, quantity, location, building } = req.body.part;
+            const { nxid, quantity, location, building } = req.body.part;
             // If any part info is missing, return invalid request
-            if (!(id && quantity && location && building)) {
+            if (!(nxid && quantity && location && building)) {
                 console.log(req.body.part)
                 return res.status(400).send("Invalid request");
             }
-            // Try to add part to database
-            /**
-             * @TODO Add part validation logic
-            */
-            // Send part to database
-            Part.findById(id, (err, part)=> {
+            // Find part info
+            Part.find({nxid}, (err, part)=> {
                 if (err) {
                     return res.status(500).send("API could not handle your request: " + err);        
                 }
                 for (let i = 0; i < quantity; i++) {
                     // Create new parts records to match the quantity
                     PartRecord.create({ 
-                        nxid: part.nxid,
+                        nxid,
                         location: location ? location : "Parts Room",
                         building: building ? building : req.user.building, 
                         prev: null, 
