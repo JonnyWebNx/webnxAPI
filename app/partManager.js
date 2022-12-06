@@ -12,44 +12,50 @@ const PartRecord = require("../model/partRecord")
 const partManager = {
     // Create
     createPart: async (req, res) => {
-        // Get part info from request body
-        const { nxid, manufacturer, name, type, quantity } = req.body.part;
-        // If any part info is missing, return invalid request
-        if (!(nxid, manufacturer, name, type)) {
-            return res.status(400).send("Invalid request");
+        try{
+
+            // Get part info from request body
+            const { nxid, manufacturer, name, type, quantity } = req.body.part;
+            // If any part info is missing, return invalid request
+            if (!(nxid, manufacturer, name, type)) {
+                return res.status(400).send("Invalid request");
+            }
+            // Try to add part to database
+            /**
+             * @TODO Add part validation logic
+             */
+            // Send part to database
+            req.body.part.created_by = req.user.user_id;
+            await Part.create(req.body.part, async (err, part) => {
+                if (err) {
+                    // Return and send error to client side for prompt
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                for (let i = 0; i < quantity; i++) {
+                    // Create part records to match the quantity and location of the part schema creation
+                    await PartRecord.create({
+                        nxid: part.nxid, 
+                        /**
+                         * 
+                         * @TODO Implement building on user object
+                         * 
+                         */
+                        building: req.body.building ? req.body.building : 3,/*req.user.building,*/
+                        location: req.body.location ? req.body.location : "Parts Room", 
+                        by: req.user.user_id
+                    }, (err, part) => {
+                        if (err) {
+                            console.log(err);
+                        }
+                    })
+                }
+                // Succesful query
+                return res.status(200).send(`Created part: ${part.manufacturer} ${part.name}`);
+            
+            });
+        } catch(err) {
+            return res.status(500).send("API could not handle your request: " + err);
         }
-        // Try to add part to database
-        /**
-         * @TODO Add part validation logic
-         */
-        // Send part to database
-        req.body.part.created_by = req.user.user_id;
-        await Part.create(req.body.part, async (err, part) => {
-            if (err) {
-                // Return and send error to client side for prompt
-                return res.status(500).send("API could not handle your request: " + err);
-            }
-            for (let i = 0; i < quantity; i++) {
-                // Create part records to match the quantity and location of the part schema creation
-                await PartRecord.create({
-                    nxid: part.nxid, 
-                    /**
-                     * 
-                     * @TODO Implement building on user object
-                     * 
-                     */
-                    building: req.body.building ? req.body.building : 3,/*req.user.building,*/
-                    location: req.body.location ? req.body.location : "Parts Room", 
-                    by: req.user.user_id
-                }, (err, part) => {
-                    if (err) {
-                        console.log(err);
-                    }
-                })
-            }
-            // Succesful query
-            return res.status(200).send(`Created part: ${part.manufacturer} ${part.name}`);
-        });
     },
     // Read
     getPart: async (req, res) => {
@@ -216,72 +222,71 @@ const partManager = {
     },
     searchParts: async (req, res) => {
         try {
-
             // Search data
             // Limit
-        // Page number
-        const { searchString, pageSize, pageNum, building, location } = req.query;
-        // Find parts
-        // Skip - gets requested page number
-        // Limit - returns only enough elements to fill page
+            // Page number
+            const { searchString, pageSize, pageNum, building, location } = req.query;
+            // Find parts
+            // Skip - gets requested page number
+            // Limit - returns only enough elements to fill page
 
-        // Splice keywords from search string
-        let i = 0
-        let keywords = []
-        let spliced = false
-        while (!spliced) {
-            // If end of string
-            if (searchString.indexOf(" ", i) == -1) {
-                keywords.push(searchString.substring(i, searchString.length))
-                spliced = true
-            } else {
-                // Add spliced keyword to keyword array
-                keywords.push(searchString.substring(i, searchString.indexOf(" ", i)))
-                i = searchString.indexOf(" ", i) + 1
+            // Splice keywords from search string
+            let i = 0
+            let keywords = []
+            let spliced = false
+            while (!spliced) {
+                // If end of string
+                if (searchString.indexOf(" ", i) == -1) {
+                    keywords.push(searchString.substring(i, searchString.length))
+                    spliced = true
+                } else {
+                    // Add spliced keyword to keyword array
+                    keywords.push(searchString.substring(i, searchString.indexOf(" ", i)))
+                    i = searchString.indexOf(" ", i) + 1
+                }
             }
-        }
-        // Use keywords to build search options
-        let searchOptions = []
-        // Add regex of keywords to all search options
-        for (const key of keywords) {
-            searchOptions.push({ "name": { $regex: key, $options: "is" } })
-            searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
-            searchOptions.push({ "type": { $regex: key, $options: "is" } })
-            searchOptions.push({ "location": { $regex: key, $options: "is" } })
-            searchOptions.push({ "storage_interface": { $regex: key, $options: "is" } })
-            searchOptions.push({ "port_type": { $regex: key, $options: "is" } })
-            searchOptions.push({ "peripheral_type": { $regex: key, $options: "is" } })
-            searchOptions.push({ "memory_type": { $regex: key, $options: "is" } })
-            searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
-            searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
-            searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
-        }
-        Part.aggregate([{ $match: { $or: searchOptions } }])
-            .skip(pageSize * (pageNum - 1))
-            .limit(Number(pageSize+1))
-            .exec(async (err, parts) => {
-                if (err) {
-                    // Database err
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                for (part of parts) {
-                    let count = await PartRecord.count({
-                        nxid: part.nxid, 
-                        next: null, 
-                        location: location ? location : "Parts Room",
-                        building: building ? building : req.user.building
-                    });
-                    let total_count = await PartRecord.count({
-                        nxid: part.nxid,
-                        next: null
-                    });
-                    part.quantity = count;
-                    part.total_quantity = total_count;
-                }
-                // Get rid of mongoose garbage
-                // Send back to client
-                return res.status(200).json(parts);
-            })
+            // Use keywords to build search options
+            let searchOptions = []
+            // Add regex of keywords to all search options
+            for (const key of keywords) {
+                searchOptions.push({ "name": { $regex: key, $options: "is" } })
+                searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
+                searchOptions.push({ "type": { $regex: key, $options: "is" } })
+                searchOptions.push({ "location": { $regex: key, $options: "is" } })
+                searchOptions.push({ "storage_interface": { $regex: key, $options: "is" } })
+                searchOptions.push({ "port_type": { $regex: key, $options: "is" } })
+                searchOptions.push({ "peripheral_type": { $regex: key, $options: "is" } })
+                searchOptions.push({ "memory_type": { $regex: key, $options: "is" } })
+                searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
+                searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
+                searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
+            }
+            Part.aggregate([{ $match: { $or: searchOptions } }])
+                .skip(pageSize * (pageNum - 1))
+                .limit(Number(pageSize+1))
+                .exec(async (err, parts) => {
+                    if (err) {
+                        // Database err
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    for (part of parts) {
+                        let count = await PartRecord.count({
+                            nxid: part.nxid, 
+                            next: null, 
+                            location: location ? location : "Parts Room",
+                            building: building ? building : req.user.building
+                        });
+                        let total_count = await PartRecord.count({
+                            nxid: part.nxid,
+                            next: null
+                        });
+                        part.quantity = count;
+                        part.total_quantity = total_count;
+                    }
+                    // Get rid of mongoose garbage
+                    // Send back to client
+                    return res.status(200).json(parts);
+                })
         } catch (err) {
             return res.status(500).send("API could not handle your request: " + err);
         }

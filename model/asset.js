@@ -19,8 +19,13 @@ const asset = new mongoose.Schema({
     rails: { type: Boolean },
     // Status
     live: { type: Boolean, default: false},
+    // Bay
+    bay: { type: Number },
     // Physical location
-    location: { type: String, required: true },
+    power_port: { type: String },
+    public_port: { type: String },
+    private_port: { type: String },
+    ipmi_port: { type: String },
     // Last updated by
     by: { type: String, required: true },
     // Parts
