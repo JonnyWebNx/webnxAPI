@@ -405,9 +405,9 @@ const partManager = {
     getDistinctOnPartRecords: async (req, res) => {
         try {
             // Get key to find distinct values
-            const { key } = req.query;
+            const { key, where } = req.query;
             // Find all distinct part records
-            PartRecord.find().distinct(key, (err, values) => {
+            PartRecord.find(where).distinct(key, (err, values) => {
                 if (err) {
                     // Error
                     return res.status(500).send("API could not handle your request: " + err);
