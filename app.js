@@ -94,6 +94,7 @@ app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
 // Read
 app.get("/api/user", auth, sanitize, userManager.getUser);
 app.get("/api/user/all", auth, permissions, userManager.getAllUsers)
+app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 // Update
 app.put("/api/user", auth, permissions, sanitize, userManager.updateUser);
 // Delete
@@ -103,15 +104,14 @@ app.delete("/api/user", auth, permissions, sanitize, userManager.deleteUser);
 //Create
 app.post("/api/asset", auth, sanitize, assetManager.addUntrackedAsset);
 // Read
-app.get("/api/asset", sanitize, assetManager.getAssets);
-app.get("/api/asset/id", sanitize, assetManager.getAssetByID);
-app.get('/api/asset/search', sanitize, assetManager.searchAssets);
+app.get("/api/asset", auth, sanitize, assetManager.getAssets);
+app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
+app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
+app.get('/api/asset/search', auth, sanitize, assetManager.searchAssets);
 // Update
-app.put("/api/asset", sanitize, assetManager.updateAsset);
-app.put("/api/asset/parts", sanitize, assetManager.addParts);
+app.put("/api/asset", auth, sanitize, assetManager.updateAsset);
 // Delete
-app.delete("/api/asset/parts", sanitize, assetManager.removeParts);
-app.delete("/api/asset", sanitize, assetManager.deleteAsset);
+app.delete("/api/asset", auth, sanitize, assetManager.deleteAsset);
 
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {
