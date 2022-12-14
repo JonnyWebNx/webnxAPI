@@ -9,10 +9,10 @@ const assetManager = {
             // Get asset from request
             let { asset, parts } = req.body;
             // Check for required fields
-            // if (!/WNX([0-9]{7})+/.test(asset.nxid)||!(nxid&&asset_type&&location)) {
-            //     // Send response if request is invalid
-            //     return res.status(400).send("Invalid request");
-            // }
+            if (!/WNX([0-9]{7})+/.test(asset.nxid)||!(nxid&&asset_type&&location)) {
+                // Send response if request is invalid
+                return res.status(400).send("Invalid request");
+            }
             // Remove date created if present
             delete asset.date_created;
             // Set by attribute to requesting user
@@ -145,6 +145,7 @@ const assetManager = {
         }
     },
     updateAsset: async (req, res) => {
+        // Not my proudest code
         try {
             let { asset, parts } = req.body;
             // Remove date created if present
@@ -203,17 +204,15 @@ const assetManager = {
                     differencesQuantities.push(-1*existingQuantities[i])
                 }
             }
-            // Store results so only one query is needed
-            let userInventoryResults = []
+            // Store results so only one query is needed    
             // Go through all parts being added to asset and make sure the user has required parts before editing anything
             for (let i = 0; i < differencesPartIDs.length; i++) {
                 if (differencesQuantities[i]>0) {
                     // Subtract from user's inventory and add to asset
-                    let userInventory = await PartRecord.find({owner: req.user.user_id, next: null, nxid: differencesPartIDs[i]})
-                    if (userInventory.length < differencesQuantities[i]) {
+                    let userInventoryCount = await PartRecord.count({owner: req.user.user_id, next: null, nxid: differencesPartIDs[i]})
+                    if (userInventoryCount < differencesQuantities[i]) {
                         return res.status(400).send("Not enough parts in your inventory");
                     }
-                    userInventoryResults.push(userInventory)
                     // Save results to avoid duplicate queries
                 }
             }
@@ -225,71 +224,62 @@ const assetManager = {
                 // Return new asset
                 res.status(200).json(asset);
             });
+            console.log(differencesPartIDs)
+            console.log(differencesQuantities)
             // Edit parts records after confirming quantities and updating Asset object
-            // Index for accessing query results
-            let userInventoryResultIndex = 0
-            // Edit parts records
-            console.log(userInventoryResults)
             for (let i = 0; i < differencesPartIDs.length; i++) {
+                // Early return for unchanged quantities
+                if (differencesQuantities[i]===0) {
+                    continue
+                }
+                let searchOptions = {}
+                let createOptions = {}
                 if (differencesQuantities[i]>0) {
-                    // Repeat record creation for parts
-                    for (let j = 0; j < differencesQuantities[i]; j++) {
-                        // Create a new part record to match quantity
-                        PartRecord.create({
-                            nxid: differencesPartIDs[i], 
-                            asset_tag: asset.asset_tag,
-                            building: asset.building,
-                            location: "Asset",
-                            by: req.user.user_id,
-                            prev: userInventoryResults[userInventoryResultIndex]._id,
-                            next: null
-                        }, (err, record) => {
-                            if(err) {
-                                // Log what happened
-                                console.log(err)
-                            } else {
-                                console.log("UPDATED RECORD")
-                                // Get record from user inventory and update
-                                Part.findByIdAndUpdate(userInventoryResults[userInventoryResultIndex]._id, {next: record._id})
-                                userInventoryResultIndex++
-                            }
-                        })
+                    // If parts are being added to asset: 
+                    searchOptions = {owner: req.user.user_id, next: null, nxid: differencesPartIDs[i]}
+                    createOptions = {
+                        asset_tag: asset.asset_tag,
+                        building: asset.building,
+                        location: "Asset",
+                        by: req.user.user_id,
+                        next: null
                     }
-                } else if(differencesQuantities[i]<0) {
-                    // Subtract from asset and change owner to current user
-                    let assetPartRecords = await PartRecord.find({nxid: differencesPartIDs[i], asset_tag: asset.asset_tag, next: null})
-                    let assetPartRecordsIndex = 0
-                    console.log("ASSET PART RECORDS")
-                    console.log(assetPartRecords)
-                    for (let j = differencesQuantities[i]; j < 0; j++) {
-                        PartRecord.create({
-                            nxid: differencesPartIDs[i], 
-                            owner: req.user.user_id,
-                            building: req.user.building,
-                            location: "Tech Inventory",
-                            by: req.user.user_id,
-                            prev: assetPartRecords[assetPartRecordsIndex]._id,
-                            next: null
-                        }, (err, record) => {
-                            if(err) {
-                                // Log what happened
-                                console.log(err)
-                            } else {
-                                // Get record from user inventory and update
-                                record = record._doc
-                                console.log(record._id)
-                                console.log(assetPartRecordsIndex)
-                                console.log(assetPartRecords)
-                                console.log(assetPartRecords[assetPartRecordsIndex]._id)
-                                PartRecord.findByIdAndUpdate(assetPartRecords[assetPartRecordsIndex]._id, {next: record._id})
-                                assetPartRecordsIndex++
-                            }
-                        })
+                } else {
+                    // If parts are being removed from asset: 
+                    searchOptions = {nxid: differencesPartIDs[i], asset_tag: asset.asset_tag, next: null}
+                    differencesQuantities[i] = (-1*differencesQuantities[i])
+                    console.log(differencesQuantities)
+                    createOptions = {
+                        owner: req.user.user_id,
+                        building: req.user.building,
+                        location: "Tech Inventory",
+                        by: req.user.user_id,
+                        next: null
                     }
+                }
+                // Get parts records that will be updated
+                let oldRecords = await PartRecord.find(searchOptions)
+                let oldRecordsIndex = 0
+                createOptions.nxid = differencesPartIDs[i]
+                createOptions.prev = oldRecords[oldRecordsIndex]._id
+                // Create a new record for each part and update previous iteration
+                for (let j = 0; j < differencesQuantities[i]; j++) {
+                    PartRecord.create(createOptions, (err, record) => {
+                        if (err) {
+                            console.log(err)
+                        } else {
+                            PartRecord.findByIdAndUpdate(oldRecords[oldRecordsIndex]._id, {next: record._id}, (err, record2)=>{
+                                if(err) {
+                                    console.log(err)
+                                }
+                                console.log("Updated")
+                            })
+                            oldRecordsIndex++
+                        }
+                    })
                 }
             }
         } catch(err) {
-            // console.log("IS IT HERE?")
             console.log(err)
             return res.status(500).send("API could not handle your request: "+err);
         }

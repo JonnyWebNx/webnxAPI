@@ -441,14 +441,15 @@ const partManager = {
     getUserInventory: async (req, res) => {
         try {
             const { user_id } = req.query
-            PartRecord.find({next: null, owner: user_id ? user_id : req.query.user_id}, async (err, records) => {
+            console.log(user_id ? user_id : req.user.user_id)
+            PartRecord.find({next: null, owner: user_id ? user_id : req.user.user_id}, async (err, records) => {
                 if (err) {
                     res.status(500).send("API could not handle your request: " + err);
                 }
                 let existingPartIDs = []
                 let existingQuantities = []
                 // Get NXID and quantites into seperate arrays so indexOf() can be used
-                for(const part of partRecords) {
+                for(const part of records) {
                     // Get index of part ID
                     let index = existingPartIDs.indexOf(part.nxid)
                     if(index==-1) {
@@ -463,7 +464,7 @@ const partManager = {
                 let loadedCartItems = []
                 // Get part info and push as LoadedCartItem interface from the front end
                 for (let i = 0; i < existingPartIDs.length; i++) {
-                    let part = await Part.find({nxid: existingPartIDs[i]})
+                    let part = await Part.findOne({nxid: existingPartIDs[i]})
                     loadedCartItems.push({part, quantity: existingQuantities[i]})
                 }
                 res.status(200).json(loadedCartItems)
