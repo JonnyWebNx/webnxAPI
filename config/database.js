@@ -8,6 +8,7 @@
  */
 const mongoose = require("mongoose");
 const { MONGO_URI } = process.env;
+const handleError = require("../config/mailer")
 
 // Connects when imported
 exports.connect = () => {
@@ -19,6 +20,7 @@ exports.connect = () => {
     })
     .catch((err)=>{
         // Could not connect.  Stop server
+        handleError(err, req)
         console.log("COULD NOT CONNECT TO DATABASE. ABORTING START...");
         console.error(err);
         process.exit(1);

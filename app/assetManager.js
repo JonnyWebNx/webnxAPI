@@ -1,6 +1,7 @@
 const Asset = require("../model/asset");
 const PartRecord = require("../model/partRecord");
 const Part = require("../model/part");
+const handleError = require("../config/mailer");
 const assetManager = {
     addUntrackedAsset: async (req, res) => {
         console.log(req.body)
@@ -32,13 +33,14 @@ const assetManager = {
             // Create a new asset
             Asset.create(asset, (err, asset) => {
                 if (err) {
+                    handleError(err, req)
                     return res.status(500).send("API could not handle your request: "+err);
                 }
                 // Return new asset
                 res.status(200).json(asset);
             });
         } catch (err) {
-            console.log(req.body)
+            handleError(err, req)
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
@@ -50,12 +52,14 @@ const assetManager = {
             Asset.find(asset, (err, assets) => {
                 if (err) {
                     // Error
+                    handleError(err, req)
                     return res.status(500).send("API could not handle your request: "+err);
                 }
                 // Return assets to client
                 return res.status(200).json(assets);
             });
         } catch(err) {
+            handleError(err, req)
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
@@ -64,11 +68,12 @@ const assetManager = {
             // Get id from query
             const { id } = req.query
             // Test regex for NXID
-            if (!/WNX([0-9]{7})+/.test(asset.nxid)) {
+            if (!/WNX([0-9]{7})+/.test(id)||id=='test') {
                 // Find by NXID
                 Asset.findOne({nxid: id}, (err, asset) => {
                     if (err) {
                     // Error
+                    handleError(err, req)
                     return res.status(500).send("API could not handle your request: "+err);
                 }
                 // Return assets to client
@@ -81,13 +86,16 @@ const assetManager = {
                 Asset.findById(id, (err, asset) => {
                     if (err) {
                         // Error
+                        handleError(err, req)
                         return res.status(500).send("API could not handle your request: "+err);
                     }
                     // Return assets to client
                     return res.status(200).json(asset);
                 });
             }
+            
         } catch(err) {
+            handleError(err, req)
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
@@ -135,12 +143,14 @@ const assetManager = {
             .exec((err, assets) => {
                     if (err) {
                         // Database err
+                        handleError(err, req)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
                     // Send back to client
                     return res.status(200).json(assets);
                 })
         } catch (err) {
+            handleError(err, req)
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
@@ -219,6 +229,7 @@ const assetManager = {
             // Update the asset object and return to user before updating parts records
             Asset.findByIdAndUpdate(asset._id, asset, (err, asset) => {
                 if (err) {
+                    handleError(err, req)
                     return res.status(500).send("API could not handle your request: "+err);
                 }
                 // Return new asset
@@ -266,13 +277,12 @@ const assetManager = {
                 for (let j = 0; j < differencesQuantities[i]; j++) {
                     PartRecord.create(createOptions, (err, record) => {
                         if (err) {
-                            console.log(err)
+                            handleError(err, req)
                         } else {
                             PartRecord.findByIdAndUpdate(oldRecords[oldRecordsIndex]._id, {next: record._id}, (err, record2)=>{
                                 if(err) {
-                                    console.log(err)
+                                    handleError(err, req)
                                 }
-                                console.log("Updated")
                             })
                             oldRecordsIndex++
                         }
@@ -280,7 +290,7 @@ const assetManager = {
                 }
             }
         } catch(err) {
-            console.log(err)
+            handleError(err, req)
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
@@ -290,6 +300,7 @@ const assetManager = {
             // Find all parts records associated with asset tag
             PartRecord.find({asset_tag, next: null}, async (err, partsRecords) => {
                 if(err) {
+                    handleError(err, req)
                     return res.status(500).send("API could not handle your request: "+err);
                 }
                 // Temporary arrays
@@ -321,6 +332,7 @@ const assetManager = {
                 res.status(200).json(partsAsLoadedCartItem)
             })
         } catch(err) {
+            handleError(err, req)
             return res.status(500).send("API could not handle your request: "+err);
         }
     },

@@ -1,6 +1,7 @@
 const User = require("../model/user");
 const bcrypt = require('bcryptjs');
 const sign = require("jsonwebtoken/sign");
+const handleError = require("../config/mailer")
 const register = async (req, res) => {
     // register logic
     try {
@@ -51,7 +52,7 @@ const register = async (req, res) => {
         // return new user
         return res.status(201).json(user);
     } catch (err) {
-        console.log(err);
+        handleError(err, req)
     }
     // End register logic
 }

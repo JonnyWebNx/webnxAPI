@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs/dist/bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../model/user");
+const handleError = require("../config/mailer");
 
 const login = async (req, res) => {
     try {
@@ -34,7 +35,7 @@ const login = async (req, res) => {
         // Invalid password
         res.status(400).send("Invalid Credentials");
     } catch (err) {
-        console.log(err);
+        handleError(err, req)
     }
 }
 

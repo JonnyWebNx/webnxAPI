@@ -80,6 +80,8 @@ app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
 app.get("/api/part/search", auth, sanitize, partManager.searchParts);
 app.get("/api/part/inventory", auth, sanitize, partManager.getInventory);
 app.get("/api/part/distinct", auth, sanitize, partManager.getDistinctOnPartInfo);
+app.get("/api/part/records", auth, sanitize, partManager.getPartRecordsByID);
+app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 // Update
 app.put("/api/part", auth, permissions, sanitize, partManager.updatePartInfo);
