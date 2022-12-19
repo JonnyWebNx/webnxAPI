@@ -1,10 +1,12 @@
 var nodemailer = require('nodemailer')
 
-const handleError = (error, req) => {
+const handleError = (error) => {
+  if (process.env.DEBUG === "true") {
     console.log(error)
+  } else {
     let user = process.env.EMAIL 
     let pass = process.env.EMAIL_PASS
-    let transporter = nodemailer.createTransport({
+      let transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
           user,
@@ -16,7 +18,7 @@ const handleError = (error, req) => {
         from: process.env.EMAIL,
         to: process.env.EMAIL,
         subject: `Error at ${errorDate.toTimeString()}`,
-        text: error + "\n\n\n" + JSON.stringify(req.user) + "\n\n\n" + JSON.stringify(req.query)  + "\n\n\n" + JSON.stringify(req.body)
+        text: error
       };
       transporter.sendMail(mailOptions, function(error, info){
         if (error) {
@@ -25,6 +27,7 @@ const handleError = (error, req) => {
           console.log('Email sent: ' + info.response);
         }
       }); 
-}
+    }
+  }
 
 module.exports = handleError

@@ -14,7 +14,6 @@ require("./config/database").connect();
 const express = require("express");
 const cors = require("cors");
 
-
 // authorization modules
 const login = require("./app/login");
 const register = require("./app/register");
@@ -74,11 +73,12 @@ app.post("/api/part", auth, permissions, sanitize, partManager.createPart);
 app.post("/api/part/add", auth, permissions, sanitize, partManager.addToInventory);
 app.post("/api/checkout", auth, sanitize, partManager.checkout);
 app.post("/api/checkin", auth, sanitize, partManager.checkin)
+app.post("/api/part/move", auth, sanitize, partManager.movePartRecords);
 // Read    throw new TypeError('path must be absolute or specify root to res.sendFile');
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
 app.get("/api/part/search", auth, sanitize, partManager.searchParts);
-app.get("/api/part/inventory", auth, sanitize, partManager.getInventory);
+app.get("/api/part/inventory", auth, sanitize, partManager.getUserInventory);
 app.get("/api/part/distinct", auth, sanitize, partManager.getDistinctOnPartInfo);
 app.get("/api/part/records", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
@@ -128,7 +128,6 @@ app.put("/api/*", async (req, res) => {
 app.delete("/api/*", async (req, res) => {
     return res.status(400).send("Invalid request.");
 });
-
 app.get('*', async (req, res) => {
     res.sendFile("./dist/index.html", {root: ROOT_DIRECTORY});
 })

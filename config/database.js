@@ -20,7 +20,7 @@ exports.connect = () => {
     })
     .catch((err)=>{
         // Could not connect.  Stop server
-        handleError(err, req)
+        handleError(err)
         console.log("COULD NOT CONNECT TO DATABASE. ABORTING START...");
         console.error(err);
         process.exit(1);

@@ -9,12 +9,12 @@
 const Part = require("../model/part");
 const PartRecord = require("../model/partRecord")
 const handleError = require("../config/mailer")
+const callbackHandler = require("../middleware/callbackHandlers")
 
 const partManager = {
     // Create
     createPart: async (req, res) => {
-        try{
-
+        try {
             // Get part info from request body
             const { nxid, manufacturer, name, type, quantity } = req.body.part;
             // If any part info is missing, return invalid request
@@ -35,27 +35,18 @@ const partManager = {
                 for (let i = 0; i < quantity; i++) {
                     // Create part records to match the quantity and location of the part schema creation
                     await PartRecord.create({
-                        nxid: part.nxid, 
-                        /**
-                         * 
-                         * @TODO Implement building on user object
-                         * 
-                         */
-                        building: req.body.building ? req.body.building : 3,/*req.user.building,*/
-                        location: req.body.location ? req.body.location : "Parts Room", 
+                        nxid: part.nxid,
+                        building: req.body.building ? req.body.building : req.user.building,/*req.user.building,*/
+                        location: req.body.location ? req.body.location : "Parts Room",
                         by: req.user.user_id
-                    }, (err, part) => {
-                        if (err) {
-                            handleError(err, req)
-                        }
-                    })
+                    }, callbackHandler.callbackHandleError)
                 }
                 // Succesful query
                 return res.status(200).send(`Created part: ${part.manufacturer} ${part.name}`);
-            
+
             });
-        } catch(err) {
-            handleError(err, req)
+        } catch (err) {
+            handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -74,7 +65,7 @@ const partManager = {
                 // Count parts in given location or in parts room
                 let count = await PartRecord.count({
                     nxid: part.nxid,
-                    next: null, 
+                    next: null,
                     location: location ? location : "Parts Room",
                     building: building ? building : req.user.building
                 });
@@ -91,7 +82,7 @@ const partManager = {
             res.status(200).json(parts);
         } catch (err) {
             // Database error
-            handleError(err, req)
+            handleError(err)
             res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -108,15 +99,15 @@ const partManager = {
             }
             // Get the total quantity
             let total_quantity = await PartRecord.count({
-                nxid: part.nxid, 
-                next: null 
+                nxid: part.nxid,
+                next: null
             });
             // Get available quantity in specified building or location - use defaults from ternary if unspecified
-            let quantity = await PartRecord.count({ 
-                nxid: part.nxid, 
-                building: req.query.building ? req.query.building : req.user.building, 
-                location: req.query.location ? req.query.location : "Parts Room", 
-                next: null 
+            let quantity = await PartRecord.count({
+                nxid: part.nxid,
+                building: req.query.building ? req.query.building : req.user.building,
+                location: req.query.location ? req.query.location : "Parts Room",
+                next: null
             });
             part = part._doc;
             part.total_quantity = total_quantity;
@@ -124,7 +115,7 @@ const partManager = {
             res.status(200).json(part);
         } catch (err) {
             // Database error
-            handleError(err, req)
+            handleError(err)
             res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -133,11 +124,11 @@ const partManager = {
             // Find each item and check quantities before updating
             for (item of req.body.cart) {
                 // Check quantity before
-                let quantity = await PartRecord.count({ 
-                    nxid: item.nxid, 
+                let quantity = await PartRecord.count({
+                    nxid: item.nxid,
                     location: "Parts Room",
-                    building: item.building, 
-                    next: null 
+                    building: item.building,
+                    next: null
                 });
                 // Insufficient stock
                 if (quantity < item.quantity) {
@@ -147,35 +138,24 @@ const partManager = {
             // Loop through each item and create new parts record and update old parts record
             for (item of req.body.cart) {
                 // Find all matching part records to minimize requests and ensure updates don't conflict when using async part updating
-                let records = await PartRecord.find({ 
-                    nxid: item.nxid, 
-                    location: "Parts Room", 
-                    building: item.building, 
-                    next: null 
+                let records = await PartRecord.find({
+                    nxid: item.nxid,
+                    location: "Parts Room",
+                    building: item.building,
+                    next: null
                 });
                 // Loop for quanity of part item
                 for (let j = 0; j < item.quantity; j++) {
                     // Create new iteration
-                    PartRecord.create({ 
-                        nxid: item.nxid, 
+                    PartRecord.create({
+                        nxid: item.nxid,
                         owner: req.user.user_id,
                         location: "Tech Inventory",
                         building: item.building,
                         by: req.user.user_id,
                         prev: records[j]._id,
-                        next: null 
-                    }, (err, part) => {
-                        if (err) {
-                            // Error
-                            handleError(err, req)
-                        }
-                        // Set next value on old iteration to new part record
-                        PartRecord.findByIdAndUpdate(records[j]._id, { next: part._id }, (err, part) => {
-                            if(err) {
-                                handleError(err, req)
-                            }
-                        });
-                    });
+                        next: null
+                    }, callbackHandler.updateRecord);
                 }
             }
             // Success
@@ -183,7 +163,7 @@ const partManager = {
         }
         catch (err) {
             // Error
-            handleError(err, req)
+            handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -209,20 +189,7 @@ const partManager = {
                         location: "Parts Room",
                         building: req.user.building,
                         by: req.user.user_id
-                    }, (err, part) => {
-                        if (err) {
-                            handleError(err, req)
-                            return res.status(500).send("API could not handle your request: "+err);
-                        }
-                        // Update old part record
-                        ParteRecord.findByIdAndUpdate(records[i]._id, {
-                            next: part._id
-                        }, (err, part) => {
-                            if(err) {
-                                handleError(err, req)
-                            }
-                        });
-                    });
+                    }, callbackHandler.updateRecord);
                 }
             }
             // Success
@@ -230,7 +197,7 @@ const partManager = {
         }
         catch (err) {
             // Error
-            handleError(err, req)
+            handleError(err)
             res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -277,17 +244,17 @@ const partManager = {
             }
             Part.aggregate([{ $match: { $or: searchOptions } }])
                 .skip(pageSize * (pageNum - 1))
-                .limit(Number(pageSize+1))
+                .limit(Number(pageSize + 1))
                 .exec(async (err, parts) => {
                     if (err) {
                         // Database err
-                        handleError(err, req)
+                        handleError(err)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
                     for (part of parts) {
                         let count = await PartRecord.count({
-                            nxid: part.nxid, 
-                            next: null, 
+                            nxid: part.nxid,
+                            next: null,
                             location: location ? location : "Parts Room",
                             building: building ? building : req.user.building
                         });
@@ -303,7 +270,7 @@ const partManager = {
                     return res.status(200).json(parts);
                 })
         } catch (err) {
-            handleError(err, req)
+            handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -315,21 +282,21 @@ const partManager = {
             // Updated part is the old part from database
             let updatedPart = await Part.findByIdAndUpdate(part._id, part);
             if (!updatedPart) {
-                return res.status(400).send("Part not found.");    
+                return res.status(400).send("Part not found.");
             }
-            if(part.nxid != updatedPart.nxid) {
+            if (part.nxid != updatedPart.nxid) {
                 // Update old NXID to new NXID
-                PartRecord.find({nxid: updatedPart.nxid},
+                PartRecord.find({ nxid: updatedPart.nxid },
                     (err, parts) => {
-                        if(err) {
-                            handleError(err, req)
+                        if (err) {
+                            handleError(err)
                             return res.status(500).send("API could not handle your request: " + err);
                         }
                         // Change every part record
                         for (const part of parts) {
                             PartRecord.findByIdAndUpdate(part._id, {
                                 nxid: updatedPart.nxid
-                            });
+                            }, callbackHandler.callbackHandleError);
                         }
                     }
                 )
@@ -337,7 +304,7 @@ const partManager = {
             return res.status(201).send(`Updated part: ${updatedPart.manufacturer} ${updatedPart.name}`);
         } catch (err) {
             // Database error
-            handleError(err, req)
+            handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -351,31 +318,27 @@ const partManager = {
                 return res.status(400).send("Invalid request");
             }
             // Find part info
-            Part.find({nxid}, (err, part)=> {
+            Part.find({ nxid }, (err, part) => {
                 if (err) {
-                    return res.status(500).send("API could not handle your request: " + err);        
+                    return res.status(500).send("API could not handle your request: " + err);
                 }
                 for (let i = 0; i < quantity; i++) {
                     // Create new parts records to match the quantity
-                    PartRecord.create({ 
+                    PartRecord.create({
                         nxid,
                         location: location ? location : "Parts Room",
-                        building: building ? building : req.user.building, 
-                        prev: null, 
+                        building: building ? building : req.user.building,
+                        prev: null,
                         next: null,
                         by: req.user.user_id
-                    }, (err, record) => {
-                        if(err) {
-                            handleError(err, req)
-                        }
-                    });
+                    }, callbackHandler.callbackHandleError);
                 }
                 // Success
                 res.status(200).send("Successfully added to inventory")
             });
         } catch (err) {
             // Error
-            handleError(err, req)
+            handleError(err)
             res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -391,11 +354,11 @@ const partManager = {
             }, (err, parts) => {
                 if (err) {
                     // Error - don't return so other records will be deleted
-                    handleError(err, req)
+                    handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 // Delete every part record
-                for(const part of parts) {
+                for (const part of parts) {
                     PartRecord.findByIdAndDelete(part._id)
                 }
             })
@@ -403,28 +366,7 @@ const partManager = {
             res.status(200).json("Successfully deleted part and records");
         } catch (err) {
             // Error
-            handleError(err, req)
-            res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-    getInventory: async (req, res) => {
-        try {
-            // Get user id
-            const id = req.query.id ? req.query.id : req.user.user_id;
-            // Query database
-            PartRecord.find({
-                owner: id,
-                next: null
-            }, (err, records) => {
-                if (err) {
-                    // Error
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                res.status(200).json(records);
-            })
-        } catch (err) {
-            // Error
-            handleError(err, req)
+            handleError(err)
             res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -433,18 +375,15 @@ const partManager = {
             // Get key to find distinct values
             const { key, where } = req.query;
             // Find all distinct part records
-            PartRecord.find(where).distinct(key, (err, values) => {
-                if (err) {
-                    // Error
-                    handleError(err, req)
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                // Send distinct values
-                res.status(200).json(values);
+            PartRecord.find(where).distinct(key, (err, record) => {
+                if (err)
+                    res.status(500).send("API could not handle your request: " + err);
+                else
+                    res.status(200).json(record);
             })
         } catch (err) {
             // Error
-            handleError(err, req)
+            handleError(err)
             res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -453,37 +392,33 @@ const partManager = {
             // Get key to find distinct values
             const { key } = req.query;
             // Find all distinct part records
-            Part.find().distinct(key, (err, values) => {
-                if (err) {
-                    // Error
-                    handleError(err, req)
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                // Send distinct values
-                res.status(200).json(values);
+            Part.find().distinct(key, (err, record) => {
+                if (err)
+                    res.status(500).send("API could not handle your request: " + err);
+                else
+                    res.status(200).json(record);
             })
         } catch (err) {
             // Error
-            handleError(err, req)
+            handleError(err)
             res.status(500).send("API could not handle your request: " + err);
         }
     },
     getUserInventory: async (req, res) => {
         try {
             const { user_id } = req.query
-            console.log(user_id ? user_id : req.user.user_id)
-            PartRecord.find({next: null, owner: user_id ? user_id : req.user.user_id}, async (err, records) => {
+            PartRecord.find({ next: null, owner: user_id ? user_id : req.user.user_id }, async (err, records) => {
                 if (err) {
-                    handleError(err, req)
-                    res.status(500).send("API could not handle your request: " + err);
+                    handleError(err)
+                    return res.status(500).send("API could not handle your request: " + err);
                 }
                 let existingPartIDs = []
                 let existingQuantities = []
                 // Get NXID and quantites into seperate arrays so indexOf() can be used
-                for(const part of records) {
+                for (const part of records) {
                     // Get index of part ID
                     let index = existingPartIDs.indexOf(part.nxid)
-                    if(index==-1) {
+                    if (index == -1) {
                         // If part isn't in array, add it with a quantity of one
                         existingPartIDs.push(part.nxid)
                         existingQuantities.push(1)
@@ -495,13 +430,13 @@ const partManager = {
                 let loadedCartItems = []
                 // Get part info and push as LoadedCartItem interface from the front end
                 for (let i = 0; i < existingPartIDs.length; i++) {
-                    let part = await Part.findOne({nxid: existingPartIDs[i]})
-                    loadedCartItems.push({part, quantity: existingQuantities[i]})
+                    let part = await Part.findOne({ nxid: existingPartIDs[i] })
+                    loadedCartItems.push({ part, quantity: existingQuantities[i] })
                 }
                 res.status(200).json(loadedCartItems)
             })
-        } catch(err) {
-            handleError(err, req)
+        } catch (err) {
+            handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -513,16 +448,14 @@ const partManager = {
             PartRecord.find({
                 nxid,
                 next: null
-            }, (err, records) => {
-                if (err) {
-                    handleError(err, req)
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                // Send records back to client
-                res.status(200).json(records)
+            }, (err, record) => {
+                if (err)
+                    res.status(500).send("API could not handle your request: " + err);
+                else
+                    res.status(200).json(record);
             })
-        } catch(err) {
-            handleError(err, req)
+        } catch (err) {
+            handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
@@ -541,10 +474,47 @@ const partManager = {
             }
             // Send history to client
             res.status(200).json(history)
-        } catch(err) {
-            handleError(err, req)
+        } catch (err) {
+            handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+    movePartRecords: async (req, res) => {
+        try {
+            // Get params from request
+            let { from, to, quantity } = req.body
+            from.next = null
+            to.next = null
+            to.by = req.user.user_id
+            // Check NXIDs
+            if(from.nxid != to.nxid) {
+                return res.status(400).send("Mismatched nxids");
+            }
+            // Check perms
+            if(!req.user.admin&&(to.owner!='all'&&to.owner!='testing'&&to.owner!=req.user.user_id)) {
+                return res.status(403).send("Invalid permissions");
+            }
+            // Get records
+            let fromRecords = await PartRecord.find(from)
+            // Check quantities
+            if (fromRecords.length >= quantity) {
+                // Create and update records
+                for (let i = 0; i < quantity; i++) {
+                    to.prev = fromRecords[i]._id
+                    PartRecord.create(to, callbackHandler.updateRecord)
+                }
+                // Return
+                return res.status(200).send("Success");
+            } else {
+                // Invalid quantities
+                return res.status(400).send("Invalid quantities");
+            }
+
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    }
 };
+
 module.exports = partManager;
