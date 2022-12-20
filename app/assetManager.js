@@ -5,7 +5,6 @@ const handleError = require("../config/mailer");
 const callbackHandler = require("../middleware/callbackHandlers")
 const assetManager = {
     addUntrackedAsset: async (req, res) => {
-        console.log(req.body)
         try {
             // Get asset from request
             let { asset, parts } = req.body;
@@ -145,7 +144,7 @@ const assetManager = {
         try {
             let { asset, parts } = req.body;
             // Remove date created if present
-            delete asset.date_created;
+            asset.date_created;
             // Set by attribute to requesting user
             asset.by = req.user.user_id;
             // Get current date
@@ -154,7 +153,10 @@ const assetManager = {
                 parts = []
             }
             // Find part records currently associated with asset
-            let partRecords = await PartRecord.find({asset_tag: asset.asset_tag, next: null})
+            let partRecords = await PartRecord.find({
+                asset_tag: asset.asset_tag, 
+                next: null
+            })
             // 
             let existingPartIDs = []
             let existingQuantities = []
@@ -213,14 +215,21 @@ const assetManager = {
                 }
             }
             // Update the asset object and return to user before updating parts records
-            Asset.findByIdAndUpdate(asset._id, asset, (err, record) => {
-                if (err)
-                    res.status(500).send("API could not handle your request: " + err);
-                else
-                    res.status(200).json(record);
+            Asset.findByIdAndDelete(asset._id, (err, record) => {
+                if (err) {
+                    handleError(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                else {
+                    Asset.create(asset, (err, new_asset)=>{
+                        if(err) {
+                            handleError(err)
+                            return res.status(500).send("API could not handle your request: " + err);
+                        }
+                        res.status(200).json(new_asset)
+                    })
+                }
             });
-            console.log(differencesPartIDs)
-            console.log(differencesQuantities)
             // Edit parts records after confirming quantities and updating Asset object
             for (let i = 0; i < differencesPartIDs.length; i++) {
                 // Early return for unchanged quantities
@@ -231,7 +240,11 @@ const assetManager = {
                 let createOptions = {}
                 if (differencesQuantities[i]>0) {
                     // If parts are being added to asset: 
-                    searchOptions = {owner: req.user.user_id, next: null, nxid: differencesPartIDs[i]}
+                    searchOptions = {
+                        owner: req.user.user_id,
+                        next: null,
+                        nxid: differencesPartIDs[i]
+                    }
                     createOptions = {
                         asset_tag: asset.asset_tag,
                         building: asset.building,
@@ -241,9 +254,12 @@ const assetManager = {
                     }
                 } else {
                     // If parts are being removed from asset: 
-                    searchOptions = {nxid: differencesPartIDs[i], asset_tag: asset.asset_tag, next: null}
+                    searchOptions = {
+                        nxid: differencesPartIDs[i],
+                        asset_tag: asset.asset_tag,
+                        next: null
+                    }
                     differencesQuantities[i] = (-1*differencesQuantities[i])
-                    console.log(differencesQuantities)
                     createOptions = {
                         owner: req.user.user_id,
                         building: req.user.building,

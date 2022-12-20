@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     building: { type: Number, required: true},
     inventory_perms: { type: Boolean, default: false },
-    admin: { type: Boolean, default: false },
+    role: { type: String, default: false },
     enabled: { type: Boolean, default: true },
     date_created: { type: Date, default: Date.now },
     token: { type: String },

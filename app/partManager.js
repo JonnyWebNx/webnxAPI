@@ -59,7 +59,6 @@ const partManager = {
             // Find parts that match request
             let parts = await Part.find(req_part);
             // Query the database
-            console.log(parts)
             for (part of parts) {
                 part = part._doc;
                 // Count parts in given location or in parts room
@@ -121,8 +120,13 @@ const partManager = {
     },
     checkout: async (req, res) => {
         try {
+            let { user_id, cart } = req.body
+            console.log(req.body)
+            if(user_id==undefined) {
+                return res.status(400).send("Invalid request")
+            }
             // Find each item and check quantities before updating
-            for (item of req.body.cart) {
+            for (item of cart) {
                 // Check quantity before
                 let quantity = await PartRecord.count({
                     nxid: item.nxid,
@@ -136,7 +140,7 @@ const partManager = {
                 }
             }
             // Loop through each item and create new parts record and update old parts record
-            for (item of req.body.cart) {
+            for (item of cart) {
                 // Find all matching part records to minimize requests and ensure updates don't conflict when using async part updating
                 let records = await PartRecord.find({
                     nxid: item.nxid,
@@ -149,7 +153,7 @@ const partManager = {
                     // Create new iteration
                     PartRecord.create({
                         nxid: item.nxid,
-                        owner: req.user.user_id,
+                        owner: user_id,
                         location: "Tech Inventory",
                         building: item.building,
                         by: req.user.user_id,
@@ -314,7 +318,6 @@ const partManager = {
             const { nxid, quantity, location, building } = req.body.part;
             // If any part info is missing, return invalid request
             if (!(nxid && quantity && location && building)) {
-                console.log(req.body.part)
                 return res.status(400).send("Invalid request");
             }
             // Find part info
@@ -491,7 +494,7 @@ const partManager = {
                 return res.status(400).send("Mismatched nxids");
             }
             // Check perms
-            if(!req.user.admin&&(to.owner!='all'&&to.owner!='testing'&&to.owner!=req.user.user_id)) {
+            if((req.user.role!='admin')&&(to.owner!='all'&&to.owner!='testing'&&to.owner!=req.user.user_id)) {
                 return res.status(403).send("Invalid permissions");
             }
             // Get records

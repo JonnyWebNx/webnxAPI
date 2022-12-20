@@ -29,7 +29,6 @@ const asset = new mongoose.Schema({
     // Last updated by
     by: { type: String, required: true },
     // Parts
-    parts: { type: Array },
     // Date the part was created
     date_created: { type: Date, default: Date.now },
     date_updated: { type: Date, default: Date.now }
