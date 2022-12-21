@@ -8,8 +8,9 @@ const assetManager = {
         try {
             // Get asset from request
             let { asset, parts } = req.body;
+            console.log(asset)
             // Check for required fields
-            if (!/WNX([0-9]{7})+/.test(asset.nxid)||!(nxid&&asset_type&&location)) {
+            if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
                 return res.status(400).send("Invalid request");
             }
@@ -31,8 +32,10 @@ const assetManager = {
             }
             // Create a new asset
             Asset.create(asset, (err, record) => {
-                if (err)
+                if (err){
+                    handleError(err)            
                     res.status(500).send("API could not handle your request: " + err);
+                }
                 else
                     res.status(200).json(record);
             });
@@ -62,9 +65,9 @@ const assetManager = {
             // Get id from query
             const { id } = req.query
             // Test regex for NXID
-            if (!/WNX([0-9]{7})+/.test(id)||id=='test') {
+            if (/WNX([0-9]{7})+/.test(id)||id=='test') {
                 // Find by NXID
-                Asset.findOne({nxid: id}, (err, record) => {
+                Asset.findOne({asset_tag: id}, (err, record) => {
                     if (err)
                         res.status(500).send("API could not handle your request: " + err);
                     else
@@ -143,6 +146,10 @@ const assetManager = {
         // Not my proudest code
         try {
             let { asset, parts } = req.body;
+            if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
+                // Send response if request is invalid
+                return res.status(400).send("Invalid request");
+            }
             // Remove date created if present
             asset.date_created;
             // Set by attribute to requesting user
@@ -270,11 +277,10 @@ const assetManager = {
                 }
                 // Get parts records that will be updated
                 let oldRecords = await PartRecord.find(searchOptions)
-                let oldRecordsIndex = 0
                 createOptions.nxid = differencesPartIDs[i]
-                createOptions.prev = oldRecords[oldRecordsIndex]._id
                 // Create a new record for each part and update previous iteration
                 for (let j = 0; j < differencesQuantities[i]; j++) {
+                    createOptions.prev = oldRecords[j]._id
                     PartRecord.create(createOptions, callbackHandler.updateRecord)
                 }
             }

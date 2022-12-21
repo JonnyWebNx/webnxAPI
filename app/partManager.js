@@ -8,8 +8,11 @@
  */
 const Part = require("../model/part");
 const PartRecord = require("../model/partRecord")
+const Asset = require("../model/asset")
+const User = require("../model/user")
 const handleError = require("../config/mailer")
 const callbackHandler = require("../middleware/callbackHandlers")
+
 
 const partManager = {
     // Create
@@ -20,6 +23,9 @@ const partManager = {
             // If any part info is missing, return invalid request
             if (!(nxid, manufacturer, name, type)) {
                 return res.status(400).send("Invalid request");
+            }
+            if (!/PNX([0-9]{7})+/.test(nxid)) {
+                return res.status(400).send("Invalid part ID");
             }
             // Try to add part to database
             /**
@@ -89,7 +95,7 @@ const partManager = {
         try {
             let part = {}
             // Check if NXID
-            if (/WNX([0-9]{7})+/.test(req.query.id)) {
+            if (/PNX([0-9]{7})+/.test(req.query.id)) {
                 part = await Part.findOne({ nxid: { $eq: req.query.id } });
             }
             // If mongo ID
@@ -121,10 +127,14 @@ const partManager = {
     checkout: async (req, res) => {
         try {
             let { user_id, cart } = req.body
-            console.log(req.body)
-            if(user_id==undefined) {
-                return res.status(400).send("Invalid request")
+            if(user_id!='all') {
+                let user = await User.findById(user_id).exec()
+                if(user_id==null||user_id==undefined||user==null)
+                    return res.status(400).send("Invalid request")
             }
+            // If requesting user is not a kiosk
+            if(req.user.role != 'kiosk')
+                return res.status(403).send("Invalid permissions")
             // Find each item and check quantities before updating
             for (item of cart) {
                 // Check quantity before
@@ -173,18 +183,42 @@ const partManager = {
     },
     checkin: async (req, res) => {
         try {
-            /**
-             * @TODO check quantities before starting record updates
-             */
-            // Find each item 
-            for (item of req.body.inventory) {
+            let { user_id, inventory } = req.body
+            // Make sure user is valid of 'all' as in
+            // All Techs
+            if(user_id!='all') {
+                let user = await User.findById(user_id).exec()
+                if(user_id==null||user_id==undefined||user==null)
+                    return res.status(400).send("Invalid request")
+            }
+            // If requesting user is not a kiosk
+            if(req.user.role != 'kiosk')
+                return res.status(403).send("Invalid permissions")
+            
+            // Check quantities before updating records
+            for (item of inventory) {
+                let quantity = await PartRecord.count({
+                    nxid: item.nxid,
+                    next: null,
+                    owner: user_id
+                })
+                // If check in quantity is greater than 
+                // inventory quantity
+                if (item.quantity > quantity) {
+                    return res.status(400).send("Invalid request")
+                }
+            }
+            // Iterate through each item and update records
+            for (item of inventory) {
                 // Get database quantity
                 const records = await PartRecord.find({
                     nxid: item.nxid,
                     next: null,
-                    owner: req.user.user_id
+                    owner: user_id
                 });
-                for (let i = 0; i < item.quantitity; i++) {
+                // Loop through the quantity of the item and 
+                // change records
+                for (let i = 0; i < item.quantity; i++) {
                     // Create new part record - set prev to old record
                     await PartRecord.create({
                         nxid: item.nxid,
@@ -315,26 +349,58 @@ const partManager = {
     addToInventory: async (req, res) => {
         try {
             // Get info from request
-            const { nxid, quantity, location, building } = req.body.part;
+            let { part, owner } = req.body
+            const { nxid, quantity, location, building } = part;
+            console.log(owner)
             // If any part info is missing, return invalid request
-            if (!(nxid && quantity && location && building)) {
+            if (!(nxid && quantity && location && building)) 
                 return res.status(400).send("Invalid request");
+            let createOptions = {
+                nxid,
+                location: location,
+                building: building,
+                prev: null,
+                next: null,
+                by: req.user.user_id
+            }
+            // If asset, make sure asset exists
+            switch(location) {
+                case "Asset":
+                    // Make sure asset exists
+                    let asset = await Asset.findOne({ asset_tag: owner._id })
+                    if(asset == null) 
+                        return res.status(400).send("Asset Not Found");
+                    // Add info to create options
+                    createOptions.building = asset.building
+                    createOptions.asset_tag = asset.asset_tag
+                    break
+                case "Tech Inventory":
+                    // Check if id exists
+                    if (owner._id) {
+                        // Make sure tech exists
+                        let tech = await User.findById(owner._id)
+                        if (tech == null)
+                            return res.status(400).send("User Not Found");
+                        // Add create options 
+                        createOptions.owner = tech._id
+                        createOptions.building = tech.building
+                    } 
+                    else 
+                        return res.status(400).send("Owner not present in request");
+                    break
+                case "All Techs":
+                    createOptions.owner = 'all'
+                    break
+                default:
+                    break
             }
             // Find part info
             Part.find({ nxid }, (err, part) => {
-                if (err) {
+                if (err)
                     return res.status(500).send("API could not handle your request: " + err);
-                }
                 for (let i = 0; i < quantity; i++) {
                     // Create new parts records to match the quantity
-                    PartRecord.create({
-                        nxid,
-                        location: location ? location : "Parts Room",
-                        building: building ? building : req.user.building,
-                        prev: null,
-                        next: null,
-                        by: req.user.user_id
-                    }, callbackHandler.callbackHandleError);
+                    PartRecord.create(createOptions, callbackHandler.callbackHandleError);
                 }
                 // Success
                 res.status(200).send("Successfully added to inventory")
