@@ -127,6 +127,10 @@ const assetManager = {
                 searchOptions.push({ "location": { $regex: key, $options: "is" } })
                 searchOptions.push({ "model": { $regex: key, $options: "is" } })
                 searchOptions.push({ "serial": { $regex: key, $options: "is" } })
+                searchOptions.push({ "power_port": { $regex: key, $options: "is" } })
+                searchOptions.push({ "public_port": { $regex: key, $options: "is" } })
+                searchOptions.push({ "private_port": { $regex: key, $options: "is" } })
+                searchOptions.push({ "ipmi_port": { $regex: key, $options: "is" } })
             }
             Asset.aggregate([{ $match: { $or: searchOptions } }])
             .skip(pageSize * (pageNum - 1))
