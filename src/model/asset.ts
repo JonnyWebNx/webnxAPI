@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const asset = new mongoose.Schema({
     // NXID of the associated part
@@ -34,4 +34,4 @@ const asset = new mongoose.Schema({
     date_updated: { type: Date, default: Date.now }
 });
 // Add index here
-module.exports = mongoose.model("asset", asset);
+export default mongoose.model("asset", asset);

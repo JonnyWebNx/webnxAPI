@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const partSchema = new mongoose.Schema({
     nxid: { type: String, required: true, unique: true },
@@ -22,4 +22,4 @@ const partSchema = new mongoose.Schema({
     date_created: { type: Date, default: Date.now },
 });
 partSchema.index({ '$**': 'text' });
-module.exports = mongoose.model("part", partSchema);
+export default mongoose.model("part", partSchema);

@@ -8,17 +8,15 @@
  */
 
 // import basic requirements
-const http = require("http");
-const app = require("./app");
-
+import http from 'http'
+import app from './app.js'
+import config from './config.js';
 
 // Hand off requests to app
 const server = http.createServer(app);
 
 // Get port
-const { API_PORT } = process.env;
-const port = process.env.PORT || API_PORT;
-
+const port = config.PORT;
 
 // Open API_PORT for listening
 server.listen(port, () => {
@@ -41,9 +39,8 @@ server.listen(port, () => {
                   ███    ███   ███        ███     
                   ███    █▀   ▄████▀      █▀   
 
-WebNX API by Cameron McKay`)
-    console.log("\x1b[0m",`\nServer running on port ${API_PORT}`);
-
+WebNX API by Cameron McKay`,"\x1b[36m",`\nNow with Typescript!`,
+"\x1b[0m",`\nServer running on port ${config.PORT}`);
 });
 
 

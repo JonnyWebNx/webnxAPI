@@ -1,16 +1,20 @@
-const Asset = require("../model/asset");
-const PartRecord = require("../model/partRecord");
-const Part = require("../model/part");
-const handleError = require("../config/mailer");
-const callbackHandler = require("../middleware/callbackHandlers")
+import Asset from "../model/asset.js";
+import PartRecord from "../model/partRecord.js";
+import Part from "../model/part.js";
+import handleError from "../config/mailer.js";
+import callbackHandler from "../middleware/callbackHandlers.js";
+import { Request, Response } from "express";
+import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
+import { CallbackError } from "mongoose";
+
 const assetManager = {
-    addUntrackedAsset: async (req, res) => {
+    addUntrackedAsset: async (req: Request, res: Response) => {
         try {
             // Get asset from request
-            let { asset, parts } = req.body;
-            console.log(asset)
+            let asset = req.body.asset as AssetSchema
+            let parts = req.body.parts as CartItem[]
             // Check for required fields
-            if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
+            if (!(asset.asset_tag&&asset.asset_type)||!/WNX([0-9]{7})+/.test(asset.asset_tag)) {
                 // Send response if request is invalid
                 return res.status(400).send("Invalid request");
             }
@@ -44,12 +48,12 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
-    getAssets: async (req, res) => {
+    getAssets: async (req: Request, res: Response) => {
         try {
             // get object from request
             let asset = req.query;
             // Send request to database
-            Asset.find(asset, (err, record) => {
+            Asset.find(asset, (err: CallbackError, record: PartRecordSchema) => {
                 if (err)
                     res.status(500).send("API could not handle your request: " + err);
                 else
@@ -60,14 +64,14 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
-    getAssetByID: async (req, res) => {
+    getAssetByID: async (req: Request, res: Response) => {
         try {
             // Get id from query
-            const { id } = req.query
+            const id = req.query.id as string
             // Test regex for NXID
             if (/WNX([0-9]{7})+/.test(id)||id=='test') {
                 // Find by NXID
-                Asset.findOne({asset_tag: id}, (err, record) => {
+                Asset.findOne({asset_tag: id}, (err: CallbackError, record: AssetSchema) => {
                     if (err)
                         res.status(500).send("API could not handle your request: " + err);
                     else
@@ -77,7 +81,7 @@ const assetManager = {
             // If id is not NXID
             else {
                 // Find by mongo ID
-                Asset.findById(id, (err, record) => {
+                Asset.findById(id, (err: CallbackError, record: AssetSchema) => {
                     if (err)
                         res.status(500).send("API could not handle your request: " + err);
                     else
@@ -90,13 +94,15 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
-    searchAssets: async (req, res) => {
+    searchAssets: async (req: Request, res: Response) => {
         try {
 
             // Search data
             // Limit
             // Page number
-            const { searchString, pageSize, pageNum } = req.query;
+            const searchString = req.query.searchString as string
+            const pageSize = parseInt(req.query.pageSize as string)
+            const pageNum = parseInt(req.query.pageNum as string)
             // Find parts
             // Skip - gets requested page number
             // Limit - returns only enough elements to fill page
@@ -105,6 +111,10 @@ const assetManager = {
             let i = 0
             let keywords = []
             let spliced = false
+            if(searchString==undefined) {
+                res.status(400).send("Search string undefined");
+                return
+            }
             while (!spliced) {
                 // If end of string
                 if (searchString.indexOf(" ", i) == -1) {
@@ -146,7 +156,7 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
-    updateAsset: async (req, res) => {
+    updateAsset: async (req: Request, res: Response) => {
         // Not my proudest code
         try {
             let { asset, parts } = req.body;
@@ -226,13 +236,13 @@ const assetManager = {
                 }
             }
             // Update the asset object and return to user before updating parts records
-            Asset.findByIdAndDelete(asset._id, (err, record) => {
+            Asset.findByIdAndDelete(asset._id, (err: CallbackError, record: AssetSchema) => {
                 if (err) {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 else {
-                    Asset.create(asset, (err, new_asset)=>{
+                    Asset.create(asset, (err: CallbackError, new_asset: AssetSchema)=>{
                         if(err) {
                             handleError(err)
                             return res.status(500).send("API could not handle your request: " + err);
@@ -248,7 +258,7 @@ const assetManager = {
                     continue
                 }
                 let searchOptions = {}
-                let createOptions = {}
+                let createOptions = {} as PartRecordSchema
                 if (differencesQuantities[i]>0) {
                     // If parts are being added to asset: 
                     searchOptions = {
@@ -261,8 +271,8 @@ const assetManager = {
                         building: asset.building,
                         location: "Asset",
                         by: req.user.user_id,
-                        next: null
-                    }
+                        next: null,
+                    } as PartRecordSchema
                 } else {
                     // If parts are being removed from asset: 
                     searchOptions = {
@@ -276,8 +286,8 @@ const assetManager = {
                         building: req.user.building,
                         location: "Tech Inventory",
                         by: req.user.user_id,
-                        next: null
-                    }
+                        next: null,
+                    } as PartRecordSchema
                 }
                 // Get parts records that will be updated
                 let oldRecords = await PartRecord.find(searchOptions)
@@ -293,11 +303,11 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
-    getPartsOnAsset: async (req, res) => {
+    getPartsOnAsset: async (req: Request, res: Response) => {
         try {
             const { asset_tag } = req.query
             // Find all parts records associated with asset tag
-            PartRecord.find({asset_tag, next: null}, async (err, partsRecords) => {
+            PartRecord.find({asset_tag, next: null}, async (err: CallbackError, partsRecords: PartRecordSchema[]) => {
                 if(err) {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: "+err);
@@ -335,9 +345,9 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
-    deleteAsset: async (req, res) => {
-        return res.status(500).send("API could not handle your request: "+err);
+    deleteAsset: async (req: Request, res: Response) => {
+        return res.status(500).send("API could not handle your request");
     }
 };
 
-module.exports = assetManager;
+export default assetManager

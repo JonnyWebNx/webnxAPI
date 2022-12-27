@@ -8,31 +8,32 @@
  * 
  */
 // Import npm modules
-require("dotenv").config();
-const { ROOT_DIRECTORY } = process.env;
-require("./config/database").connect();
-const express = require("express");
-const cors = require("cors");
+import config from './config.js';
+import database from './config/database.js'
+import express, { NextFunction, Request, Response } from 'express'
+import cors, { CorsOptions } from 'cors'
 
 // authorization modules
-const login = require("./app/login");
-const register = require("./app/register");
-const auth = require("./middleware/auth");
-const isAuth = require("./app/isAuth");
-const permissions = require("./middleware/permissions");
+import login from './app/login.js'
+import register from './app/register.js'
+import auth from './middleware/auth.js'
+import isAuth from './app/isAuth.js'
+import permissions from './middleware/permissions.js'
 
 // Database modules
-const partManager = require("./app/partManager");
-const userManager = require("./app/userManager");
-const sanitize = require("./middleware/sanitize");
-const assetManager = require("./app/assetManager");
+import partManager from './app/partManager.js'
+import userManager from './app/userManager.js';
+import sanitize from './middleware/sanitize.js';
+import assetManager from './app/assetManager.js'
+import path from 'node:path';
+const { ROOT_DIRECTORY } = config;
 // Create express instance
 const app = express();
-
+database()
 // SET UP CORS
 var whitelist = ['https://www.cameronmckay.xyz', 'https://cameronmckay.xyz', "http://localhost:8080"]
 var corsOptions = {
-    origin: (origin, callback) => {
+    origin: (origin: string, callback: any) => {
         if (whitelist.indexOf(origin) !== -1) {
             callback(null, true)
         } else {
@@ -40,13 +41,13 @@ var corsOptions = {
         }
     },
     credentials: true,
-};
+} as CorsOptions;
 
-app.use(function(req, res, next) {
-    let origin = req.get("origin")
+app.use(function(req: Request, res: Response, next: NextFunction) {
+    let origin = req.get("origin")!
     if(whitelist.indexOf(origin) !== -1){
         res.header("Access-Control-Allow-Origin", origin);
-        res.header("Access-Control-Allow-Credentials", true);
+        res.header("Access-Control-Allow-Credentials", 'true');
     }
     next();
 });
@@ -54,7 +55,7 @@ app.use(function(req, res, next) {
 // Set up middleware
 // JSON middleware...
 app.use(express.json());
-app.use(express.static('dist'))
+app.use('/assets', express.static(path.join(config.ROOT_DIRECTORY, 'static/assets')));
 
 app.options('*', cors(corsOptions))
 app.post("/api/auth", auth, isAuth);
@@ -128,8 +129,11 @@ app.put("/api/*", async (req, res) => {
 app.delete("/api/*", async (req, res) => {
     return res.status(400).send("Invalid request.");
 });
+app.get("/service-worker.js", (req, res) => {
+    res.sendFile("./static/service-worker.js", {root: ROOT_DIRECTORY});
+  });
 app.get('*', async (req, res) => {
-    res.sendFile("./dist/index.html", {root: ROOT_DIRECTORY});
+    res.sendFile("./static/index.html", {root: ROOT_DIRECTORY});
 })
 
-module.exports = app;
+export default app

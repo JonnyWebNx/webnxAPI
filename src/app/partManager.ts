@@ -1,3 +1,4 @@
+
 /**
  * @author Cameron McKay
  * 
@@ -6,22 +7,26 @@
  * @brief Part manager object for querying database and creating responses
  * 
  */
-const Part = require("../model/part");
-const PartRecord = require("../model/partRecord")
-const Asset = require("../model/asset")
-const User = require("../model/user")
-const handleError = require("../config/mailer")
-const callbackHandler = require("../middleware/callbackHandlers")
-
+import Part from '../model/part.js'
+import PartRecord from '../model/partRecord.js'
+import Asset from '../model/asset.js'
+import User from "../model/user.js";
+import handleError from "../config/mailer.js";
+import callbackHandler from '../middleware/callbackHandlers.js'
+import { AssetSchema, PartRecordSchema } from "./interfaces.js";
+import { CallbackError, Mongoose } from "mongoose";
+import { Request, Response } from "express";
+import { MongooseError } from "mongoose";
+import { PartSchema } from "./interfaces.js";
 
 const partManager = {
     // Create
-    createPart: async (req, res) => {
+    createPart: async (req: Request, res: Response) => {
         try {
             // Get part info from request body
             const { nxid, manufacturer, name, type, quantity } = req.body.part;
             // If any part info is missing, return invalid request
-            if (!(nxid, manufacturer, name, type)) {
+            if (!(nxid&&manufacturer&&name&&type)) {
                 return res.status(400).send("Invalid request");
             }
             if (!/PNX([0-9]{7})+/.test(nxid)) {
@@ -33,14 +38,14 @@ const partManager = {
              */
             // Send part to database
             req.body.part.created_by = req.user.user_id;
-            await Part.create(req.body.part, async (err, part) => {
+            await Part.create(req.body.part, (err: MongooseError, part: PartSchema) => {
                 if (err) {
                     // Return and send error to client side for prompt
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 for (let i = 0; i < quantity; i++) {
                     // Create part records to match the quantity and location of the part schema creation
-                    await PartRecord.create({
+                    PartRecord.create({
                         nxid: part.nxid,
                         building: req.body.building ? req.body.building : req.user.building,/*req.user.building,*/
                         location: req.body.location ? req.body.location : "Parts Room",
@@ -57,16 +62,18 @@ const partManager = {
         }
     },
     // Read
-    getPart: async (req, res) => {
+    getPart: async (req: Request, res: Response) => {
         try {
             // Destructure request
             const { location, building } = req.query;
-            const req_part = req.query.part;
+            const req_part = req.query.part as PartSchema;
             // Find parts that match request
             let parts = await Part.find(req_part);
             // Query the database
-            for (part of parts) {
-                part = part._doc;
+            for (let part of parts) {
+                let { _id: temp_id, ...tempObject } = part;
+                let tempPart = tempObject as PartSchema
+                tempPart._id = temp_id.toString()
                 // Count parts in given location or in parts room
                 let count = await PartRecord.count({
                     nxid: part.nxid,
@@ -80,8 +87,8 @@ const partManager = {
                     next: null
                 });
                 // Add quantities to part object
-                part.quantity = count;
-                part.total_quantity = total_count;
+                tempPart.quantity = count;
+                tempPart.total_quantity = total_count;
             }
             // return list of parts
             res.status(200).json(parts);
@@ -91,16 +98,16 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getPartByID: async (req, res) => {
+    getPartByID: async (req: Request, res: Response) => {
         try {
-            let part = {}
+            let part = {} as PartSchema
             // Check if NXID
-            if (/PNX([0-9]{7})+/.test(req.query.id)) {
-                part = await Part.findOne({ nxid: { $eq: req.query.id } });
+            if (/PNX([0-9]{7})+/.test(req.query.id as string)) {
+                part = await Part.findOne({ nxid: { $eq: req.query.id } }) as PartSchema;
             }
             // If mongo ID
             else {
-                part = await Part.findById(req.query.id)
+                part = await Part.findById(req.query.id) as PartSchema
             }
             // Get the total quantity
             let total_quantity = await PartRecord.count({
@@ -124,7 +131,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    checkout: async (req, res) => {
+    checkout: async (req: Request, res: Response) => {
         try {
             let { user_id, cart } = req.body
             if(user_id!='all') {
@@ -136,7 +143,7 @@ const partManager = {
             if(req.user.role != 'kiosk')
                 return res.status(403).send("Invalid permissions")
             // Find each item and check quantities before updating
-            for (item of cart) {
+            for (let item of cart) {
                 // Check quantity before
                 let quantity = await PartRecord.count({
                     nxid: item.nxid,
@@ -150,7 +157,7 @@ const partManager = {
                 }
             }
             // Loop through each item and create new parts record and update old parts record
-            for (item of cart) {
+            for (let item of cart) {
                 // Find all matching part records to minimize requests and ensure updates don't conflict when using async part updating
                 let records = await PartRecord.find({
                     nxid: item.nxid,
@@ -181,7 +188,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    checkin: async (req, res) => {
+    checkin: async (req: Request, res: Response) => {
         try {
             let { user_id, inventory } = req.body
             // Make sure user is valid of 'all' as in
@@ -196,7 +203,7 @@ const partManager = {
                 return res.status(403).send("Invalid permissions")
             
             // Check quantities before updating records
-            for (item of inventory) {
+            for (let item of inventory) {
                 let quantity = await PartRecord.count({
                     nxid: item.nxid,
                     next: null,
@@ -209,7 +216,7 @@ const partManager = {
                 }
             }
             // Iterate through each item and update records
-            for (item of inventory) {
+            for (let item of inventory) {
                 // Get database quantity
                 const records = await PartRecord.find({
                     nxid: item.nxid,
@@ -239,7 +246,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    searchParts: async (req, res) => {
+    searchParts: async (req: Request, res: Response) => {
         try {
             // Search data
             // Limit
@@ -253,6 +260,9 @@ const partManager = {
             let i = 0
             let keywords = []
             let spliced = false
+            if(typeof(searchString)!="string") {
+                return res.status(400).send("Search string undefined");
+            }
             while (!spliced) {
                 // If end of string
                 if (searchString.indexOf(" ", i) == -1) {
@@ -281,15 +291,15 @@ const partManager = {
                 searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
             }
             Part.aggregate([{ $match: { $or: searchOptions } }])
-                .skip(pageSize * (pageNum - 1))
-                .limit(Number(pageSize + 1))
-                .exec(async (err, parts) => {
+                .skip(parseInt(pageSize as string) * (parseInt(pageNum as string) - 1))
+                .limit(parseInt(pageSize as string) + 1)
+                .exec( async (err: CallbackError | null, parts: PartSchema[]) => {
                     if (err) {
                         // Database err
                         handleError(err)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
-                    for (part of parts) {
+                    for (let part of parts) {
                         let count = await PartRecord.count({
                             nxid: part.nxid,
                             next: null,
@@ -313,19 +323,19 @@ const partManager = {
         }
     },
     // Update
-    updatePartInfo: async (req, res) => {
+    updatePartInfo: async (req: Request, res: Response) => {
         try {
             // Find part
             const { part } = req.body
             // Updated part is the old part from database
             let updatedPart = await Part.findByIdAndUpdate(part._id, part);
-            if (!updatedPart) {
+            if (updatedPart == null) {
                 return res.status(400).send("Part not found.");
             }
             if (part.nxid != updatedPart.nxid) {
                 // Update old NXID to new NXID
                 PartRecord.find({ nxid: updatedPart.nxid },
-                    (err, parts) => {
+                    (err: MongooseError, parts: PartSchema[]) => {
                         if (err) {
                             handleError(err)
                             return res.status(500).send("API could not handle your request: " + err);
@@ -333,7 +343,7 @@ const partManager = {
                         // Change every part record
                         for (const part of parts) {
                             PartRecord.findByIdAndUpdate(part._id, {
-                                nxid: updatedPart.nxid
+                                nxid: updatedPart!.nxid
                             }, callbackHandler.callbackHandleError);
                         }
                     }
@@ -346,7 +356,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    addToInventory: async (req, res) => {
+    addToInventory: async (req: Request, res: Response) => {
         try {
             // Get info from request
             let { part, owner } = req.body
@@ -361,13 +371,13 @@ const partManager = {
                 building: building,
                 prev: null,
                 next: null,
-                by: req.user.user_id
-            }
+                by: req.user.user_id,
+            } as PartRecordSchema
             // If asset, make sure asset exists
             switch(location) {
                 case "Asset":
                     // Make sure asset exists
-                    let asset = await Asset.findOne({ asset_tag: owner._id })
+                    let asset = await Asset.findOne({ asset_tag: owner._id }) as AssetSchema
                     if(asset == null) 
                         return res.status(400).send("Asset Not Found");
                     // Add info to create options
@@ -395,7 +405,7 @@ const partManager = {
                     break
             }
             // Find part info
-            Part.find({ nxid }, (err, part) => {
+            Part.findOne({ nxid }, (err: MongooseError, part: PartSchema) => {
                 if (err)
                     return res.status(500).send("API could not handle your request: " + err);
                 for (let i = 0; i < quantity; i++) {
@@ -411,16 +421,16 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    deletePart: async (req, res) => {
+    deletePart: async (req: Request, res: Response) => {
         try {
             // Try to find and delete by ID
-            nxid = req.body.part.nxid;
+            let nxid = req.body.part.nxid;
             // Delete info
-            part = await Part.findByIdAndDelete(req.body.part.id);
+            let part = await Part.findByIdAndDelete(req.body.part.id);
             // Find all associated parts records
             PartRecord.find({
                 nxid
-            }, (err, parts) => {
+            }, (err: MongooseError, parts: PartRecordSchema[]) => {
                 if (err) {
                     // Error - don't return so other records will be deleted
                     handleError(err)
@@ -439,12 +449,12 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getDistinctOnPartRecords: async (req, res) => {
+    getDistinctOnPartRecords: async (req: Request, res: Response) => {
         try {
             // Get key to find distinct values
             const { key, where } = req.query;
             // Find all distinct part records
-            PartRecord.find(where).distinct(key, (err, record) => {
+            PartRecord.find(where as PartRecordSchema).distinct(key as string, (err: MongooseError, record: PartRecordSchema[]) => {
                 if (err)
                     res.status(500).send("API could not handle your request: " + err);
                 else
@@ -456,12 +466,12 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getDistinctOnPartInfo: async (req, res) => {
+    getDistinctOnPartInfo: async (req: Request, res: Response) => {
         try {
             // Get key to find distinct values
             const { key } = req.query;
             // Find all distinct part records
-            Part.find().distinct(key, (err, record) => {
+            Part.find().distinct(key as string, (err: MongooseError, record: PartSchema[]) => {
                 if (err)
                     res.status(500).send("API could not handle your request: " + err);
                 else
@@ -473,10 +483,10 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getUserInventory: async (req, res) => {
+    getUserInventory: async (req: Request, res: Response) => {
         try {
             const { user_id } = req.query
-            PartRecord.find({ next: null, owner: user_id ? user_id : req.user.user_id }, async (err, records) => {
+            PartRecord.find({ next: null, owner: user_id ? user_id : req.user.user_id }, async (err: MongooseError, records: PartRecordSchema[]) => {
                 if (err) {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
@@ -509,7 +519,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getPartRecordsByID: async (req, res) => {
+    getPartRecordsByID: async (req: Request, res: Response) => {
         try {
             // Get nxid from query
             const { nxid } = req.query
@@ -517,7 +527,7 @@ const partManager = {
             PartRecord.find({
                 nxid,
                 next: null
-            }, (err, record) => {
+            }, (err: Mongoose, record: PartRecordSchema[]) => {
                 if (err)
                     res.status(500).send("API could not handle your request: " + err);
                 else
@@ -528,17 +538,20 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getPartHistoryByID: async (req, res) => {
+    getPartHistoryByID: async (req: Request, res: Response) => {
         try {
             // Get mongo ID from query
             const { id } = req.query
             // Find first part record
-            let record = await PartRecord.findById(id)
+            let record = await PartRecord.findById(id) as PartRecordSchema
+            if(record == null) {
+                return res.status(400).send("Record not found");
+            }
             // Create array of part history
             let history = [record]
             // Loop until previous record is false
             while (record.prev != null) {
-                record = await PartRecord.findById(record.prev)
+                record = await PartRecord.findById(record!.prev) as PartRecordSchema
                 history.push(record)
             }
             // Send history to client
@@ -548,7 +561,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    movePartRecords: async (req, res) => {
+    movePartRecords: async (req: Request, res: Response) => {
         try {
             // Get params from request
             let { from, to, quantity } = req.body
@@ -586,4 +599,4 @@ const partManager = {
     }
 };
 
-module.exports = partManager;
+export default partManager;

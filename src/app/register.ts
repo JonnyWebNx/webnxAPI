@@ -1,8 +1,12 @@
-const User = require("../model/user");
-const bcrypt = require('bcryptjs');
-const sign = require("jsonwebtoken/sign");
-const handleError = require("../config/mailer")
-const register = async (req, res) => {
+import User from '../model/user.js'
+import bcrypt from 'bcryptjs'
+import jwt from "jsonwebtoken";
+import handleError from "../config/mailer.js";
+import { Request, Response } from "express";
+import config from '../config.js'
+const { JWT_EXPIRES_IN, JWT_SECRET} = config
+
+const register = async (req: Request, res: Response) => {
     // register logic
     try {
         // Get user input
@@ -22,39 +26,36 @@ const register = async (req, res) => {
         }
 
         // Encrypt user password
-        encryptedPassword = await bcrypt.hash(password, 10);
+        let encryptedPassword = await bcrypt.hash(password, 10);
 
         req.body.password = encryptedPassword
         delete req.body.password2
         console.log(req.body)
 
         // Create user in our database
-        var user = await User.create({
+        let user = await User.create({
             first_name,
             last_name,
             email: email.toLowerCase(),
             password: encryptedPassword,
         });
         // Create token
-        const token = sign(
+        const token = jwt.sign(
             { user_id: user._id, email },
-            process.env.JWT_SECRET,
+            JWT_SECRET!,
             {
-                expiresIn: process.env.JWT_EXPIRES_IN,
+                expiresIn: JWT_EXPIRES_IN,
             }
         );
         // Save user token 
         user.token = token;
         // Get rid of mongoose garbage and delete password
-        user = user._doc;
-        delete user.password;
-        console.log(user)
-        // return new user
-        return res.status(201).json(user);
+        let { password: pass, ...returnUser } = user
+        return res.status(200).send(returnUser);
     } catch (err) {
-        handleError(err, req)
+        handleError(err)
     }
     // End register logic
 }
 
-module.exports = register;
+export default register;

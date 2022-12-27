@@ -9,15 +9,19 @@
  * 
  */
 // Import user schema
-const bcrypt = require("bcryptjs/dist/bcrypt");
-const User = require("../model/user");
+import bcrypt from 'bcryptjs'
+import User from '../model/user.js'
+import { MongooseError } from 'mongoose';
+import type { Request, Response } from 'express'
+import { UserSchema } from './interfaces.js';
+import test from 'node:test';
 
 // Main object containing functions
 const userManager = {
     // Create
-    createUser: async (req, res) => {
+    createUser: async (req: Request, res: Response) => {
         // Get required fields from request body
-        var { first_name, last_name, email, password } = req.body;
+        let { first_name, last_name, email, password } = req.body;
         // Check if all required fields are filled
         if (!(first_name && last_name && email && password)){
             return res.status(400).send("Invalid request.")
@@ -27,7 +31,7 @@ const userManager = {
             return res.status(400).send("User already exists.");
         }
         // Encrypt user password
-        encryptedPassword  = await bcrypt.hash(password, 10);
+        let encryptedPassword  = await bcrypt.hash(password, 10);
         // Send user data to database
         User.create({first_name, last_name, email, password: encryptedPassword}, (err, user) => {
             // If database insertion fails
@@ -39,20 +43,18 @@ const userManager = {
         })
     },
     // Read
-    getUser: async (req, res) => {
+    getUser: async (req: Request, res: Response) => {
         const id = req.query.id || req.user.user_id;
         // Make sure query string has id
         if(id){
             try{
                 // Find user in database
-                var user = await User.findById(id);
+                let user = await User.findById(id);
                 if(user){
                     // If user is found
                     // remove pasword from response
-                    user = user._doc;
-                    delete user.password;
-                    // Send response
-                    return res.status(200).json(user);
+                    let { password, ...returnUser } = JSON.parse(JSON.stringify(user))
+                    return res.status(200).send(returnUser);
                 }
                 // If user is not found
                 res.status(400).send("User not found."); 
@@ -63,24 +65,25 @@ const userManager = {
         }
         return res.status(400).send("Invalid request.");
     },
-    getAllUsers: async (req, res) => {
+    getAllUsers: async (req: Request, res: Response) => {
         try{
             // Get all users
-            var users = await User.find();
+            let users = await User.find();
+            let returnUsers = [] as UserSchema[]
             // Remove password from data
             for (let user of users){
-                user = user._doc;
-                delete user.password;
+                let { password, ...temp } = JSON.parse(JSON.stringify(user))
+                returnUsers.push(temp)
             }
             // Success
-            return res.status(200).json(users);
+            return res.status(200).json(returnUsers);
         } catch(err) {
             // Database error
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
     // Update - id required in query string
-    updateUser: async (req, res) => {
+    updateUser: async (req: Request, res: Response) => {
         try{
             // Check database to see if email already exists
             const submittedUser = req.body.user
@@ -105,7 +108,7 @@ const userManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
-    updatePassword: async (req, res) => {
+    updatePassword: async (req: Request, res: Response) => {
         const { user_id } = req.user;
         // get password
         const { password } = req.body;
@@ -114,12 +117,11 @@ const userManager = {
                 return res.status(400).send("Invalid request.");
             }
             const encryptedPassword = await bcrypt.hash(password, 10);
-            const user = User.findByIdAndUpdate(user_id, { password: encryptedPassword });
+            let user = await User.findByIdAndUpdate(user_id, { password: encryptedPassword });
             if(user){
                 // remove password from response
-                user = user._doc;
-                delete user.password;
-                return res.status(200).send(user);
+                let { password, ...returnUser } = JSON.parse(JSON.stringify(user))
+                return res.status(200).send(returnUser);
             }
             return res.status(400).send("User not found");
         } catch(err) {
@@ -127,11 +129,11 @@ const userManager = {
         }
     },
     // Delete - id required in query string
-    deleteUser: async (req, res) => {
+    deleteUser: async (req: Request, res: Response) => {
         // Get user id from query string
         var userToDelete = req.query.id;
         // Send id to database for deletion
-        User.findByIdAndDelete(userToDelete, (err, user) => {
+        User.findByIdAndDelete(userToDelete, (err: MongooseError, user: UserSchema) => {
             if(err){
                 // Database encountered error
                 return res.status(500).send("API could not handle your request: "+err);
@@ -144,4 +146,4 @@ const userManager = {
         });
     }
 }
-module.exports = userManager;
+export default userManager

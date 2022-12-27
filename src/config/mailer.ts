@@ -1,7 +1,10 @@
-var nodemailer = require('nodemailer')
+import { MongooseError } from 'mongoose'
+import nodemailer from 'nodemailer'
+import { Options } from 'nodemailer/lib/mailer/index.js'
+import config from '../config.js'
 
-const handleError = (error) => {
-  if (process.env.DEBUG === "true") {
+const handleError = (error: Error | MongooseError) => {
+  if (config.DEBUG) {
     console.log(error)
   } else {
     let user = process.env.EMAIL 
@@ -20,7 +23,7 @@ const handleError = (error) => {
         subject: `Error at ${errorDate.toTimeString()}`,
         text: error
       };
-      transporter.sendMail(mailOptions, function(error, info){
+      transporter.sendMail(mailOptions as Options, function(error, info){
         if (error) {
           console.log(error);
         } else {
@@ -30,4 +33,4 @@ const handleError = (error) => {
     }
   }
 
-module.exports = handleError
+export default handleError
