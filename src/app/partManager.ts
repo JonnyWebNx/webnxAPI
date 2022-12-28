@@ -278,6 +278,7 @@ const partManager = {
             let searchOptions = []
             // Add regex of keywords to all search options
             for (const key of keywords) {
+                searchOptions.push({ "nxid": { $regex: key, $options: "is" } })
                 searchOptions.push({ "name": { $regex: key, $options: "is" } })
                 searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
                 searchOptions.push({ "type": { $regex: key, $options: "is" } })

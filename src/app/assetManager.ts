@@ -18,6 +18,10 @@ const assetManager = {
                 // Send response if request is invalid
                 return res.status(400).send("Invalid request");
             }
+            let existingAsset = await Asset.findOne({asset_tag: asset.asset_tag})
+            if(existingAsset) {
+                return res.status(400).send("Asset tag already in use");
+            }
             // Remove date created if present
             delete asset.date_created;
             // Set by attribute to requesting user
@@ -160,6 +164,7 @@ const assetManager = {
         // Not my proudest code
         try {
             let { asset, parts } = req.body;
+            console.log(asset)
             if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
                 return res.status(400).send("Invalid request");
@@ -242,6 +247,7 @@ const assetManager = {
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 else {
+                    console.log(asset)
                     Asset.create(asset, (err: CallbackError, new_asset: AssetSchema)=>{
                         if(err) {
                             handleError(err)

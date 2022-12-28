@@ -28,6 +28,7 @@ const asset = new mongoose.Schema({
     ipmi_port: { type: String },
     // Last updated by
     by: { type: String, required: true },
+    sid: { type: Number },
     // Parts
     // Date the part was created
     date_created: { type: Date, default: Date.now },
