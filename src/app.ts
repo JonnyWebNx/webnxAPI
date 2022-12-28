@@ -43,6 +43,7 @@ var corsOptions = {
     credentials: true,
 } as CorsOptions;
 
+// Add headers to responses
 app.use(function(req: Request, res: Response, next: NextFunction) {
     let origin = req.get("origin")!
     if(whitelist.indexOf(origin) !== -1){
@@ -56,6 +57,7 @@ app.use(function(req: Request, res: Response, next: NextFunction) {
 // JSON middleware...
 app.use(express.json());
 app.use('/assets', express.static(path.join(config.ROOT_DIRECTORY, 'static/assets')));
+app.use('/img/icons', express.static(path.join(config.ROOT_DIRECTORY, 'static/assets/img/icons')))
 
 app.options('*', cors(corsOptions))
 app.post("/api/auth", auth, isAuth);
@@ -129,9 +131,19 @@ app.put("/api/*", async (req, res) => {
 app.delete("/api/*", async (req, res) => {
     return res.status(400).send("Invalid request.");
 });
+// SERVICE WORKER FOR PWA
 app.get("/service-worker.js", (req, res) => {
     res.sendFile("./static/service-worker.js", {root: ROOT_DIRECTORY});
-  });
+});
+// MANIFEST FOR SERVICE WORKER
+app.get("/manifest.json", (req, res) => {
+    res.sendFile("./static/manifest.json", {root: ROOT_DIRECTORY});
+});
+// ROBOTS FOR LIGHTHOUSE
+app.get("/robots.txt", (req, res) => {
+    res.sendFile("./static/robots.txt", {root: ROOT_DIRECTORY});
+});
+// Catch all - hand off routing to front end
 app.get('*', async (req, res) => {
     res.sendFile("./static/index.html", {root: ROOT_DIRECTORY});
 })
