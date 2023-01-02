@@ -44,7 +44,6 @@ WebNX API by Cameron McKay`,"\x1b[36m",`\nNow with Typescript!`,
 "\x1b[0m",`\nServer running on port ${config.PORT}`);
 });
 
-handleError("TEST TEST TEST")
 
 
 
