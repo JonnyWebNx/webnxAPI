@@ -9,6 +9,7 @@ declare global {
             JWT_SECRET: string,
             JWT_EXPIRES_IN: string,
             ROOT_DIRECTORY: string,
+            DEV_EMAIL: string,
             EMAIL: string,
             EMAIL_PASS: string,
             DEBUG: string

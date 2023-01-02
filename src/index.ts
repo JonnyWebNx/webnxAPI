@@ -11,6 +11,7 @@
 import http from 'http'
 import app from './app.js'
 import config from './config.js';
+import handleError from './config/mailer.js';
 
 // Hand off requests to app
 const server = http.createServer(app);
@@ -43,9 +44,7 @@ WebNX API by Cameron McKay`,"\x1b[36m",`\nNow with Typescript!`,
 "\x1b[0m",`\nServer running on port ${config.PORT}`);
 });
 
-
-
-
+handleError("TEST TEST TEST")
 
 
 

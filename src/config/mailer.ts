@@ -3,14 +3,14 @@ import nodemailer from 'nodemailer'
 import { Options } from 'nodemailer/lib/mailer/index.js'
 import config from '../config.js'
 
-const handleError = (error: Error | MongooseError) => {
+const handleError = (error: Error | MongooseError | string) => {
   if (config.DEBUG) {
     console.log(error)
   } else {
     let user = process.env.EMAIL 
     let pass = process.env.EMAIL_PASS
       let transporter = nodemailer.createTransport({
-        service: 'gmail',
+        service: 'Outlook365',
         auth: {
           user,
           pass
@@ -19,7 +19,7 @@ const handleError = (error: Error | MongooseError) => {
       let errorDate = new Date(Date.now())
       let mailOptions = {
         from: process.env.EMAIL,
-        to: process.env.EMAIL,
+        to: process.env.DEV_EMAIL,
         subject: `Error at ${errorDate.toTimeString()}`,
         text: error
       };

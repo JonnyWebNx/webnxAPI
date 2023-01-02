@@ -14,6 +14,7 @@ interface ENV {
     JWT_SECRET: string,
     JWT_EXPIRES_IN: string,
     ROOT_DIRECTORY: string,
+    DEV_EMAIL: string,
     EMAIL: string,
     EMAIL_PASS: string,
     DEBUG: boolean
@@ -25,6 +26,7 @@ interface Config {
   JWT_SECRET: string,
   JWT_EXPIRES_IN: string,
   ROOT_DIRECTORY: string,
+  DEV_EMAIL: string,
   EMAIL: string,
   EMAIL_PASS: string,
   DEBUG: boolean
@@ -39,6 +41,7 @@ const getConfig = (): ENV => {
     JWT_SECRET: process.env.JWT_SECRET,
     JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN,
     ROOT_DIRECTORY: process.env.ROOT_DIRECTORY,
+    DEV_EMAIL: process.env.DEV_EMAIL,
     EMAIL: process.env.EMAIL,
     EMAIL_PASS: process.env.EMAIL_PASS,
     DEBUG: eval(process.env.DEBUG)
