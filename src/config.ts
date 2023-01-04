@@ -9,7 +9,7 @@ dotenv.config({ path: path.resolve("./config.env") });
 // as someone could skip these varibales or not setup a .env file at all
 
 interface ENV {
-    PORT: number | undefined,
+    PORT: number,
     MONGO_URI: string,
     JWT_SECRET: string,
     JWT_EXPIRES_IN: string,
@@ -18,10 +18,14 @@ interface ENV {
     EMAIL: string,
     EMAIL_PASS: string,
     DEBUG: boolean
+    ADMIN_TOKEN?: string,
+    TECH_TOKEN?: string,
+    KIOSK_TOKEN?: string,
+    INVENTORY_TOKEN?: string
 }
 
 interface Config {
-  PORT: number | undefined,
+  PORT: number,
   MONGO_URI: string,
   JWT_SECRET: string,
   JWT_EXPIRES_IN: string,
@@ -29,14 +33,18 @@ interface Config {
   DEV_EMAIL: string,
   EMAIL: string,
   EMAIL_PASS: string,
-  DEBUG: boolean
+  DEBUG: boolean,
+  ADMIN_TOKEN?: string,
+  TECH_TOKEN?: string,
+  KIOSK_TOKEN?: string,
+  INVENTORY_TOKEN?: string
 }
 
 // Loading process.env as ENV interface
 
 const getConfig = (): ENV => {
   return {
-    PORT: process.env.PORT ? parseInt(process.env.PORT) : undefined,
+    PORT: process.env.PORT ? parseInt(process.env.PORT) : 4001,
     MONGO_URI: process.env.MONGO_URI,
     JWT_SECRET: process.env.JWT_SECRET,
     JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN,
@@ -44,7 +52,11 @@ const getConfig = (): ENV => {
     DEV_EMAIL: process.env.DEV_EMAIL,
     EMAIL: process.env.EMAIL,
     EMAIL_PASS: process.env.EMAIL_PASS,
-    DEBUG: eval(process.env.DEBUG)
+    DEBUG: eval(process.env.DEBUG),
+    ADMIN_TOKEN: process.env.ADMIN_TOKEN,
+    TECH_TOKEN: process.env.TECH_TOKEN,
+    KIOSK_TOKEN: process.env.KIOSK_TOKEN,
+    INVENTORY_TOKEN: process.env.INVENTORY_TOKEN
   };
 };
 

@@ -36,6 +36,7 @@ const register = async (req: Request, res: Response) => {
         let user = await User.create({
             first_name,
             last_name,
+            building: 3,
             email: email.toLowerCase(),
             password: encryptedPassword,
         });

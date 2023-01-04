@@ -6,6 +6,7 @@ import callbackHandler from "../middleware/callbackHandlers.js";
 import { Request, Response } from "express";
 import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
 import { CallbackError } from "mongoose";
+import partRecord from "../model/partRecord.js";
 
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {
@@ -56,6 +57,10 @@ const assetManager = {
         try {
             // get object from request
             let asset = req.query;
+            // Clear unnecessary param
+            if (req.query.advanced) {
+                delete req.query.advanced;
+            }
             // Send request to database
             Asset.find(asset, (err: CallbackError, record: PartRecordSchema) => {
                 if (err)
@@ -104,9 +109,9 @@ const assetManager = {
             // Search data
             // Limit
             // Page number
-            const searchString = req.query.searchString as string
-            const pageSize = parseInt(req.query.pageSize as string)
-            const pageNum = parseInt(req.query.pageNum as string)
+            const searchString = req.query.searchString? req.query.searchString as string : ""
+            const pageSize = req.query.pageSize? parseInt(req.query.pageSize as string) : 25
+            const pageNum = req.query.pageNum? parseInt(req.query.pageNum as string) : 1
             // Find parts
             // Skip - gets requested page number
             // Limit - returns only enough elements to fill page
@@ -115,10 +120,6 @@ const assetManager = {
             let i = 0
             let keywords = []
             let spliced = false
-            if(searchString==undefined) {
-                res.status(400).send("Search string undefined");
-                return
-            }
             while (!spliced) {
                 // If end of string
                 if (searchString.indexOf(" ", i) == -1) {
@@ -352,7 +353,29 @@ const assetManager = {
         }
     },
     deleteAsset: async (req: Request, res: Response) => {
-        return res.status(500).send("API could not handle your request");
+        try {
+            const { asset_tag } = req.query
+            // Find all parts records associated with asset tag
+            PartRecord.find({ asset_tag, next: null}, (err: CallbackError, records: PartRecordSchema[]) => {
+                if(err) {
+                    res.status(500).send("API could not handle your request: "+err);
+                    return;
+                }
+                for (let record of records) {
+                    PartRecord.findByIdAndUpdate(record._id, { next: "deleted" }, callbackHandler.callbackHandleError);
+                }
+            })
+            Asset.findOneAndDelete({asset_tag}, (err: CallbackError, asset: AssetSchema) => {
+                if(err) {
+                    res.status(500).send("API could not handle your request: "+err);
+                    return;
+                }
+                res.status(200).send("Success")
+            })
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: "+err);
+        }
     }
 };
 

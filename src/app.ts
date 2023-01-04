@@ -29,7 +29,7 @@ import path from 'node:path';
 const { ROOT_DIRECTORY } = config;
 // Create express instance
 const app = express();
-database()
+database();
 // SET UP CORS
 var whitelist = ['https://www.cameronmckay.xyz', 'https://cameronmckay.xyz', "http://localhost:8080"]
 var corsOptions = {
@@ -148,4 +148,4 @@ app.get('*', async (req, res) => {
     res.sendFile("./static/index.html", {root: ROOT_DIRECTORY});
 })
 
-export default app
+export default app;

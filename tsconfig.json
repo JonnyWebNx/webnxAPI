@@ -10,12 +10,15 @@
         "module": "NodeNext",
         "moduleResolution": "NodeNext",
         "target": "ES2020",
+        "esModuleInterop": true,
         "sourceMap": true,
         "outDir": "dist",
         "typeRoots": [
             "@types/express/index.d.ts",
             "./node_modules/@types",
             "./global.d.ts"
-          ]     
+        ],
+        
     },
+    "exclude": [ "src/tests"]
 }

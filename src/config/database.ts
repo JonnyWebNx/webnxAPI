@@ -23,7 +23,9 @@ const connect = () => {
         // Could not connect.  Stop server
         console.log("COULD NOT CONNECT TO DATABASE. ABORTING START...");
         handleError(err)
-        process.exit(1);
+        setTimeout(()=>{
+            connect();
+        }, 10000)
     });
 }
 export default connect

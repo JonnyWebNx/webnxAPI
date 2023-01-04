@@ -14,7 +14,6 @@ import User from '../model/user.js'
 import { MongooseError } from 'mongoose';
 import type { Request, Response } from 'express'
 import { UserSchema } from './interfaces.js';
-import test from 'node:test';
 
 // Main object containing functions
 const userManager = {
@@ -44,26 +43,30 @@ const userManager = {
     },
     // Read
     getUser: async (req: Request, res: Response) => {
-        const id = req.query.id || req.user.user_id;
-        // Make sure query string has id
-        if(id){
-            try{
-                // Find user in database
-                let user = await User.findById(id);
+        try{
+            // Make sure query string has id
+            let id = req.query.id || req.user.user_id;
+            // Find user in database
+            User.findById(id, (err: MongooseError, user: UserSchema) => {
+                if (err) {
+                    res.status(500).send("API could not handle your request: "+err);        
+                    return 
+                }
                 if(user){
                     // If user is found
                     // remove pasword from response
                     let { password, ...returnUser } = JSON.parse(JSON.stringify(user))
-                    return res.status(200).send(returnUser);
+                    res.status(200).send(returnUser);
+                    return 
                 }
                 // If user is not found
                 res.status(400).send("User not found."); 
-            } catch(err) {
-                // Database error
-                return res.status(500).send("API could not handle your request: "+err);
-            }
+            });
+        } catch(err) {
+            // Database error
+            res.status(500).send("API could not handle your request: "+err);
+            return 
         }
-        return res.status(400).send("Invalid request.");
     },
     getAllUsers: async (req: Request, res: Response) => {
         try{
@@ -118,7 +121,7 @@ const userManager = {
             }
             const encryptedPassword = await bcrypt.hash(password, 10);
             let user = await User.findByIdAndUpdate(user_id, { password: encryptedPassword });
-            if(user){
+            if(user!=null){
                 // remove password from response
                 let { password, ...returnUser } = JSON.parse(JSON.stringify(user))
                 return res.status(200).send(returnUser);
