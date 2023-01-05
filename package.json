@@ -8,7 +8,7 @@
     "build": "npx tsc",
     "start": "node dist/src/index.js",
     "dev": "concurrently \"npx tsc --watch\" \"nodemon -q dist/index.js\"",
-    "test": "npx tsc && concurrently -c \"bgBlack.bold,bgYellow.bold\" --kill-others --names \"Server,Jest\" \"node dist/src/index.js\" \"node --experimental-vm-modules  node_modules/jest/bin/jest.js\""
+    "test": "npx tsc && concurrently -c \"bgBlack.bold,bgYellow.bold\" --kill-others --names \"Server,Jest\" \"node dist/src/index.js\" \"node --experimental-vm-modules  node_modules/jest/bin/jest.js --verbose\""
   },
   "keywords": [],
   "author": "",

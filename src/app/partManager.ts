@@ -494,7 +494,7 @@ const partManager = {
                 }
                 let existingPartIDs = []
                 let existingQuantities = []
-                // Get NXID and quantites into seperate arrays so indexOf() can be used
+                // Get NXID and quantities into separate arrays so indexOf() can be used
                 for (const part of records) {
                     // Get index of part ID
                     let index = existingPartIDs.indexOf(part.nxid)

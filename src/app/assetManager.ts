@@ -14,15 +14,17 @@ const assetManager = {
             // Get asset from request
             let asset = req.body.asset as AssetSchema
             let parts = req.body.parts as CartItem[]
+            // Return if user is kiosk
+            if(req.user.role=="kiosk")
+                return res.status(401).send("Kiosk cannot create assets")
             // Check for required fields
             if (!(asset.asset_tag&&asset.asset_type)||!/WNX([0-9]{7})+/.test(asset.asset_tag)) {
                 // Send response if request is invalid
                 return res.status(400).send("Invalid request");
             }
             let existingAsset = await Asset.findOne({asset_tag: asset.asset_tag})
-            if(existingAsset) {
+            if(existingAsset)
                 return res.status(400).send("Asset tag already in use");
-            }
             // Remove date created if present
             delete asset.date_created;
             // Set by attribute to requesting user
@@ -31,13 +33,15 @@ const assetManager = {
              * @TODO figure out how to handle parts records when creating assets
              */
             for (const part of parts) {
-                PartRecord.create({
-                    nxid: part.nxid,
-                    building: req.user.building,
-                    location: "Asset",
-                    asset_tag: asset.asset_tag,
-                    by: req.user.user_id,
-                }, callbackHandler.callbackHandleError)
+                for (let i = 0; i < part.quantity; i++) {
+                    await PartRecord.create({
+                        nxid: part.nxid,
+                        building: req.user.building,
+                        location: "Asset",
+                        asset_tag: asset.asset_tag,
+                        by: req.user.user_id,
+                    })
+                }
             }
             // Create a new asset
             Asset.create(asset, (err, record) => {
@@ -164,6 +168,7 @@ const assetManager = {
     updateAsset: async (req: Request, res: Response) => {
         // Not my proudest code
         try {
+            console.log(req.body)
             let { asset, parts } = req.body;
             console.log(asset)
             if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
@@ -354,17 +359,26 @@ const assetManager = {
     },
     deleteAsset: async (req: Request, res: Response) => {
         try {
+            if(req.user.role != "admin")
+                return res.status(403).send("Only admin can delete assets.")
             const { asset_tag } = req.query
             // Find all parts records associated with asset tag
-            PartRecord.find({ asset_tag, next: null}, (err: CallbackError, records: PartRecordSchema[]) => {
-                if(err) {
-                    res.status(500).send("API could not handle your request: "+err);
-                    return;
-                }
-                for (let record of records) {
-                    PartRecord.findByIdAndUpdate(record._id, { next: "deleted" }, callbackHandler.callbackHandleError);
-                }
-            })
+            let records = await PartRecord.find({ asset_tag, next: null,})   
+            for (let record of records) {
+                let createOptions = {
+                    nxid: record.nxid,
+                    owner: "all",
+                    building: req.user.building,
+                    location: "All Techs",
+                    by: req.user.user_id,
+                    prev: record._id,
+                    next: null,
+                } as PartRecordSchema
+                // let newRecord = await PartRecord.create(createOptions);
+                // await partRecord.findByIdAndUpdate(createOptions.prev, {next: newRecord._id})
+                
+                await partRecord.findByIdAndUpdate(createOptions.prev, {next: "deleted"})
+            }
             Asset.findOneAndDelete({asset_tag}, (err: CallbackError, asset: AssetSchema) => {
                 if(err) {
                     res.status(500).send("API could not handle your request: "+err);
