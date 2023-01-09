@@ -18,29 +18,29 @@ import { UserSchema } from './interfaces.js';
 // Main object containing functions
 const userManager = {
     // Create
-    createUser: async (req: Request, res: Response) => {
-        // Get required fields from request body
-        let { first_name, last_name, email, password } = req.body;
-        // Check if all required fields are filled
-        if (!(first_name && last_name && email && password)){
-            return res.status(400).send("Invalid request.")
-        }
-        // Check if email is already in use
-        if (await User.findOne({ email })){
-            return res.status(400).send("User already exists.");
-        }
-        // Encrypt user password
-        let encryptedPassword  = await bcrypt.hash(password, 10);
-        // Send user data to database
-        User.create({first_name, last_name, email, password: encryptedPassword}, (err, user) => {
-            // If database insertion fails
-            if(err){
-                return res.status(500).send("API could not handle your request: "+err);
-            }
-            // If user creation is successful
-            return res.status(200).send(`Created user: ${user.first_name} ${user.last_name}`);
-        })
-    },
+    // createUser: async (req: Request, res: Response) => {
+    //     // Get required fields from request body
+    //     let { first_name, last_name, email, password } = req.body;
+    //     // Check if all required fields are filled
+    //     if (!(first_name && last_name && email && password)){
+    //         return res.status(400).send("Invalid request.")
+    //     }
+    //     // Check if email is already in use
+    //     if (await User.findOne({ email })){
+    //         return res.status(400).send("User already exists.");
+    //     }
+    //     // Encrypt user password
+    //     let encryptedPassword  = await bcrypt.hash(password, 10);
+    //     // Send user data to database
+    //     User.create({first_name, last_name, email, password: encryptedPassword}, (err, user) => {
+    //         // If database insertion fails
+    //         if(err){
+    //             return res.status(500).send("API could not handle your request: "+err);
+    //         }
+    //         // If user creation is successful
+    //         return res.status(200).send(`Created user: ${user.first_name} ${user.last_name}`);
+    //     })
+    // },
     // Read
     getUser: async (req: Request, res: Response) => {
         try{
@@ -54,7 +54,7 @@ const userManager = {
                 }
                 if(user){
                     // If user is found
-                    // remove pasword from response
+                    // remove password from response
                     let { password, ...returnUser } = JSON.parse(JSON.stringify(user))
                     res.status(200).send(returnUser);
                     return 
@@ -111,29 +111,31 @@ const userManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
-    updatePassword: async (req: Request, res: Response) => {
-        const { user_id } = req.user;
-        // get password
-        const { password } = req.body;
-        try {
-            if(!password){
-                return res.status(400).send("Invalid request.");
-            }
-            const encryptedPassword = await bcrypt.hash(password, 10);
-            let user = await User.findByIdAndUpdate(user_id, { password: encryptedPassword });
-            if(user!=null){
-                // remove password from response
-                let { password, ...returnUser } = JSON.parse(JSON.stringify(user))
-                return res.status(200).send(returnUser);
-            }
-            return res.status(400).send("User not found");
-        } catch(err) {
-            return res.status(500).send("API could not handle your request: "+err);
-        }
-    },
+    // updatePassword: async (req: Request, res: Response) => {
+    //     const { user_id } = req.user;
+    //     // get password
+    //     const { password } = req.body;
+    //     try {
+    //         if(!password){
+    //             return res.status(400).send("Invalid request.");
+    //         }
+    //         const encryptedPassword = await bcrypt.hash(password, 10);
+    //         let user = await User.findByIdAndUpdate(user_id, { password: encryptedPassword });
+    //         if(user!=null){
+    //             // remove password from response
+    //             let { password, ...returnUser } = JSON.parse(JSON.stringify(user))
+    //             return res.status(200).send(returnUser);
+    //         }
+    //         return res.status(400).send("User not found");
+    //     } catch(err) {
+    //         return res.status(500).send("API could not handle your request: "+err);
+    //     }
+    // },
     // Delete - id required in query string
     deleteUser: async (req: Request, res: Response) => {
         // Get user id from query string
+        if(req.user.role != "admin")
+            return res.status(403).send("Invalid permissions")
         var userToDelete = req.query.id;
         // Send id to database for deletion
         User.findByIdAndDelete(userToDelete, (err: MongooseError, user: UserSchema) => {
@@ -144,7 +146,7 @@ const userManager = {
                 // User was not found
                 return res.status(400).send("User not found.");
             }
-            // User was succesfully deleted
+            // User was successfully deleted
             return res.status(200).send(`Deleted: ${user.first_name} ${user.last_name}`);
         });
     }

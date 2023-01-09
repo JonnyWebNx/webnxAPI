@@ -1,7 +1,7 @@
 import request from 'supertest'
 import config from "../config"
+import {jest} from '@jest/globals'
 import { AssetSchema, CartItem, LoadedCartItem,  } from "../app/interfaces"
-import exp from 'constants'
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 const ASSET_TAG = "WNX0016472"
 const ASSET_MONGO_ID = "63a3701b9d12bfd7c59e4854"
@@ -469,23 +469,29 @@ describe("Update asset", () => {
         expect(res.status).toBe(401)
     })
     it("Tech can add and remove parts with correct quantities", async () => {
+        jest.useRealTimers()
         let invRes = await request("localhost:4001")
             .get("/api/user/inventory")
             .set("Authorization", TECH_TOKEN!)
         expect(invRes.status).toBe(200)
         let startInventory = invRes.body as LoadedCartItem[]
-        
+
         let assetPartRes = await request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
             .set("Authorization", TECH_TOKEN!)
         expect(assetPartRes.status).toBe(200)
-        let startAssetParts = assetPartRes.body as LoadedCartItem[]        
+        let startAssetParts = assetPartRes.body as LoadedCartItem[]
+
         let newList = JSON.parse(JSON.stringify(startAssetParts)) as LoadedCartItem[]
         let originalUnloadedList = [] as CartItem[]
         for (let item of newList) {
             originalUnloadedList.push({ nxid: item.part.nxid!, quantity: item.quantity })
         }
-        newList.concat(JSON.parse(JSON.stringify(startInventory)) as LoadedCartItem[])
+
+        for (let item of startInventory) {
+            newList.push(JSON.parse(JSON.stringify(item)))
+        }
+
         let unloadedNewList = [] as CartItem[]
         for (let item of newList) {
             let found = false
@@ -499,86 +505,103 @@ describe("Update asset", () => {
             if (!found)
                 unloadedNewList.push({nxid: item.part.nxid!, quantity: item.quantity})
         }
-        console.log(unloadedNewList)
+
         let assetRes = await request("localhost:4001")
             .get(`/api/asset?asset_tag=${ASSET_TAG}`)
             .set("Authorization", TECH_TOKEN!)
         expect(assetRes.status).toBe(200)
         let asset = assetRes.body[0] as AssetSchema
+        
+        
         let update1res = await request("localhost:4001")
             .put("/api/asset")
             .set("Authorization", TECH_TOKEN!)
             .send({ asset, parts: unloadedNewList})
         expect(update1res.status).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
         let invRes2 = await request("localhost:4001")
             .get("/api/user/inventory")
             .set("Authorization", TECH_TOKEN!)
         expect(invRes2.status).toBe(200)
         expect(invRes2.body.length).toBe(0)
+
         let update2res = await request("localhost:4001")
             .put("/api/asset")
             .set("Authorization", TECH_TOKEN!)
             .send({ asset, parts: originalUnloadedList})
         expect(update2res.status).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
         let invRes3 = await request("localhost:4001")
-            .get("/api/user/inventory")
-            .set("Authorization", TECH_TOKEN!)
+        .get("/api/user/inventory")
+        .set("Authorization", TECH_TOKEN!)
         expect(invRes3.status).toBe(200)
+        
+        
         let assetPartRes2 = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", TECH_TOKEN!)
+        .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
+        .set("Authorization", TECH_TOKEN!)
         let afterAssetPartList = assetPartRes2.body as LoadedCartItem[]
         expect(assetPartRes2.status).toBe(200)
+        
+        
         let afterInv = invRes3.body as LoadedCartItem[]
         afterInv.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
-        })
+            })
         startInventory.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
         })
         expect(JSON.stringify(afterInv) == JSON.stringify(startInventory)).toBe(true)
+        
+        
         startAssetParts.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
         })
         afterAssetPartList.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
         })
         expect(JSON.stringify(startAssetParts) == JSON.stringify(afterAssetPartList)).toBe(true)
     })
     it("Clerk can add and remove parts with correct quantities", async () => {
+        jest.useRealTimers()
         let invRes = await request("localhost:4001")
             .get("/api/user/inventory")
             .set("Authorization", INVENTORY_TOKEN!)
         expect(invRes.status).toBe(200)
         let startInventory = invRes.body as LoadedCartItem[]
-        
+
         let assetPartRes = await request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
             .set("Authorization", INVENTORY_TOKEN!)
         expect(assetPartRes.status).toBe(200)
-        let startAssetParts = assetPartRes.body as LoadedCartItem[]        
+        let startAssetParts = assetPartRes.body as LoadedCartItem[]
+
         let newList = JSON.parse(JSON.stringify(startAssetParts)) as LoadedCartItem[]
         let originalUnloadedList = [] as CartItem[]
         for (let item of newList) {
             originalUnloadedList.push({ nxid: item.part.nxid!, quantity: item.quantity })
         }
-        newList.concat(JSON.parse(JSON.stringify(startInventory)) as LoadedCartItem[])
+
+        for (let item of startInventory) {
+            newList.push(JSON.parse(JSON.stringify(item)))
+        }
+
         let unloadedNewList = [] as CartItem[]
         for (let item of newList) {
             let found = false
@@ -592,86 +615,103 @@ describe("Update asset", () => {
             if (!found)
                 unloadedNewList.push({nxid: item.part.nxid!, quantity: item.quantity})
         }
+
         let assetRes = await request("localhost:4001")
             .get(`/api/asset?asset_tag=${ASSET_TAG}`)
             .set("Authorization", INVENTORY_TOKEN!)
         expect(assetRes.status).toBe(200)
         let asset = assetRes.body[0] as AssetSchema
+        
+        
         let update1res = await request("localhost:4001")
             .put("/api/asset")
             .set("Authorization", INVENTORY_TOKEN!)
             .send({ asset, parts: unloadedNewList})
         expect(update1res.status).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
         let invRes2 = await request("localhost:4001")
             .get("/api/user/inventory")
             .set("Authorization", INVENTORY_TOKEN!)
         expect(invRes2.status).toBe(200)
         expect(invRes2.body.length).toBe(0)
+
         let update2res = await request("localhost:4001")
             .put("/api/asset")
             .set("Authorization", INVENTORY_TOKEN!)
             .send({ asset, parts: originalUnloadedList})
         expect(update2res.status).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
         let invRes3 = await request("localhost:4001")
-            .get("/api/user/inventory")
-            .set("Authorization", INVENTORY_TOKEN!)
+        .get("/api/user/inventory")
+        .set("Authorization", INVENTORY_TOKEN!)
         expect(invRes3.status).toBe(200)
+        
+        
         let assetPartRes2 = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", INVENTORY_TOKEN!)
+        .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
+        .set("Authorization", INVENTORY_TOKEN!)
         let afterAssetPartList = assetPartRes2.body as LoadedCartItem[]
         expect(assetPartRes2.status).toBe(200)
+        
+        
         let afterInv = invRes3.body as LoadedCartItem[]
         afterInv.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
-        })
+            })
         startInventory.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
         })
         expect(JSON.stringify(afterInv) == JSON.stringify(startInventory)).toBe(true)
+        
+        
         startAssetParts.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
         })
         afterAssetPartList.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
         })
         expect(JSON.stringify(startAssetParts) == JSON.stringify(afterAssetPartList)).toBe(true)
     })
     it("Admin can add and remove parts with correct quantities", async () => {
+        jest.useRealTimers()
         let invRes = await request("localhost:4001")
             .get("/api/user/inventory")
             .set("Authorization", ADMIN_TOKEN!)
         expect(invRes.status).toBe(200)
         let startInventory = invRes.body as LoadedCartItem[]
-        console.log(startInventory)
+
         let assetPartRes = await request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
             .set("Authorization", ADMIN_TOKEN!)
         expect(assetPartRes.status).toBe(200)
-        let startAssetParts = assetPartRes.body as LoadedCartItem[]        
+        let startAssetParts = assetPartRes.body as LoadedCartItem[]
+
         let newList = JSON.parse(JSON.stringify(startAssetParts)) as LoadedCartItem[]
         let originalUnloadedList = [] as CartItem[]
         for (let item of newList) {
             originalUnloadedList.push({ nxid: item.part.nxid!, quantity: item.quantity })
         }
-        newList.concat(JSON.parse(JSON.stringify(startInventory)) as LoadedCartItem[])
-        console.log(newList)
+
+        for (let item of startInventory) {
+            newList.push(JSON.parse(JSON.stringify(item)))
+        }
+
         let unloadedNewList = [] as CartItem[]
         for (let item of newList) {
             let found = false
@@ -685,64 +725,75 @@ describe("Update asset", () => {
             if (!found)
                 unloadedNewList.push({nxid: item.part.nxid!, quantity: item.quantity})
         }
-        console.log(unloadedNewList)
+
         let assetRes = await request("localhost:4001")
             .get(`/api/asset?asset_tag=${ASSET_TAG}`)
             .set("Authorization", ADMIN_TOKEN!)
         expect(assetRes.status).toBe(200)
         let asset = assetRes.body[0] as AssetSchema
+        
+        
         let update1res = await request("localhost:4001")
             .put("/api/asset")
             .set("Authorization", ADMIN_TOKEN!)
             .send({ asset, parts: unloadedNewList})
         expect(update1res.status).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
         let invRes2 = await request("localhost:4001")
             .get("/api/user/inventory")
             .set("Authorization", ADMIN_TOKEN!)
         expect(invRes2.status).toBe(200)
         expect(invRes2.body.length).toBe(0)
+
         let update2res = await request("localhost:4001")
             .put("/api/asset")
             .set("Authorization", ADMIN_TOKEN!)
             .send({ asset, parts: originalUnloadedList})
         expect(update2res.status).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
         let invRes3 = await request("localhost:4001")
-            .get("/api/user/inventory")
-            .set("Authorization", ADMIN_TOKEN!)
+        .get("/api/user/inventory")
+        .set("Authorization", ADMIN_TOKEN!)
         expect(invRes3.status).toBe(200)
+        
+        
         let assetPartRes2 = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", ADMIN_TOKEN!)
+        .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
+        .set("Authorization", ADMIN_TOKEN!)
         let afterAssetPartList = assetPartRes2.body as LoadedCartItem[]
         expect(assetPartRes2.status).toBe(200)
+        
+        
         let afterInv = invRes3.body as LoadedCartItem[]
         afterInv.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
-        })
+            })
         startInventory.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
         })
         expect(JSON.stringify(afterInv) == JSON.stringify(startInventory)).toBe(true)
+        
+        
         startAssetParts.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
         })
         afterAssetPartList.sort((a, b) => {
             if (a.part.nxid! >  b.part.nxid!)
                 return 1;
             if (a.part.nxid! <  b.part.nxid!)
-                return 1;
+                return -1;
             return 0;
         })
         expect(JSON.stringify(startAssetParts) == JSON.stringify(afterAssetPartList)).toBe(true)

@@ -95,7 +95,7 @@ app.delete("/api/part", auth, permissions, sanitize, partManager.deletePart);
 // ***   Users   ***
 //
 // Create
-app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
+// app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
 // Read
 app.get("/api/user", auth, sanitize, userManager.getUser);
 app.get("/api/user/all", auth, permissions, userManager.getAllUsers)
