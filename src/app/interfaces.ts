@@ -1,5 +1,5 @@
 import type { Request } from 'express'
-import { Types } from 'mongoose'
+import mongoose, { Types } from 'mongoose'
 
 export interface NXRequest extends Request {
     user: ReqUser
@@ -104,4 +104,14 @@ export interface UserSchema {
     password?: string,
     _v?: number,
     _id?: string | Types.ObjectId
+}
+export interface IDummy {
+    something: string;
+    somethingElse: string;
+}
+
+export interface DummyDocument extends IDummy, mongoose.Document {
+    createdAt: Date;
+    updatedAt: Date;
+    _doc?: any
 }

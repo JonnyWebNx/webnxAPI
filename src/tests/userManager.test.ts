@@ -1,11 +1,11 @@
 import request from 'supertest'
 import config from "../config"
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
-const USER_ID = ""
+const USER_ID = "63619323e3467f5bd00257d1"
 const EXAMPLE_USER = {
     first_name: "Test",
     last_name: "User",
-    email: "test@email.com",
+    email: "test123@email.com",
     password: "password",
 }
 
@@ -18,6 +18,7 @@ describe("Register, login, and delete user", () => {
             .set('Content-Type', 'application/json')
             .set('Accept', 'application/json')
         expect(register.statusCode).toBe(200)
+        console.log(register.body)
         let user_id = register.body._id
         let incorrectLogin = await request("localhost:4001")
             .post("/api/register")
@@ -95,6 +96,7 @@ describe("Get user", () => {
             .get(`/api/user?id=${USER_ID}`)
             .set("Authorization", KIOSK_TOKEN!)
         expect(res.body._id).toBeDefined()
+    })
     it("Use token to get current user - Admin", async () => {
         let res = await request("localhost:4001")
             .get("/api/user")
@@ -106,7 +108,6 @@ describe("Get user", () => {
             .get(`/api/user?id=${USER_ID}`)
             .set("Authorization", ADMIN_TOKEN!)
         expect(res.body._id).toBeDefined()
-    })
     })
 })
 
@@ -192,10 +193,61 @@ describe("Get all users", () => {
 })
 
 describe("Update user", () => {
+    let tempUser = JSON.parse(JSON.stringify(EXAMPLE_USER))
+    tempUser._id = USER_ID
+    
     it("Tech cannot update user",async () => {
-        /**
-         * @TODO add update user tests
-         */
+        let res = await request("localhost:4001")
+            .put("/api/user")
+            .send({user: tempUser})
+            .set("Authorization", TECH_TOKEN!)
+        expect(res.statusCode).toBe(403)
+    })
+    it("Clerk cannot update user",async () => {
+        let res = await request("localhost:4001")
+            .put("/api/user")
+            .send({user: tempUser})
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(res.statusCode).toBe(403)
+    })
+    it("Kiosk cannot update user",async () => {
+        let res = await request("localhost:4001")
+            .put("/api/user")
+            .send({user: tempUser})
+            .set("Authorization", KIOSK_TOKEN!)
+        expect(res.statusCode).toBe(403)
+    })
+    it("Admin can update user", async () => {
+        let { body: user, statusCode} = await request("localhost:4001")
+            .get(`/api/user?id=${USER_ID}`)
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(statusCode).toBe(200)
+        let update1 = await request("localhost:4001")
+            .put('/api/user')
+            .send({user: tempUser})
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(update1.statusCode).toBe(200)
+        let { body: user2, statusCode: statusCode2} = await request("localhost:4001")
+            .get(`/api/user?id=${USER_ID}`)
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(statusCode2).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
+        console.log(user)
+        console.log(user2)
+        expect(user.email==user2.email).toBe(false)
+        let update2 = await request("localhost:4001")
+            .put('/api/user')
+            .send({user})
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(update2.statusCode).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
+        let { body: user3, statusCode: statusCode3} = await request("localhost:4001")
+            .get(`/api/user?id=${USER_ID}`)
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(statusCode3).toBe(200)
+        console.log(user2)
+        console.log(user3)
+        expect(user3.email==user.email).toBe(true)
     })
 })
 

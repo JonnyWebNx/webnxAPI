@@ -486,7 +486,9 @@ const partManager = {
     },
     getUserInventory: async (req: Request, res: Response) => {
         try {
-            const { user_id } = req.query
+            const { user_id } = req.query.user_id ? req.query : req.user
+            if((user_id!=req.user.user_id)&&(req.user.role=="tech"))
+                return res.status(403).send("You cannot view another user's inventory");
             PartRecord.find({ next: null, owner: user_id ? user_id : req.user.user_id }, async (err: MongooseError, records: PartRecordSchema[]) => {
                 if (err) {
                     handleError(err)

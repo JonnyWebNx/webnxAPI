@@ -39,7 +39,7 @@ const register = async (req: Request, res: Response) => {
             building: 3,
             email: email.toLowerCase(),
             password: encryptedPassword,
-        });
+        }) as any;
         // Create token
         const token = jwt.sign(
             { user_id: user._id, email },
@@ -51,7 +51,7 @@ const register = async (req: Request, res: Response) => {
         // Save user token 
         user.token = token;
         // Get rid of mongoose garbage and delete password
-        let { password: pass, ...returnUser } = user
+        let { password: pass, _doc: returnUser } = user
         return res.status(200).send(returnUser);
     } catch (err) {
         handleError(err)

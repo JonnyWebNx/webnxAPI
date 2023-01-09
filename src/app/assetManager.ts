@@ -168,9 +168,7 @@ const assetManager = {
     updateAsset: async (req: Request, res: Response) => {
         // Not my proudest code
         try {
-            console.log(req.body)
             let { asset, parts } = req.body;
-            console.log(asset)
             if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
                 return res.status(400).send("Invalid request");
@@ -253,7 +251,6 @@ const assetManager = {
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 else {
-                    console.log(asset)
                     Asset.create(asset, (err: CallbackError, new_asset: AssetSchema)=>{
                         if(err) {
                             handleError(err)

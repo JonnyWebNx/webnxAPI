@@ -88,13 +88,15 @@ const userManager = {
     // Update - id required in query string
     updateUser: async (req: Request, res: Response) => {
         try{
+            if(req.user.role!="admin")
+                return res.status(403).send("Invalid p")
             // Check database to see if email already exists
             const submittedUser = req.body.user
             var emailExists = await User.findOne({email: submittedUser.email});
             if (emailExists&&submittedUser._id!=emailExists._id){
                 console.log(emailExists);
                 // Email already exists in database and does not belong to user
-                return res.status(403).send("Email taken.")
+                return res.status(409).send("Email taken.")
             }
             // Delete password from request
             delete req.body.password;
