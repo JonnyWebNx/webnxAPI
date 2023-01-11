@@ -52,6 +52,7 @@ const register = async (req: Request, res: Response) => {
         user.token = token;
         // Get rid of mongoose garbage and delete password
         let { password: pass, _doc: returnUser } = user
+        delete returnUser.password
         return res.status(200).send(returnUser);
     } catch (err) {
         handleError(err)

@@ -68,30 +68,31 @@ const partManager = {
             const { location, building } = req.query;
             const req_part = req.query.part as PartSchema;
             // Find parts that match request
-            let parts = await Part.find(req_part);
-            // Query the database
-            for (let part of parts) {
-                let { _id: temp_id, ...tempObject } = part;
-                let tempPart = tempObject as PartSchema
-                tempPart._id = temp_id.toString()
-                // Count parts in given location or in parts room
-                let count = await PartRecord.count({
-                    nxid: part.nxid,
-                    next: null,
-                    location: location ? location : "Parts Room",
-                    building: building ? building : req.user.building
-                });
-                // Count total parts
-                let total_count = await PartRecord.count({
-                    nxid: part.nxid,
-                    next: null
-                });
-                // Add quantities to part object
-                tempPart.quantity = count;
-                tempPart.total_quantity = total_count;
-            }
-            // return list of parts
-            res.status(200).json(parts);
+            Part.find(req_part, async (err: CallbackError | null, parts: PartSchema[]) => {
+                if (err) {
+                    // Database err
+                    handleError(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                for (let part of parts) {
+                    let count = await PartRecord.count({
+                        nxid: part.nxid,
+                        next: null,
+                        location: location ? location : "Parts Room",
+                        building: building ? building : req.user.building
+                    });
+                    let total_count = await PartRecord.count({
+                        nxid: part.nxid,
+                        next: null
+                    });
+                    part.quantity = count;
+                    part.total_quantity = total_count;
+                    console.log(part)
+                }
+                // Get rid of mongoose garbage
+                // Send back to client
+                return res.status(200).json(parts);
+            })
         } catch (err) {
             // Database error
             handleError(err)
@@ -124,6 +125,7 @@ const partManager = {
             part = part._doc;
             part.total_quantity = total_quantity;
             part.quantity = quantity;
+            console.log(part)
             res.status(200).json(part);
         } catch (err) {
             // Database error
@@ -362,9 +364,8 @@ const partManager = {
             // Get info from request
             let { part, owner } = req.body
             const { nxid, quantity, location, building } = part;
-            console.log(owner)
             // If any part info is missing, return invalid request
-            if (!(nxid && quantity && location && building)) 
+            if (!(nxid && quantity && location && building)||(quantity < 1))
                 return res.status(400).send("Invalid request");
             let createOptions = {
                 nxid,
@@ -425,9 +426,15 @@ const partManager = {
     deletePart: async (req: Request, res: Response) => {
         try {
             // Try to find and delete by ID
-            let nxid = req.body.part.nxid;
+            if(req.query.nxid == undefined)
+                return res.status(400).send("NXID missing from request");
+            let { nxid } = req.query;
+            // 
+            let part = await Part.findOne({nxid})
+            if(part==null)
+                return res.status(400).send("Part not found");
             // Delete info
-            let part = await Part.findByIdAndDelete(req.body.part.id);
+            await Part.findByIdAndDelete(part?._id);
             // Find all associated parts records
             PartRecord.find({
                 nxid
@@ -441,9 +448,9 @@ const partManager = {
                 for (const part of parts) {
                     PartRecord.findByIdAndDelete(part._id)
                 }
+                res.status(200).json("Successfully deleted part and records");
             })
             // Success
-            res.status(200).json("Successfully deleted part and records");
         } catch (err) {
             // Error
             handleError(err)
