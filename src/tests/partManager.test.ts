@@ -4,6 +4,8 @@ import {jest} from '@jest/globals'
 import { PartSchema, CartItem, LoadedCartItem,  } from "../app/interfaces"
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 
+const NXID = "PNX0016477"
+
 const TEST_PART = {
     nxid: "PNX0016498",
     manufacturer: "Nvidia",
@@ -23,17 +25,17 @@ const INCOMPLETE_PART = {
 
 function generatePart() {
     let tempPart = JSON.parse(JSON.stringify(TEST_PART))
-    let num = Math.floor(Math.random()*Math.pow(10,7))
+    let num = Math.floor(1000000 + Math.random() * 9000000)
     tempPart.nxid = `PNX${num}`
     return tempPart as PartSchema;
 }
 function generateIncompletePart() {
     let tempPart = JSON.parse(JSON.stringify(INCOMPLETE_PART))
-    let num = Math.floor(Math.random()*Math.pow(10,7))
+    let num = Math.floor(1000000 + Math.random() * 9000000)
     tempPart.nxid = `PNX${num}`
     return tempPart as PartSchema;
 }
-describe("Create, get, update and delete parts as admin", () => {
+describe("Create, get, update and delete parts", () => {
     
     it("Incomplete part results in 400 status", async () => {
         let incompletePart = generateIncompletePart()
@@ -182,6 +184,9 @@ describe("Create, get, update and delete parts as admin", () => {
             .set("Authorization", INVENTORY_TOKEN!)
         expect(deletePart.statusCode).toBe(200)
     })
+})
+
+describe("Tech", () => {
     it ("Tech cannot create parts", async () => {
         let completePart = generatePart()
         // Create part
@@ -191,6 +196,51 @@ describe("Create, get, update and delete parts as admin", () => {
             .set("Authorization", TECH_TOKEN!)
         expect(create.statusCode).toBe(403)
     })
+    it ("Tech can get part by ID", async () => {
+        let get = await request("localhost:4001")
+            .get(`/api/part/id?id=${NXID}`)
+            .set("Authorization", TECH_TOKEN!)
+        expect(get.statusCode).toBe(200)
+    })
+    it ("Tech can get part by data", async () => {
+        let completePart = generatePart()
+        let searchPart = JSON.parse(JSON.stringify(completePart))
+        delete searchPart.nxid
+        delete searchPart._id
+        delete searchPart.total_quantity
+        delete searchPart.quantity
+        delete searchPart.name
+        delete searchPart.shelf_location
+        var queryString = Object.keys(searchPart).map(key => "part[" + key + ']=' + searchPart[key]).join('&');
+        let get2 = await request("localhost:4001")
+            .get(`/api/part?location=Parts+Room&building=3&${queryString}`)
+            .set("Authorization", TECH_TOKEN!)
+        expect(get2.statusCode).toBe(200)
+    })
+    it ("Tech cannot add parts", async () => {
+    let add = await request("localhost:4001")
+        .post("/api/part/add")
+        .send({
+            part: {
+                nxid: NXID,
+                location: "Parts Room",
+                building: 3,
+                quantity: 5
+            },
+            owner: ""
+        })
+        .set("Authorization", TECH_TOKEN!)
+    expect(add.statusCode).toBe(403)
+    })
+    it ("Tech cannot delete part", async () => {
+        let deletePart = await request("localhost:4001")
+            .delete(`/api/part?nxid=${NXID}`)
+            .set("Authorization", TECH_TOKEN!)
+        expect(deletePart.statusCode).toBe(403)
+    })
+})
+
+describe("Kiosk", () => {
     it ("Kiosk cannot create parts", async () => {
         let completePart = generatePart()
         // Create part
@@ -200,18 +250,141 @@ describe("Create, get, update and delete parts as admin", () => {
             .set("Authorization", KIOSK_TOKEN!)
         expect(create.statusCode).toBe(403)
     })
+    it ("Kiosk can get part by ID", async () => {
+        let get = await request("localhost:4001")
+            .get(`/api/part/id?id=${NXID}`)
+            .set("Authorization", KIOSK_TOKEN!)
+        expect(get.statusCode).toBe(200)
+    })
+    it ("Kiosk can get part by data", async () => {
+        let completePart = generatePart()
+        let searchPart = JSON.parse(JSON.stringify(completePart))
+        delete searchPart.nxid
+        delete searchPart._id
+        delete searchPart.total_quantity
+        delete searchPart.quantity
+        delete searchPart.name
+        delete searchPart.shelf_location
+        var queryString = Object.keys(searchPart).map(key => "part[" + key + ']=' + searchPart[key]).join('&');
+        let get2 = await request("localhost:4001")
+            .get(`/api/part?location=Parts+Room&building=3&${queryString}`)
+            .set("Authorization", KIOSK_TOKEN!)
+        expect(get2.statusCode).toBe(200)
+    })
+    it ("Kiosk cannot add parts", async () => {
+    let add = await request("localhost:4001")
+        .post("/api/part/add")
+        .send({
+            part: {
+                nxid: NXID,
+                location: "Parts Room",
+                building: 3,
+                quantity: 5
+            },
+            owner: ""
+        })
+        .set("Authorization", KIOSK_TOKEN!)
+    expect(add.statusCode).toBe(403)
+    })
+    it ("Kiosk cannot delete part", async () => {
+        let deletePart = await request("localhost:4001")
+            .delete(`/api/part?nxid=${NXID}`)
+            .set("Authorization", KIOSK_TOKEN!)
+        expect(deletePart.statusCode).toBe(403)
+    })
 })
-
+describe("Text search", () => {
+    it("Tech - no text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", TECH_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBeGreaterThan(0)
+    })
+    it("Kiosk - no text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", KIOSK_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBeGreaterThan(0)
+    })
+    it("Clerk - no text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBeGreaterThan(0)
+    })
+    it("Admin - no text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBeGreaterThan(0)
+    })
+    it("Tech - with valid text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=rtx&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", TECH_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBeGreaterThan(0)
+    })
+    it("Kiosk - with valid text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=rtx&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", KIOSK_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBeGreaterThan(0)
+    })
+    it("Clerk - with valid text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=rtx&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBeGreaterThan(0)
+    })
+    it("Admin - with valid text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=rtx&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBeGreaterThan(0)
+    })
+    it("Tech - with invalid text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=asdbfaisubiuyafbzb&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", TECH_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBe(0)
+    })
+    it("Kiosk - with invalid text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=asdbfaisubiuyafbzb&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", KIOSK_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBe(0)
+    })
+    it("Clerk - with invalid text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=asdbfaisubiuyafbzb&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBe(0)
+    })
+    it("Admin - with invalid text", async () => {
+        let search = await request("localhost:4001")
+            .get("/api/part/search?searchString=asdbfaisubiuyafbzb&pageNum=1&pageSize=50&building=3&location=Parts+Room")
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(search.statusCode).toBe(200)
+        expect(search.body.length).toBe(0)
+    })
+})
 // Checkout
 
 // Checkin
 
-// Search
-
 // Get distinct on part records
 
 // Get distinct on part info
-
-// Get part records by ID
 
 // Move part records

@@ -30,7 +30,6 @@ const register = async (req: Request, res: Response) => {
 
         req.body.password = encryptedPassword
         delete req.body.password2
-        console.log(req.body)
 
         // Create user in our database
         let user = await User.create({

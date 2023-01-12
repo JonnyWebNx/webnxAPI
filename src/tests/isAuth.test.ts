@@ -16,7 +16,6 @@ describe("Is auth module works as expected", () => {
         const res = await request("localhost:4001")
             .post("/api/auth")
             .set("Authorization", TECH_TOKEN!)
-        console.log(res.body)
         expect(res.statusCode).toBe(200)
         expect(res.body.user_id).toBeDefined()
         expect(res.body.email).toBeDefined()

@@ -15,16 +15,22 @@ const assetManager = {
             let asset = req.body.asset as AssetSchema
             let parts = req.body.parts as CartItem[]
             // Return if user is kiosk
-            if(req.user.role=="kiosk")
+            if(req.user.role=="kiosk") {
+
                 return res.status(401).send("Kiosk cannot create assets")
+            }
             // Check for required fields
             if (!(asset.asset_tag&&asset.asset_type)||!/WNX([0-9]{7})+/.test(asset.asset_tag)) {
                 // Send response if request is invalid
+                console.log("Incomplete request")
+                console.log(asset)
                 return res.status(400).send("Invalid request");
             }
             let existingAsset = await Asset.findOne({asset_tag: asset.asset_tag})
-            if(existingAsset)
+            if(existingAsset) {
+                console.log("Asset tag already in use")
                 return res.status(400).send("Asset tag already in use");
+            }
             // Remove date created if present
             delete asset.date_created;
             // Set by attribute to requesting user

@@ -34,13 +34,13 @@ const PARTS_LIST = [
 
 function generateAsset() {
     let tempAsset = JSON.parse(JSON.stringify(TEST_ASSET))
-    let num = Math.floor(Math.random()*Math.pow(10,7))
+    let num = Math.floor(1000000 + Math.random() * 9000000)
     tempAsset.asset_tag = `WNX${num}`
     return tempAsset as AssetSchema;
 }
 function generateIncompleteAsset() {
     let tempAsset = JSON.parse(JSON.stringify(INCOMPLETE_ASSET))
-    let num = Math.floor(Math.random()*Math.pow(10,7))
+    let num = Math.floor(1000000 + Math.random() * 9000000)
     tempAsset.asset_tag = `WNX${num}`
     return tempAsset as AssetSchema;
 }
