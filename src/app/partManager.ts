@@ -74,24 +74,27 @@ const partManager = {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                for (let part of parts) {
-                    let count = await PartRecord.count({
-                        nxid: part.nxid,
-                        next: null,
-                        location: location ? location : "Parts Room",
-                        building: building ? building : req.user.building
-                    });
-                    let total_count = await PartRecord.count({
-                        nxid: part.nxid,
-                        next: null
-                    });
-                    part.quantity = count;
-                    part.total_quantity = total_count;
-                    console.log(part)
-                }
-                // Get rid of mongoose garbage
-                // Send back to client
-                return res.status(200).json(parts);
+                Promise.all(parts.map((part)=>{
+                    return new Promise(async (resolve, reject) => {
+                        let count = await PartRecord.count({
+                            nxid: part.nxid,
+                            next: null,
+                            location: location ? location : "Parts Room",
+                            building: building ? building : req.user.building
+                        });
+                        let total_count = await PartRecord.count({
+                            nxid: part.nxid,
+                            next: null
+                        });
+                        let tempPart = JSON.parse(JSON.stringify(part))
+                        
+                        tempPart.quantity = count;
+                        tempPart.total_quantity = total_count;
+                        return resolve(tempPart)
+                    })
+                })).then((returnParts)=>{
+                    return res.status(200).json(returnParts);
+                })
             })
         } catch (err) {
             // Database error
@@ -125,7 +128,6 @@ const partManager = {
             part = part._doc;
             part.total_quantity = total_quantity;
             part.quantity = quantity;
-            console.log(part)
             res.status(200).json(part);
         } catch (err) {
             // Database error
@@ -141,9 +143,6 @@ const partManager = {
                 if(user_id==null||user_id==undefined||user==null)
                     return res.status(400).send("Invalid request")
             }
-            // If requesting user is not a kiosk
-            if(req.user.role != 'kiosk')
-                return res.status(403).send("Invalid permissions")
             // Find each item and check quantities before updating
             for (let item of cart) {
                 // Check quantity before
@@ -200,10 +199,6 @@ const partManager = {
                 if(user_id==null||user_id==undefined||user==null)
                     return res.status(400).send("Invalid request")
             }
-            // If requesting user is not a kiosk
-            if(req.user.role != 'kiosk')
-                return res.status(403).send("Invalid permissions")
-            
             // Check quantities before updating records
             for (let item of inventory) {
                 let quantity = await PartRecord.count({
@@ -277,22 +272,25 @@ const partManager = {
                 }
             }
             // Use keywords to build search options
-            let searchOptions = []
+            let searchOptions = [] as any
             // Add regex of keywords to all search options
-            for (const key of keywords) {
-                searchOptions.push({ "nxid": { $regex: key, $options: "is" } })
-                searchOptions.push({ "name": { $regex: key, $options: "is" } })
-                searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
-                searchOptions.push({ "type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "location": { $regex: key, $options: "is" } })
-                searchOptions.push({ "storage_interface": { $regex: key, $options: "is" } })
-                searchOptions.push({ "port_type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "peripheral_type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "memory_type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
-                searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
-                searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
-            }
+            await Promise.all(keywords.map(async (key) => {
+                return new Promise((resolve, reject) => {
+                    searchOptions.push({ "nxid": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "name": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "location": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "storage_interface": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "port_type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "peripheral_type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "memory_type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
+                    return resolve("done")
+                })
+            }))
             Part.aggregate([{ $match: { $or: searchOptions } }])
                 .skip(parseInt(pageSize as string) * (parseInt(pageNum as string) - 1))
                 .limit(parseInt(pageSize as string) + 1)
@@ -302,23 +300,26 @@ const partManager = {
                         handleError(err)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
-                    for (let part of parts) {
-                        let count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null,
-                            location: location ? location : "Parts Room",
-                            building: building ? building : req.user.building
-                        });
-                        let total_count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null
-                        });
-                        part.quantity = count;
-                        part.total_quantity = total_count;
-                    }
-                    // Get rid of mongoose garbage
-                    // Send back to client
-                    return res.status(200).json(parts);
+                    Promise.all(parts.map((part)=>{
+                        return new Promise(async (resolve, reject) => {
+                            let count = await PartRecord.count({
+                                nxid: part.nxid,
+                                next: null,
+                                location: location ? location : "Parts Room",
+                                building: building ? building : req.user.building
+                            });
+                            let total_count = await PartRecord.count({
+                                nxid: part.nxid,
+                                next: null
+                            });
+                            let tempPart = JSON.parse(JSON.stringify(part))
+                            tempPart.quantity = count;
+                            tempPart.total_quantity = total_count;
+                            return resolve(tempPart)
+                        })
+                    })).then((returnParts)=>{
+                        return res.status(200).json(returnParts);
+                    })
                 })
         } catch (err) {
             handleError(err)
@@ -344,11 +345,11 @@ const partManager = {
                             return res.status(500).send("API could not handle your request: " + err);
                         }
                         // Change every part record
-                        for (const part of parts) {
+                        parts.map((part)=>{  
                             PartRecord.findByIdAndUpdate(part._id, {
                                 nxid: updatedPart!.nxid
                             }, callbackHandler.callbackHandleError);
-                        }
+                        })
                     }
                 )
             }
@@ -445,9 +446,9 @@ const partManager = {
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 // Delete every part record
-                for (const part of parts) {
-                    PartRecord.findByIdAndDelete(part._id)
-                }
+                parts.map(async (part) => {
+                    await PartRecord.findByIdAndDelete(part._id)
+                })
                 res.status(200).json("Successfully deleted part and records");
             })
             // Success
@@ -494,8 +495,6 @@ const partManager = {
     getUserInventory: async (req: Request, res: Response) => {
         try {
             const { user_id } = req.query.user_id ? req.query : req.user
-            if((user_id!=req.user.user_id)&&(req.user.role=="tech"))
-                return res.status(403).send("You cannot view another user's inventory");
             PartRecord.find({ next: null, owner: user_id ? user_id : req.user.user_id }, async (err: MongooseError, records: PartRecordSchema[]) => {
                 if (err) {
                     handleError(err)

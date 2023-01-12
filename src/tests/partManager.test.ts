@@ -34,9 +34,9 @@ function generateIncompletePart() {
     return tempPart as PartSchema;
 }
 describe("Create, get, update and delete parts as admin", () => {
-    let completePart = generatePart()
-    let incompletePart = generateIncompletePart()
+    
     it("Incomplete part results in 400 status", async () => {
+        let incompletePart = generateIncompletePart()
         let res = await request("localhost:4001")
             .post("/api/part")
             .send({part: incompletePart})
@@ -44,8 +44,9 @@ describe("Create, get, update and delete parts as admin", () => {
         expect(res.statusCode).toBe(400)
         
     })
-    it ("Create part, search for it, add to quantity, and delete it", async () => {
+    it ("Create part, search for it, add to quantity, and delete it - Admin", async () => {
         // Create part
+        let completePart = generatePart()
         let create = await request("localhost:4001")
             .post("/api/part")
             .send({part: completePart})
@@ -69,7 +70,6 @@ describe("Create, get, update and delete parts as admin", () => {
         let get2 = await request("localhost:4001")
             .get(`/api/part?location=Parts+Room&building=3&${queryString}`)
             .set("Authorization", ADMIN_TOKEN!)
-        console.log(get2.body)
         expect(get2.statusCode).toBe(200)
         expect(get2.body[0].nxid).toBe(completePart.nxid)
         // Invalid add to inventory request
@@ -109,27 +109,96 @@ describe("Create, get, update and delete parts as admin", () => {
         expect(get3.body[0].total_quantity).toBe(5+completePart.quantity!)
         // Delete
         let deletePart = await request("localhost:4001")
-            .delete(`/api/part?id=${completePart.nxid}`)
+            .delete(`/api/part?nxid=${completePart.nxid}`)
             .set("Authorization", ADMIN_TOKEN!)
         expect(deletePart.statusCode).toBe(200)
     })
-    it("Add to inventory", () => {
-
-    })
-    it ("Get part by info", () => {
-
-    })
-    it ("Get by ID", async () => {
-
-    })
-    it ("Update part",async () => {
+    it ("Create part, search for it, add to quantity, and delete it - Clerk", async () => {
+        let completePart = generatePart()
+        // Create part
+        let create = await request("localhost:4001")
+            .post("/api/part")
+            .send({part: completePart})
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(create.statusCode).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
+        // Get the part by nxid
+        let get1 = await request("localhost:4001")
+            .get(`/api/part/id?id=${completePart.nxid}`)
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(get1.statusCode).toBe(200)
+        expect(get1.body.total_quantity).toBe(completePart.quantity)
         
+        // Search part by data
+        let searchPart = JSON.parse(JSON.stringify(completePart))
+        delete searchPart.nxid
+        delete searchPart._id
+        delete searchPart.total_quantity
+        delete searchPart.quantity
+        var queryString = Object.keys(searchPart).map(key => "part[" + key + ']=' + searchPart[key]).join('&');
+        let get2 = await request("localhost:4001")
+            .get(`/api/part?location=Parts+Room&building=3&${queryString}`)
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(get2.statusCode).toBe(200)
+        expect(get2.body[0].nxid).toBe(completePart.nxid)
+        // Invalid add to inventory request
+        let invalidAdd = await request("localhost:4001")
+            .post("/api/part/add")
+            .send({
+                part: {
+                    nxid: completePart.nxid,
+                    location: "Parts Room",
+                    building: 3,
+                    quantity: -3
+                },
+                owner: ""
+            })
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(invalidAdd.statusCode).toBe(400)
+        // Valid add
+        let add = await request("localhost:4001")
+            .post("/api/part/add")
+            .send({
+                part: {
+                    nxid: completePart.nxid,
+                    location: "Parts Room",
+                    building: 3,
+                    quantity: 5
+                },
+                owner: ""
+            })
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(add.statusCode).toBe(200)
+        await new Promise(res => setTimeout(res, 500))
+        // Check new quantity
+        let get3 = await request("localhost:4001")
+            .get(`/api/part?location=Parts+Room&building=3&${queryString}`)
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(get3.statusCode).toBe(200)
+        expect(get3.body[0].total_quantity).toBe(5+completePart.quantity!)
+        // Delete
+        let deletePart = await request("localhost:4001")
+            .delete(`/api/part?nxid=${completePart.nxid}`)
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(deletePart.statusCode).toBe(200)
     })
-    it("Add to inventory after update", () => {
-
+    it ("Tech cannot create parts", async () => {
+        let completePart = generatePart()
+        // Create part
+        let create = await request("localhost:4001")
+            .post("/api/part")
+            .send({part: completePart})
+            .set("Authorization", TECH_TOKEN!)
+        expect(create.statusCode).toBe(403)
     })
-    it ("Delete part",async () => {
-        
+    it ("Kiosk cannot create parts", async () => {
+        let completePart = generatePart()
+        // Create part
+        let create = await request("localhost:4001")
+            .post("/api/part")
+            .send({part: completePart})
+            .set("Authorization", KIOSK_TOKEN!)
+        expect(create.statusCode).toBe(403)
     })
 })
 

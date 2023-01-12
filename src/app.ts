@@ -18,7 +18,8 @@ import login from './app/login.js'
 import register from './app/register.js'
 import auth from './middleware/auth.js'
 import isAuth from './app/isAuth.js'
-import permissions from './middleware/permissions.js'
+import clerkAdminPermission from './middleware/clerkAdminPermission.js';
+import kioskClerkAdminPermission from './middleware/kioskClerkAdminPermission.js';
 
 // Database modules
 import partManager from './app/partManager.js'
@@ -26,6 +27,8 @@ import userManager from './app/userManager.js';
 import sanitize from './middleware/sanitize.js';
 import assetManager from './app/assetManager.js'
 import path from 'node:path';
+import adminPermission from './middleware/adminPermission.js';
+import kioskPermission from './middleware/kioskPermission.js';
 const { ROOT_DIRECTORY } = config;
 // Create express instance
 const app = express();
@@ -72,11 +75,11 @@ app.post("/api/register", sanitize, register);
 // ***   Parts   ***
 //
 // Create
-app.post("/api/part", auth, permissions, sanitize, partManager.createPart);
-app.post("/api/part/add", auth, permissions, sanitize, partManager.addToInventory);
-app.post("/api/checkout", auth, sanitize, partManager.checkout);
-app.post("/api/checkin", auth, sanitize, partManager.checkin)
-app.post("/api/part/move", auth, sanitize, partManager.movePartRecords);
+app.post("/api/part", auth, clerkAdminPermission, sanitize, partManager.createPart);
+app.post("/api/part/add", auth, clerkAdminPermission, sanitize, partManager.addToInventory);
+app.post("/api/checkout", auth, kioskPermission, sanitize, partManager.checkout);
+app.post("/api/checkin", kioskPermission, auth, sanitize, partManager.checkin)
+app.post("/api/part/move", clerkAdminPermission, auth, sanitize, partManager.movePartRecords);
 // Read    throw new TypeError('path must be absolute or specify root to res.sendFile');
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
@@ -87,9 +90,9 @@ app.get("/api/part/records", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 // Update
-app.put("/api/part", auth, permissions, sanitize, partManager.updatePartInfo);
+app.put("/api/part", auth, clerkAdminPermission, sanitize, partManager.updatePartInfo);
 // Delete
-app.delete("/api/part", auth, permissions, sanitize, partManager.deletePart);
+app.delete("/api/part", auth, clerkAdminPermission, sanitize, partManager.deletePart);
 
 
 // ***   Users   ***
@@ -98,12 +101,12 @@ app.delete("/api/part", auth, permissions, sanitize, partManager.deletePart);
 // app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
 // Read
 app.get("/api/user", auth, sanitize, userManager.getUser);
-app.get("/api/user/all", auth, permissions, userManager.getAllUsers)
+app.get("/api/user/all", auth, kioskClerkAdminPermission, userManager.getAllUsers)
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 // Update
-app.put("/api/user", auth, permissions, sanitize, userManager.updateUser);
+app.put("/api/user", auth, adminPermission, sanitize, userManager.updateUser);
 // Delete
-app.delete("/api/user", auth, permissions, sanitize, userManager.deleteUser);
+app.delete("/api/user", auth, adminPermission, sanitize, userManager.deleteUser);
 
 // ***    Assets    ****
 //Create
