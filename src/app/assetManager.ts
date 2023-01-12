@@ -22,13 +22,10 @@ const assetManager = {
             // Check for required fields
             if (!(asset.asset_tag&&asset.asset_type)||!/WNX([0-9]{7})+/.test(asset.asset_tag)) {
                 // Send response if request is invalid
-                console.log("Incomplete request")
-                console.log(asset)
                 return res.status(400).send("Invalid request");
             }
             let existingAsset = await Asset.findOne({asset_tag: asset.asset_tag})
             if(existingAsset) {
-                console.log("Asset tag already in use")
                 return res.status(400).send("Asset tag already in use");
             }
             // Remove date created if present

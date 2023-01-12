@@ -27,12 +27,9 @@ const partManager = {
             const { nxid, manufacturer, name, type, quantity } = req.body.part;
             // If any part info is missing, return invalid request
             if (!(nxid&&manufacturer&&name&&type)) {
-                console.log("INVALID REQUEST")
                 return res.status(400).send("Invalid request");
             }
             if (!/PNX([0-9]{7})+/.test(nxid)) {
-                console.log("BAD ASSET TAG")
-                console.log(nxid)
                 return res.status(400).send("Invalid part ID");
             }
             // Try to add part to database
