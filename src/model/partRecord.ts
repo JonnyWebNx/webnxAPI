@@ -20,7 +20,7 @@ const partRecord = new mongoose.Schema({
     // ID of the user who's request created the part record
     by: { type: String, required: true },
     // Date the part was created
-    date_created: { type: Date, default: Date.now },
+    date_created: { type: Date, default: Date.now() },
 });
 // Add index here
 export default mongoose.model("partRecord", partRecord);

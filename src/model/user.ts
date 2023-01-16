@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema({
     building: { type: Number, required: true},
     role: { type: String, default: "" },
     enabled: { type: Boolean, default: true },
-    date_created: { type: Date, default: Date.now },
+    date_created: { type: Date, default: Date.now() },
     token: { type: String },
 });
 

@@ -5,7 +5,7 @@ import handleError from "../config/mailer.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { Request, Response } from "express";
 import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
-import { CallbackError } from "mongoose";
+import { Callback, CallbackError } from "mongoose";
 import partRecord from "../model/partRecord.js";
 
 const assetManager = {
@@ -32,6 +32,8 @@ const assetManager = {
             delete asset.date_created;
             // Set by attribute to requesting user
             asset.by = req.user.user_id;
+            asset.prev = null;
+            asset.next = null;
             /**
              * @TODO figure out how to handle parts records when creating assets
              */
@@ -63,11 +65,12 @@ const assetManager = {
     getAssets: async (req: Request, res: Response) => {
         try {
             // get object from request
-            let asset = req.query;
+            let asset = req.query as AssetSchema;
             // Clear unnecessary param
             if (req.query.advanced) {
                 delete req.query.advanced;
             }
+            asset.next = null;
             // Send request to database
             Asset.find(asset, (err: CallbackError, record: PartRecordSchema) => {
                 if (err)
@@ -87,7 +90,7 @@ const assetManager = {
             // Test regex for NXID
             if (/WNX([0-9]{7})+/.test(id)||id=='test') {
                 // Find by NXID
-                Asset.findOne({asset_tag: id}, (err: CallbackError, record: AssetSchema) => {
+                Asset.findOne({asset_tag: id, next: null}, (err: CallbackError, record: AssetSchema) => {
                     if (err)
                         res.status(500).send("API could not handle your request: " + err);
                     else
@@ -154,7 +157,14 @@ const assetManager = {
                 searchOptions.push({ "private_port": { $regex: key, $options: "is" } })
                 searchOptions.push({ "ipmi_port": { $regex: key, $options: "is" } })
             }
-            Asset.aggregate([{ $match: { $or: searchOptions } }])
+            Asset.aggregate([{ $match: {
+                    $and: [
+                        { $or: searchOptions },
+                        { next: null }
+                    ]
+                    
+                } 
+            }])
             .skip(pageSize * (pageNum - 1))
             .limit(Number(pageSize))
             .exec((err, record) => {
@@ -176,8 +186,7 @@ const assetManager = {
                 // Send response if request is invalid
                 return res.status(400).send("Invalid request");
             }
-            // Remove date created if present
-            asset.date_created;
+            let current_date = Date.now()
             // Set by attribute to requesting user
             asset.by = req.user.user_id;
             // Get current date
@@ -248,21 +257,24 @@ const assetManager = {
                 }
             }
             // Update the asset object and return to user before updating parts records
-            Asset.findByIdAndDelete(asset._id, (err: CallbackError, record: AssetSchema) => {
+            asset.prev = asset._id
+            asset.next = null
+            asset.date_created = current_date
+            delete asset._id
+            delete asset.date_created
+            Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
                 if (err) {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                else {
-                    Asset.create(asset, (err: CallbackError, new_asset: AssetSchema)=>{
-                        if(err) {
-                            handleError(err)
-                            return res.status(500).send("API could not handle your request: " + err);
-                        }
-                        res.status(200).json(new_asset)
-                    })
-                }
-            });
+                Asset.findByIdAndUpdate(new_asset.prevo, { next: new_asset._id }, (err: CallbackError, updated_asset: AssetSchema) => {
+                    if (err) {
+                        handleError(err)
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    res.status(200).json(new_asset)
+                })
+            })
             // Edit parts records after confirming quantities and updating Asset object
             for (let i = 0; i < differencesPartIDs.length; i++) {
                 // Early return for unchanged quantities
@@ -282,6 +294,7 @@ const assetManager = {
                         asset_tag: asset.asset_tag,
                         building: asset.building,
                         location: "Asset",
+                        date_created: current_date,
                         by: req.user.user_id,
                         next: null,
                     } as PartRecordSchema
@@ -298,6 +311,7 @@ const assetManager = {
                         building: req.user.building,
                         location: "Tech Inventory",
                         by: req.user.user_id,
+                        date_created: current_date,
                         next: null,
                     } as PartRecordSchema
                 }
@@ -364,6 +378,7 @@ const assetManager = {
             const { asset_tag } = req.query
             // Find all parts records associated with asset tag
             let records = await PartRecord.find({ asset_tag, next: null,})   
+            let current_date = Date.now()
             for (let record of records) {
                 let createOptions = {
                     nxid: record.nxid,
@@ -372,6 +387,7 @@ const assetManager = {
                     location: "All Techs",
                     by: req.user.user_id,
                     prev: record._id,
+                    date_created: current_date,
                     next: null,
                 } as PartRecordSchema
                 // let newRecord = await PartRecord.create(createOptions);
@@ -379,12 +395,28 @@ const assetManager = {
                 
                 await partRecord.findByIdAndUpdate(createOptions.prev, {next: "deleted"})
             }
-            Asset.findOneAndDelete({asset_tag}, (err: CallbackError, asset: AssetSchema) => {
+            Asset.findOne({asset_tag, next: null}, (err: CallbackError, asset: AssetSchema) => {
                 if(err) {
                     res.status(500).send("API could not handle your request: "+err);
                     return;
                 }
-                res.status(200).send("Success")
+                asset.prev = asset._id
+                asset.next = "deleted"
+                asset.date_created = current_date
+                delete asset._id
+                Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
+                    if(err) {
+                        res.status(500).send("API could not handle your request: "+err);
+                        return;
+                    }
+                    Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id}, (err: CallbackError, new_asset: AssetSchema) => {
+                        if(err) {
+                            res.status(500).send("API could not handle your request: "+err);
+                            return;
+                        }
+                        res.status(200).send("Success")
+                    })
+                })
             })
         } catch(err) {
             handleError(err)

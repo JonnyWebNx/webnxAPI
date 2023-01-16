@@ -46,6 +46,8 @@ export interface AssetSchema {
     [index: string]: any,
     _id?: string | Types.ObjectId,
     asset_tag?: string,
+    prev?: string|null | Types.ObjectId,
+    next?: string|null | Types.ObjectId,
     building?: number,
     asset_type?: string,
     chassis_type?: string,
@@ -61,8 +63,7 @@ export interface AssetSchema {
     ipmi_port?: string,
     by?: string | Types.ObjectId,
     sid?: number,
-    date_created?: string,
-    date_updated?: string
+    date_created?: string | number,
 }
 
 export interface PartRecordSchema {
@@ -76,7 +77,7 @@ export interface PartRecordSchema {
     serial?: string,
     owner?: string | Types.ObjectId,
     by?: string | Types.ObjectId,
-    date_created?: string
+    date_created?: string | number
 }
 
 // User state interface

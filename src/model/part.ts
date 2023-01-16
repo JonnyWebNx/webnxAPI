@@ -19,7 +19,7 @@ const partSchema = new mongoose.Schema({
     cable_end1: { type: String },
     cable_end2: { type: String },
     created_by: { type: String, default: null },
-    date_created: { type: Date, default: Date.now },
+    date_created: { type: Date, default: Date.now() },
 });
 partSchema.index({ '$**': 'text' });
 export default mongoose.model("part", partSchema);
