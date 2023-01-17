@@ -14,9 +14,8 @@ import User from "../model/user.js";
 import handleError from "../config/mailer.js";
 import callbackHandler from '../middleware/callbackHandlers.js'
 import { AssetSchema, PartRecordSchema } from "./interfaces.js";
-import { CallbackError, Mongoose } from "mongoose";
+import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
 import { Request, Response } from "express";
-import { MongooseError } from "mongoose";
 import { PartSchema } from "./interfaces.js";
 
 const partManager = {
@@ -582,6 +581,29 @@ const partManager = {
             // Check NXIDs
             if(from.nxid != to.nxid) {
                 return res.status(400).send("Mismatched nxids");
+            }
+            // Switch for setting location
+            switch (to.owner) {
+                case 'all':
+                    // All techs
+                    to.location = 'All Techs'
+                    break;
+                case 'testing':
+                    // Testing center
+                    to.location = 'Testing Center'
+                    break;
+                // Add more cases here if necessary...
+                default:
+                    if (!mongoose.Types.ObjectId.isValid(to.owner))
+                        return res.status(400).send("Invalid id")
+                    // Check if user exists
+                    let findUser = await User.findOne({ _id: to.owner })
+                    // Return if user not found
+                    if (findUser==null)
+                        return res.status(400).send("User not found")
+                    
+                    to.location = 'Tech Inventory'
+                    to.building = findUser.building
             }
             // Get records
             let fromRecords = await PartRecord.find(from)
