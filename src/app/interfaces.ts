@@ -56,14 +56,15 @@ export interface AssetSchema {
     serial?: string,
     rails?: Boolean,
     live?: Boolean,
-    bay?: string,
+    bay?: string | number,
     power_port?: string,
     public_port?: string,
     private_port?: string,
     ipmi_port?: string,
     by?: string | Types.ObjectId,
     sid?: number,
-    date_created?: string | number,
+    date_created?: string | number | Date,
+    date_replaced?: string | number | Date,
 }
 
 export interface PartRecordSchema {
@@ -77,7 +78,8 @@ export interface PartRecordSchema {
     serial?: string,
     owner?: string | Types.ObjectId,
     by?: string | Types.ObjectId,
-    date_created?: string | number
+    date_created?: string | number | Date,
+    date_replaced?: string | number | Date,
 }
 
 // User state interface

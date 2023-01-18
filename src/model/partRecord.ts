@@ -21,6 +21,7 @@ const partRecord = new mongoose.Schema({
     by: { type: String, required: true },
     // Date the part was created
     date_created: { type: Date, default: Date.now() },
+    date_replaced: { type: Date, default: null},
 });
 // Add index here
 export default mongoose.model("partRecord", partRecord);

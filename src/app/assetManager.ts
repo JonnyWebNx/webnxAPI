@@ -5,8 +5,9 @@ import handleError from "../config/mailer.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { Request, Response } from "express";
 import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
-import { Callback, CallbackError } from "mongoose";
+import mongoose, { Callback, CallbackError, MongooseError, mongo } from "mongoose";
 import partRecord from "../model/partRecord.js";
+import { stringify } from "querystring";
 
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {
@@ -256,25 +257,33 @@ const assetManager = {
                     // Save results to avoid duplicate queries
                 }
             }
+            delete asset.date_updated
             // Update the asset object and return to user before updating parts records
-            asset.prev = asset._id
-            asset.next = null
-            asset.date_created = current_date
-            delete asset._id
-            delete asset.date_created
-            Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
-                if (err) {
-                    handleError(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                Asset.findByIdAndUpdate(new_asset.prevo, { next: new_asset._id }, (err: CallbackError, updated_asset: AssetSchema) => {
-                    if (err) {
+            let getAsset = await Asset.findOne({asset_tag: asset.asset_tag, next: null})
+            if(JSON.stringify(getAsset) != JSON.stringify(asset)) {
+                asset.prev = asset._id
+                asset.next = null
+                asset.date_created = current_date
+                delete asset._id
+                delete asset.date_created
+
+                Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
+                        if (err) {
                         handleError(err)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
-                    res.status(200).json(new_asset)
+                    Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id, date_replaced: current_date }, (err: CallbackError, updated_asset: AssetSchema) => {
+                        if (err) {
+                            handleError(err)
+                            return res.status(500).send("API could not handle your request: " + err);
+                        }
+                        res.status(200).json(new_asset)
+                    })
                 })
-            })
+            }
+            else {
+                res.status(200).json(asset)
+            }
             // Edit parts records after confirming quantities and updating Asset object
             for (let i = 0; i < differencesPartIDs.length; i++) {
                 // Early return for unchanged quantities
@@ -421,6 +430,104 @@ const assetManager = {
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);
+        }
+    },
+    getAssetHistory: async (req: Request, res: Response) => {
+        try {
+            let getHistory = async (err: CallbackError, asset: AssetSchema) => {
+                if (err) {
+                    handleError(err)
+                    return res.status(500).send("API could not handle your request: " + err);        
+                }
+                let history = [] as AssetSchema[]
+                history.push(asset)
+                let currentAsset = asset
+                
+                while(currentAsset.prev!=null) {
+
+                    let temp = await Asset.findById(currentAsset.prev)
+
+                    if(temp == null)
+                        break
+                    currentAsset = temp
+                    history.push(currentAsset)
+                }
+
+                let assetInfoUpdates = []
+                for (let i = 1; i < history.length; i++) {
+                    let tempDates = await PartRecord.find({
+                        asset_tag: asset.asset_tag, 
+                        $or: [
+                            {
+                                date_created: {
+                                    $gte: history[i].date_created,
+                                    $lt: history[i-1].date_created
+                                }
+                            },
+                            {
+                                date_replaced: {
+                                    $gte: history[i].date_created,
+                                    $lt: history[i-1].date_created
+                                }
+                            }
+                        ]
+                    }).distinct("date_created")
+                    let removeDates = await PartRecord.find({
+                        asset_tag: asset.asset_tag, 
+                        $or: [
+                            {
+                                date_created: {
+                                    $gte: history[i].date_created,
+                                    $lt: history[i-1].date_created
+                                }
+                            },
+                            {
+                                date_replaced: {
+                                    $gte: history[i].date_created,
+                                    $lt: history[i-1].date_created
+                                }
+                            }
+                        ]
+                    }).distinct("date_replaced")
+                    for (let date of removeDates) {
+                        if (tempDates.indexOf(date)==-1)
+                            tempDates.push(date)
+                    }
+                    tempDates.sort((a, b) => { return b - a })
+                    let events = []
+                    for (let j = 0; j < tempDates.length; j++){
+                        let addedParts = await PartRecord.find({
+                            asset_tag: asset.asset_tag,
+                            date_created: tempDates[j]
+                        })
+                        let removedParts = await PartRecord.find({
+                            asset_tag: asset.asset_tag,
+                            date_replaced: tempDates[j]
+                        })
+                        events.push({date: tempDates[j], added: addedParts, removed: removedParts})
+                    }
+                    assetInfoUpdates.push({asset: history[i], events})
+                }
+                return res.status(200).json(assetInfoUpdates)
+            }
+            // Get ID from query string
+            let id = req.query.id as string
+            console.log(id)
+            // Check if ID is null or doesn't match ID type
+            if (!id||!(/WNX([0-9]{7})+/.test(id)||mongoose.Types.ObjectId.isValid(id)))
+                return res.status(400).send("Invalid request");
+            // If NXID
+            if (/WNX([0-9]{7})+/.test(id)) {
+                Asset.findOne({asset_tag: id, next: null}, getHistory)
+            }
+            // If mongo ID
+            else {
+                Asset.findById(id, getHistory)
+            }
+            
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
         }
     }
 };

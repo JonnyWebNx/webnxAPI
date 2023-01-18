@@ -13,8 +13,9 @@ import app from './app.js'
 import config from './config.js';
 import PartRecord from './model/partRecord.js';
 import Part from './model/part.js';
-import { MongooseError } from 'mongoose';
+import mongoose, { MongooseError } from 'mongoose';
 import { PartRecordSchema, PartSchema } from './app/interfaces.js';
+import callbackHandler from './middleware/callbackHandlers.js';
 // Hand off requests to app
 const server = http.createServer(app);
 
@@ -47,19 +48,29 @@ WebNX API by Cameron McKay`,"\x1b[36m",`\nNow with Typescript!`,
 });
 
 PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
+  let handleCallbackError = (err: MongooseError, records: PartRecordSchema) => {
+    if(err) {
+      console.log(err)
+      return
+    }
+  }
   let parts = await Part.find()
   let nxids = parts.map((part)=> part.nxid)
   let count = 0;
+  let replaceCount = 0;
   for(let record of records) {
     if (!record.nxid||nxids.indexOf(record.nxid)==-1) {
       count++
-      PartRecord.findByIdAndDelete(record._id, (err: MongooseError, records: PartRecordSchema) => {
-        if(err) {
-          console.log(err)
-          return
-        }
-      })
+      PartRecord.findByIdAndDelete(record._id, handleCallbackError)
+    }
+    if((record.date_replaced == null)&&(record.next!=null)&&(mongoose.Types.ObjectId.isValid(record.next))) {
+      let nextRec = await PartRecord.findById(record.next)
+      if (nextRec) {
+        replaceCount++
+        PartRecord.findByIdAndUpdate(record._id, { date_replaced: nextRec.date_created}, handleCallbackError)
+      }
     }
   }
   console.log("Orphaned records: "+count)
+  console.log("Records updated: " +replaceCount)
 })

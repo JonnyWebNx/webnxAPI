@@ -36,6 +36,7 @@ const asset = new mongoose.Schema({
     // Parts
     // Date the part was created
     date_created: { type: Date, default: Date.now() },
+    date_replaced: { type: Date, default: null },
 });
 // Add index here
 export default mongoose.model("asset", asset);

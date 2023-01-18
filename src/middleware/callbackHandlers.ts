@@ -8,7 +8,7 @@ const callbackHandler = {
         if (err) {
             return handleError(err)
         }
-        PartRecord.findByIdAndUpdate(record.prev, { next: record._id }, (err: MongooseError, record: PartRecordSchema) => {
+        PartRecord.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, record: PartRecordSchema) => {
             if (err) {
                 return handleError(err)
             }

@@ -116,6 +116,7 @@ app.get("/api/asset", auth, sanitize, assetManager.getAssets);
 app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
 app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
 app.get('/api/asset/search', auth, sanitize, assetManager.searchAssets);
+app.get('/api/asset/history', auth, sanitize, assetManager.getAssetHistory);
 // Update
 app.put("/api/asset", auth, sanitize, assetManager.updateAsset);
 // Delete
