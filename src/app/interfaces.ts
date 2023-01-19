@@ -108,13 +108,16 @@ export interface UserSchema {
     _v?: number,
     _id?: string | Types.ObjectId
 }
-export interface IDummy {
-    something: string;
-    somethingElse: string;
+
+export interface AssetEvents {
+    [key: string]: AssetEvent;
 }
 
-export interface DummyDocument extends IDummy, mongoose.Document {
-    createdAt: Date;
-    updatedAt: Date;
-    _doc?: any
+export interface AssetEvent {
+    added: AssetHistoryParts,
+    removed: AssetHistoryParts
+}
+
+export interface AssetHistoryParts {
+    [key: string]: number;
 }
