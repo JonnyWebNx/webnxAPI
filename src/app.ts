@@ -60,7 +60,6 @@ app.use(function(req: Request, res: Response, next: NextFunction) {
 // JSON middleware...
 app.use(express.json());
 app.use('/assets', express.static(path.join(config.ROOT_DIRECTORY, 'static/assets')));
-app.use('/img/icons', express.static(path.join(config.ROOT_DIRECTORY, 'static/assets/img/icons')))
 
 app.options('*', cors(corsOptions))
 app.post("/api/auth", auth, isAuth);
