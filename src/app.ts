@@ -83,7 +83,7 @@ app.post("/api/checkin", kioskPermission, auth, sanitize, partManager.checkin)
 app.post("/api/part/move", auth, sanitize, partManager.movePartRecords);
 // Read    throw new TypeError('path must be absolute or specify root to res.sendFile');
 app.get("/api/part", auth, sanitize, partManager.getPart);
-app.get("/images/parts/:nxid", auth, sanitize, partManager.getPartImage)
+app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
 app.get("/api/part/search", auth, sanitize, partManager.searchParts);
 app.get("/api/part/inventory", auth, sanitize, partManager.getUserInventory);
