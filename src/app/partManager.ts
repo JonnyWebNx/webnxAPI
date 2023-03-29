@@ -52,12 +52,21 @@ const partManager = {
                     }, callbackHandler.callbackHandleError)
                 }
                 // Succesful query
-                return res.status(200).send(`Created part: ${part.manufacturer} ${part.name}`);
+                return res.status(200).json(part);
 
             });
         } catch (err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    updatePartImage: async (req: Request, res: Response) => {
+        try {
+            
+        } catch (err) {
+            // Database error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
         }
     },
     // Read
