@@ -28,7 +28,7 @@ export async function updatePartImage (req: Request, res: Response) {
         const targetPath = path.join(PART_IMAGE_DIRECTORY, `${req.file?.originalname!}.webp`)
         // Resize and convert image
         await sharp(tempPath)
-        .resize(1280)
+        .resize(600)
         .webp()
         .toFile(targetPath)
         fs.unlinkSync(tempPath!)
