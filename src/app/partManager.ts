@@ -19,6 +19,7 @@ import { Request, Response } from "express";
 import path from 'path';
 import { PartSchema } from "./interfaces.js";
 import config from '../config.js'
+import { existsSync } from 'fs';
 
 const { PART_IMAGE_DIRECTORY } = config
 
@@ -632,9 +633,16 @@ const partManager = {
     },
     getPartImage: async (req: Request, res: Response) => {
         try {
-            res.sendFile(path.join(PART_IMAGE_DIRECTORY, `${req.params.nxid}.webp`))
+            // Create path to image
+            let imagePath = path.join(PART_IMAGE_DIRECTORY, `${req.params.nxid}.webp`)
+            // Check if it exists and edit path if it doesn't
+            if(!existsSync(imagePath))
+                imagePath = path.join(PART_IMAGE_DIRECTORY, 'notfound.webp')
+            // Send image
+            res.sendFile(imagePath)
         } catch(err) {
-
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
         }
     }
 };
