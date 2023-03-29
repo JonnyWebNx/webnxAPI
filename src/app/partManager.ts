@@ -16,8 +16,11 @@ import callbackHandler from '../middleware/callbackHandlers.js'
 import { AssetSchema, PartRecordSchema } from "./interfaces.js";
 import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
 import { Request, Response } from "express";
-import multer from 'multer'
+import path from 'path';
 import { PartSchema } from "./interfaces.js";
+import config from '../config.js'
+
+const { PART_IMAGE_DIRECTORY } = config
 
 const partManager = {
     // Create
@@ -625,6 +628,13 @@ const partManager = {
         } catch (err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getPartImage: async (req: Request, res: Response) => {
+        try {
+            res.sendFile(path.join(PART_IMAGE_DIRECTORY, `${req.params.nxid}.webp`))
+        } catch(err) {
+
         }
     }
 };
