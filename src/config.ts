@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve("./config.env") });
 
 // Interface to load env variables
 // Note these variables can possibly be undefined
-// as someone could skip these varibales or not setup a .env file at all
+// as someone could skip these variables or not setup a .env file at all
 
 interface ENV {
     PORT: number,
@@ -14,6 +14,8 @@ interface ENV {
     JWT_SECRET: string,
     JWT_EXPIRES_IN: string,
     ROOT_DIRECTORY: string,
+    TEMP_UPLOAD_DIRECTORY: string,
+    PART_IMAGE_DIRECTORY: string,
     DEV_EMAIL: string,
     EMAIL: string,
     EMAIL_PASS: string,
@@ -30,6 +32,8 @@ interface Config {
   JWT_SECRET: string,
   JWT_EXPIRES_IN: string,
   ROOT_DIRECTORY: string,
+  TEMP_UPLOAD_DIRECTORY: string,
+  PART_IMAGE_DIRECTORY: string,
   DEV_EMAIL: string,
   EMAIL: string,
   EMAIL_PASS: string,
@@ -49,6 +53,8 @@ const getConfig = (): ENV => {
     JWT_SECRET: process.env.JWT_SECRET,
     JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN,
     ROOT_DIRECTORY: process.env.ROOT_DIRECTORY,
+    TEMP_UPLOAD_DIRECTORY: process.env.TEMP_UPLOAD_DIRECTORY,
+    PART_IMAGE_DIRECTORY: process.env.PART_IMAGE_DIRECTORY,
     DEV_EMAIL: process.env.DEV_EMAIL,
     EMAIL: process.env.EMAIL,
     EMAIL_PASS: process.env.EMAIL_PASS,
@@ -66,7 +72,7 @@ const getConfig = (): ENV => {
 // it as Config which just removes the undefined from our type 
 // definition.
 
-const getSanitzedConfig = (config: ENV): Config => {
+const getSanitizedConfig = (config: ENV): Config => {
   for (const [key, value] of Object.entries(config)) {
     if (value === undefined) {
       throw new Error(`Missing key ${key} in config.env`);
@@ -77,6 +83,6 @@ const getSanitzedConfig = (config: ENV): Config => {
 
 const config = getConfig();
 
-const sanitizedConfig = getSanitzedConfig(config);
+const sanitizedConfig = getSanitizedConfig(config);
 
 export default sanitizedConfig;

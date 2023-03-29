@@ -16,6 +16,7 @@ import callbackHandler from '../middleware/callbackHandlers.js'
 import { AssetSchema, PartRecordSchema } from "./interfaces.js";
 import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
 import { Request, Response } from "express";
+import multer from 'multer'
 import { PartSchema } from "./interfaces.js";
 
 const partManager = {
@@ -58,15 +59,6 @@ const partManager = {
         } catch (err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-    updatePartImage: async (req: Request, res: Response) => {
-        try {
-            
-        } catch (err) {
-            // Database error
-            handleError(err)
-            res.status(500).send("API could not handle your request: " + err);
         }
     },
     // Read
@@ -361,7 +353,7 @@ const partManager = {
                     }
                 )
             }
-            return res.status(201).send(`Updated part: ${updatedPart.manufacturer} ${updatedPart.name}`);
+            return res.status(201).json(updatedPart);
         } catch (err) {
             // Database error
             handleError(err)

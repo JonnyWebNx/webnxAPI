@@ -29,7 +29,8 @@ import assetManager from './app/assetManager.js'
 import path from 'node:path';
 import adminPermission from './middleware/adminPermission.js';
 import kioskPermission from './middleware/kioskPermission.js';
-import part from './model/part.js';
+import { updatePartImage, uploadFile } from './config/uploadFile.js';
+
 const { ROOT_DIRECTORY } = config;
 // Create express instance
 const app = express();
@@ -91,7 +92,7 @@ app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByI
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 // Update
 app.put("/api/part", auth, clerkAdminPermission, sanitize, partManager.updatePartInfo);
-app.put("/images/parts", auth, sanitize, clerkAdminPermission, partManager.updatePartImage);
+app.put("/images/parts", auth, sanitize, clerkAdminPermission, uploadFile, updatePartImage);
 // Delete
 app.delete("/api/part", auth, clerkAdminPermission, sanitize, partManager.deletePart);
 
