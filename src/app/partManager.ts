@@ -21,7 +21,7 @@ import { PartSchema } from "./interfaces.js";
 import config from '../config.js'
 import { existsSync } from 'fs';
 
-const { PART_IMAGE_DIRECTORY } = config
+const { UPLOAD_DIRECTORY } = config
 
 const partManager = {
     // Create
@@ -651,10 +651,10 @@ const partManager = {
     getPartImage: async (req: Request, res: Response) => {
         try {
             // Create path to image
-            let imagePath = path.join(PART_IMAGE_DIRECTORY, `${req.params.nxid}.webp`)
+            let imagePath = path.join(UPLOAD_DIRECTORY, 'images/parts', `${req.params.nxid}.webp`)
             // Check if it exists and edit path if it doesn't
             if(!existsSync(imagePath))
-                imagePath = path.join(PART_IMAGE_DIRECTORY, 'notfound.webp')
+                imagePath = path.join(UPLOAD_DIRECTORY, 'images', 'notfound.webp')
             // Send image
             res.sendFile(imagePath)
         } catch(err) {

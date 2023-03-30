@@ -14,6 +14,11 @@ import User from '../model/user.js'
 import { MongooseError } from 'mongoose';
 import type { Request, Response } from 'express'
 import { UserSchema } from './interfaces.js';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import handleError from '../config/mailer.js'
+import config from '../config.js'
+const {UPLOAD_DIRECTORY} = config
 
 // Main object containing functions
 const userManager = {
@@ -151,6 +156,20 @@ const userManager = {
             // User was successfully deleted
             return res.status(200).send(`Deleted: ${user.first_name} ${user.last_name}`);
         });
+    },
+    getUserImage: async (req: Request, res: Response) => {
+        try {
+            // Create path to image
+            let imagePath = path.join(UPLOAD_DIRECTORY, 'images/users', `${req.params.id}.webp`)
+            // Check if it exists and edit path if it doesn't
+            if(!existsSync(imagePath))
+                imagePath = path.join(UPLOAD_DIRECTORY, 'images', 'defaultUserImage.webp')
+            // Send image
+            res.sendFile(imagePath)
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
     }
 }
 export default userManager

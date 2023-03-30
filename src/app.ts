@@ -29,7 +29,7 @@ import assetManager from './app/assetManager.js'
 import path from 'node:path';
 import adminPermission from './middleware/adminPermission.js';
 import kioskPermission from './middleware/kioskPermission.js';
-import { updatePartImage, uploadFile } from './config/uploadFile.js';
+import { updatePartImage, uploadImage, updateUserImage } from './config/uploadFile.js';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance
@@ -94,7 +94,7 @@ app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByI
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 // Update
 app.put("/api/part", auth, clerkAdminPermission, sanitize, partManager.updatePartInfo);
-app.put("/images/parts", auth, sanitize, clerkAdminPermission, uploadFile, updatePartImage);
+app.put("/images/parts", auth, sanitize, clerkAdminPermission, uploadImage, updatePartImage);
 // Delete
 app.delete("/api/part", auth, clerkAdminPermission, sanitize, partManager.deletePart);
 
@@ -109,6 +109,7 @@ app.get("/api/user/all", auth, kioskClerkAdminPermission, userManager.getAllUser
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 // Update
 app.put("/api/user", auth, adminPermission, sanitize, userManager.updateUser);
+app.put("/images/users", auth, sanitize, uploadImage, updateUserImage);
 // Delete
 app.delete("/api/user", auth, adminPermission, sanitize, userManager.deleteUser);
 

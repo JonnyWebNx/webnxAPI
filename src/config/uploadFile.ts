@@ -6,12 +6,14 @@ import sharp from "sharp";
 import path from "path";
 import * as fs from 'fs';
 import part from "../model/part.js";
+import user from "../model/user.js";
+import mongoose from "mongoose";
 
-const {PART_IMAGE_DIRECTORY, TEMP_UPLOAD_DIRECTORY} = config
+const {UPLOAD_DIRECTORY} = config
 
 // Save file to temp directory
-export const uploadFile = multer({
-    dest: TEMP_UPLOAD_DIRECTORY
+export const uploadImage = multer({
+    dest: path.join(UPLOAD_DIRECTORY, 'images/temp')
 }).single("file")
 
 
@@ -25,10 +27,36 @@ export async function updatePartImage (req: Request, res: Response) {
         if(!part.exists({nxid: originalName })||!/PNX([0-9]{7})+/.test(originalName!))
             return res.status(400).send("Invalid request")
         // Target path
-        const targetPath = path.join(PART_IMAGE_DIRECTORY, `${req.file?.originalname!}.webp`)
+        const targetPath = path.join(UPLOAD_DIRECTORY, 'images/parts', `${req.file?.originalname!}.webp`)
         // Resize and convert image
         await sharp(tempPath)
         .resize(600)
+        .webp()
+        .toFile(targetPath)
+        fs.unlinkSync(tempPath!)
+        // Done
+        res.status(200).send("Success")
+    } catch (err) {
+        // Database error
+        handleError(err)
+        res.status(500).send("API could not handle your request: " + err);
+    }
+}
+
+export async function updateUserImage (req: Request, res: Response) {
+    try {
+        // Save the temp path of image
+        const tempPath = req.file?.path
+        // Get original name
+        const originalName = req.file?.originalname as string
+        // Check if part exists or name is invalid
+        if(!user.exists({nxid: originalName })||!mongoose.Types.ObjectId.isValid(originalName))
+            return res.status(400).send("Invalid request")
+        // Target path
+        const targetPath = path.join(UPLOAD_DIRECTORY, 'images/users', `${req.file?.originalname!}.webp`)
+        // Resize and convert image
+        await sharp(tempPath)
+        .resize({width: 512, height: 512})
         .webp()
         .toFile(targetPath)
         fs.unlinkSync(tempPath!)
