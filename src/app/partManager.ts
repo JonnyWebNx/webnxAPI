@@ -553,6 +553,23 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+    getPartRecords: async (req: Request, res: Response) => {
+        try {
+            // Get nxid from query
+            let params = req.query as PartRecordSchema;
+            params.next = null
+            // Find all current parts records associated with nxid
+            PartRecord.find(params, (err: Mongoose, record: PartRecordSchema[]) => {
+                if (err)
+                    res.status(500).send("API could not handle your request: " + err);
+                else
+                    res.status(200).json(record);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     getPartHistoryByID: async (req: Request, res: Response) => {
         try {
             // Get mongo ID from query
