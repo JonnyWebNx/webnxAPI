@@ -16,6 +16,7 @@ import Part from './model/part.js';
 import mongoose, { MongooseError } from 'mongoose';
 import { PartRecordSchema, PartSchema } from './app/interfaces.js';
 import callbackHandler from './middleware/callbackHandlers.js';
+import asset from './model/asset.js';
 // Hand off requests to app
 const server = http.createServer(app);
 
@@ -68,6 +69,22 @@ PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
       if (nextRec) {
         replaceCount++
         PartRecord.findByIdAndUpdate(record._id, { date_replaced: nextRec.date_created}, handleCallbackError)
+      }
+    }
+    // Check for part records associated with non existent assets
+    if(record.asset_tag) {
+      let tempAsset = await asset.findOne({asset_tag: record.asset_tag})
+      if(!tempAsset&&!record.next) {
+        count++
+        let tempRecord = record as PartRecordSchema
+        count ++
+        PartRecord.findByIdAndDelete(tempRecord._id, handleCallbackError)
+        tempRecord = await PartRecord.findById(tempRecord.prev) as PartRecordSchema
+        while((tempRecord!=null)&&(tempRecord.prev != null)) {
+          count ++
+          PartRecord.findByIdAndDelete(tempRecord._id, handleCallbackError)
+          tempRecord = await PartRecord.findById(tempRecord.prev) as PartRecordSchema
+        }
       }
     }
   }
