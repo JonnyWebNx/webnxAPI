@@ -13,7 +13,7 @@ const {UPLOAD_DIRECTORY} = config
 
 // Save file to temp directory
 export const uploadImage = multer({
-    dest: path.join(UPLOAD_DIRECTORY, 'images/temp')
+    dest: path.join(UPLOAD_DIRECTORY, 'temp')
 }).single("file")
 
 
