@@ -436,134 +436,54 @@ const assetManager = {
         try {
             let getHistory = async (err: CallbackError, asset: AssetSchema) => {
                 if (err) {
-                    handleError(err)
-                    return res.status(500).send("API could not handle your request: " + err);        
+                    return res.status(500).send("API could not handle your request: " + err);
                 }
-                let history = [] as AssetSchema[]
-                history.push(asset)
-                let currentAsset = asset
-                
-                while(currentAsset.prev!=null) {
-
-                    let temp = await Asset.findById(currentAsset.prev)
-
-                    if(temp == null)
-                        break
-                    currentAsset = temp
-                    history.push(currentAsset)
-                }
-
-                let allParts = await PartRecord.find({
-                    asset_tag: asset.asset_tag,
+                let dates = [] as string[]
+                // Get all assets associated with NXID
+                let allAssets = await Asset.find({asset_tag: asset.asset_tag})
+                // Get all part records associated with NXID
+                let allPartRecords = await PartRecord.find({asset_tag: asset.asset_tag})
+                // Get all asset dates
+                allAssets.map(async (thisAsset) => {
+                    let date = thisAsset.date_created as Date
+                    if((date!=null)&&(dates.indexOf(date.toUTCString())<0))
+                        dates.push(date.toUTCString())
                 })
-                allParts.sort((a, b) => { return b.date_created.getTime() - a.date_created.getTime()})
-
-                Promise.all(history.map( async (currentIteration, index) => {
-                    return new Promise(async (resolve) => {
-                        let events = {} as AssetEvents
-                        Promise.all(allParts.map((partRecord) => {
-                            return new Promise(async (resolve) => {
-                                if (partRecord.date_created >= currentIteration.date_created! && (index == 0 || partRecord.date_created < history[index-1].date_created!)) {
-                                    console.log(events[partRecord.date_created.toUTCString()])
-                                    if (events[partRecord.date_created.toISOString()] == undefined) {
-                                        events[partRecord.date_created.toISOString()] = {added: {}, removed: {}} as AssetEvent
-                                        events[partRecord.date_created.toISOString()].added[partRecord.nxid] = 1
-                                    } else {
-                                        if (events[partRecord.date_created.toISOString()].added[partRecord.nxid] == undefined) {
-                                            events[partRecord.date_created.toISOString()].added[partRecord.nxid] = 1
-                                        }
-                                        else {
-                                            events[partRecord.date_created.toISOString()].added[partRecord.nxid] += 1
-                                        }
-                                    }
-                                }
-                                if (partRecord.date_replaced >= currentIteration.date_created! && (index == 0 || partRecord.date_replaced < history[index-1].date_created!)) {
-                                    console.log(events[partRecord.date_replaced.toDateString()])
-                                    if (events[partRecord.date_replaced.toISOString()] == undefined) {
-                                        events[partRecord.date_replaced.toISOString()] = {added: {}, removed: {}} as AssetEvent
-                                        events[partRecord.date_replaced.toISOString()].removed[partRecord.nxid] = 1
-                                    } else {
-                                        if (events[partRecord.date_replaced.toISOString()].removed[partRecord.nxid] == undefined) {
-                                            events[partRecord.date_replaced.toISOString()].removed[partRecord.nxid] = 1
-                                        }
-                                        else {
-                                            events[partRecord.date_replaced.toISOString()].removed[partRecord.nxid] += 1
-                                        }
-                                    }
-                                }
-                                resolve("")
-                            })
-                        })).then(() => {
-                            resolve({asset: currentIteration, events})
-                        })
-                    })
-                })).then((returnHistory) => {
-                    return res.status(200).json(returnHistory)
+                // Get all part add and remove dates
+                allPartRecords.map(async (record) => {
+                    // Get date created
+                    let date = record.date_created as Date
+                    // Check if date is already in array
+                    if((date!=null)&&(dates.indexOf(date.toUTCString())<0))
+                        dates.push(date.toUTCString())
+                    // Get date replaced
+                    date = record.date_replaced as Date
+                    // Check if date is already in array
+                    if((date!=null)&&(dates.indexOf(date.toUTCString())<0))
+                        dates.push(date.toUTCString())
                 })
-
-
-
-                // for (let i = 1; i < history.length; i++) {
-                //     let tempDates = await PartRecord.find({
-                //         asset_tag: asset.asset_tag, 
-                //         $or: [
-                //             {
-                //                 date_created: {
-                //                     $gte: history[i].date_created,
-                //                     $lt: history[i-1].date_created
-                //                 }
-                //             },
-                //             {
-                //                 date_replaced: {
-                //                     $gte: history[i].date_created,
-                //                     $lt: history[i-1].date_created
-                //                 }
-                //             }
-                //         ]
-                //     }).distinct("date_created")
-                //     let removeDates = await PartRecord.find({
-                //         asset_tag: asset.asset_tag, 
-                //         $or: [
-                //             {
-                //                 date_created: {
-                //                     $gte: history[i].date_created,
-                //                     $lt: history[i-1].date_created
-                //                 }
-                //             },
-                //             {
-                //                 date_replaced: {
-                //                     $gte: history[i].date_created,
-                //                     $lt: history[i-1].date_created
-                //                 }
-                //             }
-                //         ]
-                //     }).distinct("date_replaced")
-                //     for (let date of removeDates) {
-                //         if (tempDates.indexOf(date)==-1)
-                //             tempDates.push(date)
-                //     }
-                //     tempDates.sort((a, b) => { return b - a })
-                //     let events = []
-                //     for (let j = 0; j < tempDates.length; j++){
-                //         let addedParts = await PartRecord.find({
-                //             asset_tag: asset.asset_tag,
-                //             date_created: tempDates[j]
-                //         })
-                //         let removedParts = await PartRecord.find({
-                //             asset_tag: asset.asset_tag,
-                //             date_replaced: tempDates[j]
-                //         })
-                //         events.push({date: tempDates[j], added: addedParts, removed: removedParts})
-                //     }
-                //     assetInfoUpdates.push({asset: history[i], events})
-                // }
-
-
-
-
-
-
-                
+                // Sort the dates
+                dates = dates.sort((a: string, b: string) => { 
+                    if (new Date(a)>new Date(b))
+                        return 1
+                    return -1
+                })
+                // Get rid of duplicates
+                dates = dates.filter((date, index) => dates.indexOf(date) === index);
+                // For each date find matching asset, added parts, and removed parts
+                let history = await Promise.all(dates.map(async (updateDate) => {
+                    // Check for asset updates
+                    let assetUpdate = allAssets.find(asset => asset.date_created.toUTCString() == updateDate) as AssetSchema
+                    // Check if parts were added on this time
+                    let addedParts = allPartRecords.filter(record => record.date_created.toUTCString() == updateDate)
+                    // Check if parts were removed
+                    let removedParts = allPartRecords.filter(record => (record.date_replaced!=undefined)&&(record.date_replaced.toUTCString() == updateDate))
+                    // Create date object
+                    let dateObject = new Date(updateDate)
+                    // Return history data
+                    return { dateObject, assetUpdate, addedParts, removedParts}
+                }))
+                res.status(200).json(history)
             }
             // Get ID from query string
             let id = req.query.id as string
@@ -579,7 +499,6 @@ const assetManager = {
             else {
                 Asset.findById(id, getHistory)
             }
-            
         } catch (err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
