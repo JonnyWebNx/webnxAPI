@@ -121,7 +121,7 @@ app.get("/api/asset", auth, sanitize, assetManager.getAssets);
 app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
 app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
 app.get('/api/asset/search', auth, sanitize, assetManager.searchAssets);
-app.get('/api/asset/history', auth, sanitize, assetManager.getAssetHistory);
+app.get('/api/asset/history', sanitize, assetManager.getAssetHistory);
 // Update
 app.put("/api/asset", auth, sanitize, assetManager.updateAsset);
 // Delete
@@ -135,6 +135,7 @@ app.get("/api/*", async (req, res) => {
     return res.status(400).send("Invalid request.");
 });
 app.put("/api/*", async (req, res) => {
+    console.log("the fuck?")
     return res.status(400).send("Invalid request.");
 });
 app.delete("/api/*", async (req, res) => {

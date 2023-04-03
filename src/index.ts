@@ -91,3 +91,21 @@ PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
   console.log("Orphaned records: "+count)
   console.log("Records updated: " +replaceCount)
 })
+
+asset.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
+  let handleCallbackError = (err: MongooseError, records: PartRecordSchema) => {
+    if(err) {
+      console.log(err)
+      return
+    }
+  }
+  for (let record of records) {
+    if(((record.date_replaced==undefined)||(record.date_replaced==null))&&(record.next!=null)) {
+      let nextRec = await asset.findById(record.next)
+      if (nextRec) {
+        asset.findByIdAndUpdate(record._id, { date_replaced: nextRec.date_created }, handleCallbackError)
+      }
+    }
+  }
+})
+

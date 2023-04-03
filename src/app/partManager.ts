@@ -13,7 +13,7 @@ import Asset from '../model/asset.js'
 import User from "../model/user.js";
 import handleError from "../config/mailer.js";
 import callbackHandler from '../middleware/callbackHandlers.js'
-import { AssetSchema, PartRecordSchema } from "./interfaces.js";
+import { AssetSchema, CartItem, LoadedCartItem, PartRecordSchema } from "./interfaces.js";
 import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
@@ -78,27 +78,24 @@ const partManager = {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                Promise.all(parts.map((part)=>{
-                    return new Promise(async (resolve, reject) => {
-                        let count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null,
-                            location: location ? location : "Parts Room",
-                            building: building ? building : req.user.building
-                        });
-                        let total_count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null
-                        });
-                        let tempPart = JSON.parse(JSON.stringify(part))
-                        
-                        tempPart.quantity = count;
-                        tempPart.total_quantity = total_count;
-                        return resolve(tempPart)
-                    })
-                })).then((returnParts)=>{
-                    return res.status(200).json(returnParts);
-                })
+                let returnParts = await Promise.all(parts.map(async(part)=>{
+                    let count = await PartRecord.count({
+                        nxid: part.nxid,
+                        next: null,
+                        location: location ? location : "Parts Room",
+                        building: building ? building : req.user.building
+                    });
+                    let total_count = await PartRecord.count({
+                        nxid: part.nxid,
+                        next: null
+                    });
+                    let tempPart = JSON.parse(JSON.stringify(part))
+                    
+                    tempPart.quantity = count;
+                    tempPart.total_quantity = total_count;
+                    return tempPart
+                }))
+                return res.status(200).json(returnParts);
             })
         } catch (err) {
             // Database error
@@ -148,7 +145,7 @@ const partManager = {
                     return res.status(400).send("Invalid request")
             }
             // Find each item and check quantities before updating
-            for (let item of cart) {
+            await Promise.all(cart.map(async (item: CartItem) => {
                 // Check quantity before
                 let quantity = await PartRecord.count({
                     nxid: item.nxid,
@@ -160,9 +157,9 @@ const partManager = {
                 if (quantity < item.quantity) {
                     return res.status(400).send("Insufficient stock.")
                 }
-            }
+            }))
             // Loop through each item and create new parts record and update old parts record
-            for (let item of cart) {
+            await Promise.all(cart.map(async (item: CartItem) => {
                 // Find all matching part records to minimize requests and ensure updates don't conflict when using async part updating
                 let records = await PartRecord.find({
                     nxid: item.nxid,
@@ -183,7 +180,7 @@ const partManager = {
                         next: null
                     }, callbackHandler.updateRecord);
                 }
-            }
+            }))
             // Success
             res.status(200).send("Successfully checked out.")
         }
@@ -204,7 +201,7 @@ const partManager = {
                     return res.status(400).send("Invalid request")
             }
             // Check quantities before updating records
-            for (let item of inventory) {
+            await Promise.all(inventory.map(async(item: CartItem) => {
                 let quantity = await PartRecord.count({
                     nxid: item.nxid,
                     next: null,
@@ -215,9 +212,9 @@ const partManager = {
                 if (item.quantity > quantity) {
                     return res.status(400).send("Invalid request")
                 }
-            }
+            }))
             // Iterate through each item and update records
-            for (let item of inventory) {
+            await Promise.all(inventory.map(async(item: CartItem) => {
                 // Get database quantity
                 const records = await PartRecord.find({
                     nxid: item.nxid,
@@ -237,7 +234,7 @@ const partManager = {
                         by: req.user.user_id
                     }, callbackHandler.updateRecord);
                 }
-            }
+            }))
             // Success
             res.status(200).send("Successfully checked in.")
         }
@@ -279,21 +276,18 @@ const partManager = {
             let searchOptions = [] as any
             // Add regex of keywords to all search options
             await Promise.all(keywords.map(async (key) => {
-                return new Promise((resolve, reject) => {
-                    searchOptions.push({ "nxid": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "name": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "type": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "location": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "storage_interface": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "port_type": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "peripheral_type": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "memory_type": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
-                    return resolve("done")
-                })
+                searchOptions.push({ "nxid": { $regex: key, $options: "is" } })
+                searchOptions.push({ "name": { $regex: key, $options: "is" } })
+                searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
+                searchOptions.push({ "type": { $regex: key, $options: "is" } })
+                searchOptions.push({ "location": { $regex: key, $options: "is" } })
+                searchOptions.push({ "storage_interface": { $regex: key, $options: "is" } })
+                searchOptions.push({ "port_type": { $regex: key, $options: "is" } })
+                searchOptions.push({ "peripheral_type": { $regex: key, $options: "is" } })
+                searchOptions.push({ "memory_type": { $regex: key, $options: "is" } })
+                searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
+                searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
+                searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
             }))
             Part.aggregate([{ $match: { $or: searchOptions } }])
                 .skip(parseInt(pageSize as string) * (parseInt(pageNum as string) - 1))
@@ -304,26 +298,23 @@ const partManager = {
                         handleError(err)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
-                    Promise.all(parts.map((part)=>{
-                        return new Promise(async (resolve, reject) => {
-                            let count = await PartRecord.count({
-                                nxid: part.nxid,
-                                next: null,
-                                location: location ? location : "Parts Room",
-                                building: building ? building : req.user.building
-                            });
-                            let total_count = await PartRecord.count({
-                                nxid: part.nxid,
-                                next: null
-                            });
-                            let tempPart = JSON.parse(JSON.stringify(part))
-                            tempPart.quantity = count;
-                            tempPart.total_quantity = total_count;
-                            return resolve(tempPart)
-                        })
-                    })).then((returnParts)=>{
-                        return res.status(200).json(returnParts);
-                    })
+                    let returnParts = await Promise.all(parts.map(async (part)=>{
+                        let count = await PartRecord.count({
+                            nxid: part.nxid,
+                            next: null,
+                            location: location ? location : "Parts Room",
+                            building: building ? building : req.user.building
+                        });
+                        let total_count = await PartRecord.count({
+                            nxid: part.nxid,
+                            next: null
+                        });
+                        let tempPart = JSON.parse(JSON.stringify(part))
+                        tempPart.quantity = count;
+                        tempPart.total_quantity = total_count;
+                        return tempPart
+                    }))
+                    return res.status(200).json(returnParts);
                 })
         } catch (err) {
             handleError(err)

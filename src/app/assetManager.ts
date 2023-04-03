@@ -4,10 +4,9 @@ import Part from "../model/part.js";
 import handleError from "../config/mailer.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { Request, Response } from "express";
-import { AssetSchema, CartItem, PartRecordSchema, AssetEvents, AssetEvent } from "./interfaces.js";
-import mongoose, { Callback, CallbackError, MongooseError, mongo } from "mongoose";
+import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
+import mongoose, { CallbackError } from "mongoose";
 import partRecord from "../model/partRecord.js";
-import { stringify } from "querystring";
 
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {
@@ -38,7 +37,7 @@ const assetManager = {
             /**
              * @TODO figure out how to handle parts records when creating assets
              */
-            for (const part of parts) {
+            await Promise.all(parts.map(async (part) => {
                 for (let i = 0; i < part.quantity; i++) {
                     await PartRecord.create({
                         nxid: part.nxid,
@@ -48,7 +47,7 @@ const assetManager = {
                         by: req.user.user_id,
                     })
                 }
-            }
+            }))
             // Create a new asset
             Asset.create(asset, (err, record) => {
                 if (err){
@@ -127,25 +126,12 @@ const assetManager = {
             // Skip - gets requested page number
             // Limit - returns only enough elements to fill page
 
-            // Splice keywords from search string
-            let i = 0
-            let keywords = []
-            let spliced = false
-            while (!spliced) {
-                // If end of string
-                if (searchString.indexOf(" ", i) == -1) {
-                    keywords.push(searchString.substring(i, searchString.length))
-                    spliced = true
-                } else {
-                    // Add spliced keyword to keyword array
-                    keywords.push(searchString.substring(i, searchString.indexOf(" ", i)))
-                    i = searchString.indexOf(" ", i) + 1
-                }
-            }
+            // Split keywords from search string
+            let keywords = searchString.split(" ")
             // Use keywords to build search options
-            let searchOptions = []
+            let searchOptions = [] as any[]
             // Add regex of keywords to all search options
-            for (const key of keywords) {
+            keywords.map((key) => {
                 searchOptions.push({ "asset_tag": { $regex: key, $options: "is" } })
                 searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
                 searchOptions.push({ "asset_type": { $regex: key, $options: "is" } })
@@ -157,7 +143,7 @@ const assetManager = {
                 searchOptions.push({ "public_port": { $regex: key, $options: "is" } })
                 searchOptions.push({ "private_port": { $regex: key, $options: "is" } })
                 searchOptions.push({ "ipmi_port": { $regex: key, $options: "is" } })
-            }
+            })
             Asset.aggregate([{ $match: {
                     $and: [
                         { $or: searchOptions },
@@ -185,6 +171,8 @@ const assetManager = {
             let { asset, parts } = req.body;
             if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
+                console.log("Huh?")
+                console.log(asset.asset_tag)
                 return res.status(400).send("Invalid request");
             }
             let current_date = Date.now()
@@ -201,10 +189,10 @@ const assetManager = {
                 next: null
             })
             // 
-            let existingPartIDs = []
-            let existingQuantities = []
+            let existingPartIDs = [] as string[]
+            let existingQuantities = [] as number[]
             // Get NXID and quantites into seperate arrays so indexOf() can be used
-            for(const part of partRecords) {
+            parts.map((part: CartItem) => {
                 // Get index of part ID
                 let index = existingPartIDs.indexOf(part.nxid)
                 if(index==-1) {
@@ -215,13 +203,13 @@ const assetManager = {
                     // If part already exists, increment quantity
                     existingQuantities[index] += 1
                 }
-            }
+            })
             // Array of part differences - {nxid: WNX0001778, quantity: -2}, {nxid: WNX0002753, quantity: (+)4}
-            let differencesPartIDs = []
-            let differencesQuantities = []
+            let differencesPartIDs = [] as string[]
+            let differencesQuantities = [] as number[]
             // Iterate through submitted parts
-            for(const part of parts) {
-                let index = existingPartIDs.indexOf(part.nxid)
+            parts.map((part: CartItem) => {
+                let index = existingPartIDs.indexOf(part.nxid!)
                 if(index == -1) {
                     // If part didn't exist before, add it to differences as is
                     differencesPartIDs.push(part.nxid)
@@ -230,11 +218,11 @@ const assetManager = {
                 else {
                     // Find the difference of quantites
                     // If new quantity was 4 and old quantity was 3, only 1 part record will need to be added
-                    let quantityDifference = part.quantity - existingQuantities[index]
+                    let quantityDifference = part.quantity! - existingQuantities[index]
                     differencesPartIDs.push(part.nxid)
                     differencesQuantities.push(quantityDifference)
                 }
-            }
+            })
             // Check for parts that were absent from submission 
             for(let i = 0; i < existingPartIDs.length; i++) {
                 // Check for every existing part on the difference list
@@ -252,43 +240,17 @@ const assetManager = {
                     // Subtract from user's inventory and add to asset
                     let userInventoryCount = await PartRecord.count({owner: req.user.user_id, next: null, nxid: differencesPartIDs[i]})
                     if (userInventoryCount < differencesQuantities[i]) {
+                        console.log("testing")
                         return res.status(400).send("Not enough parts in your inventory");
                     }
                     // Save results to avoid duplicate queries
                 }
             }
             delete asset.date_updated
-            // Update the asset object and return to user before updating parts records
-            let getAsset = await Asset.findOne({asset_tag: asset.asset_tag, next: null})
-            if(JSON.stringify(getAsset) != JSON.stringify(asset)) {
-                asset.prev = asset._id
-                asset.next = null
-                asset.date_created = current_date
-                delete asset._id
-                delete asset.date_created
-
-                Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
-                        if (err) {
-                        handleError(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    }
-                    Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id, date_replaced: current_date }, (err: CallbackError, updated_asset: AssetSchema) => {
-                        if (err) {
-                            handleError(err)
-                            return res.status(500).send("API could not handle your request: " + err);
-                        }
-                        res.status(200).json(new_asset)
-                    })
-                })
-            }
-            else {
-                res.status(200).json(asset)
-            }
             // Edit parts records after confirming quantities and updating Asset object
-            for (let i = 0; i < differencesPartIDs.length; i++) {
-                // Early return for unchanged quantities
+            await Promise.all(differencesPartIDs.map(async(id, i, arr) => {
                 if (differencesQuantities[i]===0) {
-                    continue
+                    return
                 }
                 let searchOptions = {}
                 let createOptions = {} as PartRecordSchema
@@ -332,6 +294,30 @@ const assetManager = {
                     createOptions.prev = oldRecords[j]._id
                     PartRecord.create(createOptions, callbackHandler.updateRecord)
                 }
+            }))
+            // Update the asset object and return to user before updating parts records
+            let getAsset = await Asset.findOne({asset_tag: asset.asset_tag, next: null})
+            if(JSON.stringify(getAsset) != JSON.stringify(asset)) {
+                asset.prev = asset._id
+                asset.next = null
+                asset.date_created = current_date
+                delete asset._id
+                Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
+                        if (err) {
+                        handleError(err)
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id, date_replaced: current_date }, (err: CallbackError, updated_asset: AssetSchema) => {
+                        if (err) {
+                            handleError(err)
+                            return res.status(500).send("API could not handle your request: " + err);
+                        }
+                        res.status(200).json(new_asset)
+                    })
+                })
+            }
+            else {
+                res.status(200).json(asset)
             }
         } catch(err) {
             handleError(err)
@@ -388,7 +374,8 @@ const assetManager = {
             // Find all parts records associated with asset tag
             let records = await PartRecord.find({ asset_tag, next: null,})   
             let current_date = Date.now()
-            for (let record of records) {
+
+            records.map(async (record) => {
                 let createOptions = {
                     nxid: record.nxid,
                     owner: "all",
@@ -399,11 +386,8 @@ const assetManager = {
                     date_created: current_date,
                     next: null,
                 } as PartRecordSchema
-                // let newRecord = await PartRecord.create(createOptions);
-                // await partRecord.findByIdAndUpdate(createOptions.prev, {next: newRecord._id})
-                
                 await partRecord.findByIdAndUpdate(createOptions.prev, {next: "deleted"})
-            }
+            })
             Asset.findOne({asset_tag, next: null}, (err: CallbackError, asset: AssetSchema) => {
                 if(err) {
                     res.status(500).send("API could not handle your request: "+err);
@@ -475,11 +459,9 @@ const assetManager = {
                     // Create date object
                     let dateObject = new Date(updateDate)
                     // Check for asset updates
-                    let assetUpdate = allAssets.find(asset => asset.date_created.toISOString() == updateDate) as AssetSchema
+                    let assetUpdate = allAssets.find(ass => (ass.date_created <= dateObject && dateObject < ass.date_replaced)||ass.date_created <= dateObject && ass.date_replaced == null)
                     // Check for parts that are already present
-                    let temp = new Date(updateDate)
-                    temp.setMilliseconds(temp.getMilliseconds()+1)
-                    let existingParts = await PartRecord.find({
+                    let tempExistingParts = await PartRecord.find({
                         asset_tag: asset.asset_tag, 
                         $and: [
                             {
@@ -491,7 +473,7 @@ const assetManager = {
                                 $or: [
                                     {
                                         date_replaced: {
-                                            $gt: temp
+                                            $gt: dateObject
                                         }
                                     },
                                     {
@@ -504,12 +486,51 @@ const assetManager = {
                             }
                         ]
                     })
+                    let existingParts = [] as CartItem[]
+                    // Loop over every part already on asset
+                    tempExistingParts.map((record) => {
+                        // Check if part is already in array
+                        let existingRecord = existingParts.find((rec => rec.nxid == record.nxid))
+                        // If it exists, increment the quantity
+                        if(existingRecord)
+                            existingRecord.quantity += 1
+                        // If not, push a new object
+                        else
+                            existingParts.push({nxid: record.nxid, quantity: 1})
+                    })
                     // Check if parts were added on this time
-                    let addedParts = allPartRecords.filter(record => record.date_created.toISOString() == updateDate)
+                    let addedParts = [] as CartItem[]
+                    // Filter for added parts, and loop over all of them
+                    allPartRecords.filter(record => record.date_created.toISOString() == updateDate).map((record) => {
+                        // Check if part is already in array
+                        let existingRecord = addedParts.find((rec => rec.nxid == record.nxid))
+                        // If it exists, increment
+                        if(existingRecord)
+                            existingRecord.quantity += 1
+                        // If not, push a new object
+                        else
+                            addedParts.push({nxid: record.nxid, quantity: 1})
+                    })
                     // Check if parts were removed
-                    let removedParts = allPartRecords.filter(record => (record.date_replaced!=undefined)&&(record.date_replaced.toISOString() == updateDate))
+                    let removedParts = [] as CartItem[]
+                    // Filter for removed parts, and loop over all of them
+                    allPartRecords.filter(record => (record.date_replaced!=undefined)&&(record.date_replaced.toISOString() == updateDate)).map((record) => {
+                        // Check if part is already in array
+                        let existingRecord = removedParts.find((rec => rec.nxid == record.nxid))
+                        // If it exists, increment
+                        if(existingRecord)
+                            existingRecord.quantity += 1
+                        // If not, push a new object
+                        else
+                            removedParts.push({nxid: record.nxid, quantity: 1})
+                    })
+                    // Get current date (will be returned if asset is most recent)
+                    let nextDate = new Date(Date.now())
+                    // Get end date for current iteration
+                    if (index < arr.length - 1)
+                        nextDate = new Date(arr[index+1])
                     // Return history data
-                    return { date: dateObject, assetUpdate: assetUpdate, existing: existingParts, added: addedParts, removed: removedParts}
+                    return { date_begin: dateObject, dateEnd: nextDate, asset: assetUpdate?._id, existing: existingParts, added: addedParts, removed: removedParts}
                 }))
                 res.status(200).json(history)
             }
