@@ -446,21 +446,21 @@ const assetManager = {
                 // Get all asset dates
                 allAssets.map(async (thisAsset) => {
                     let date = thisAsset.date_created as Date
-                    if((date!=null)&&(dates.indexOf(date.toUTCString())<0))
-                        dates.push(date.toUTCString())
+                    if((date!=null)&&(dates.indexOf(date.toISOString())<0))
+                        dates.push(date.toISOString())
                 })
                 // Get all part add and remove dates
                 allPartRecords.map(async (record) => {
                     // Get date created
                     let date = record.date_created as Date
                     // Check if date is already in array
-                    if((date!=null)&&(dates.indexOf(date.toUTCString())<0))
-                        dates.push(date.toUTCString())
+                    if((date!=null)&&(dates.indexOf(date.toISOString())<0))
+                        dates.push(date.toISOString())
                     // Get date replaced
                     date = record.date_replaced as Date
                     // Check if date is already in array
-                    if((date!=null)&&(dates.indexOf(date.toUTCString())<0))
-                        dates.push(date.toUTCString())
+                    if((date!=null)&&(dates.indexOf(date.toISOString())<0))
+                        dates.push(date.toISOString())
                 })
                 // Sort the dates
                 dates = dates.sort((a: string, b: string) => { 
@@ -471,17 +471,45 @@ const assetManager = {
                 // Get rid of duplicates
                 dates = dates.filter((date, index) => dates.indexOf(date) === index);
                 // For each date find matching asset, added parts, and removed parts
-                let history = await Promise.all(dates.map(async (updateDate) => {
-                    // Check for asset updates
-                    let assetUpdate = allAssets.find(asset => asset.date_created.toUTCString() == updateDate) as AssetSchema
-                    // Check if parts were added on this time
-                    let addedParts = allPartRecords.filter(record => record.date_created.toUTCString() == updateDate)
-                    // Check if parts were removed
-                    let removedParts = allPartRecords.filter(record => (record.date_replaced!=undefined)&&(record.date_replaced.toUTCString() == updateDate))
+                let history = await Promise.all(dates.map(async (updateDate, index, arr) => {
                     // Create date object
                     let dateObject = new Date(updateDate)
+                    // Check for asset updates
+                    let assetUpdate = allAssets.find(asset => asset.date_created.toISOString() == updateDate) as AssetSchema
+                    // Check for parts that are already present
+                    let temp = new Date(updateDate)
+                    temp.setMilliseconds(temp.getMilliseconds()+1)
+                    let existingParts = await PartRecord.find({
+                        asset_tag: asset.asset_tag, 
+                        $and: [
+                            {
+                                date_created: {
+                                    $lt: dateObject
+                                }
+                            },
+                            {
+                                $or: [
+                                    {
+                                        date_replaced: {
+                                            $gt: temp
+                                        }
+                                    },
+                                    {
+                                        date_replaced: undefined
+                                    },
+                                    {
+                                        date_replaced: null
+                                    },
+                                ]
+                            }
+                        ]
+                    })
+                    // Check if parts were added on this time
+                    let addedParts = allPartRecords.filter(record => record.date_created.toISOString() == updateDate)
+                    // Check if parts were removed
+                    let removedParts = allPartRecords.filter(record => (record.date_replaced!=undefined)&&(record.date_replaced.toISOString() == updateDate))
                     // Return history data
-                    return { dateObject, assetUpdate, addedParts, removedParts}
+                    return { date: dateObject, assetUpdate: assetUpdate, existing: existingParts, added: addedParts, removed: removedParts}
                 }))
                 res.status(200).json(history)
             }
