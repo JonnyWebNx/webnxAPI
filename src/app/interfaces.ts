@@ -109,15 +109,15 @@ export interface UserSchema {
     _id?: string | Types.ObjectId
 }
 
-export interface AssetEvents {
-    [key: string]: AssetEvent;
+export interface AssetHistory {
+    events: AssetEvent[]
 }
-
 export interface AssetEvent {
-    added: AssetHistoryParts,
-    removed: AssetHistoryParts
-}
-
-export interface AssetHistoryParts {
-    [key: string]: number;
+    date_begin: Date,
+    date_end: Date,
+    asset_id: string | Types.ObjectId,
+    info_updated: boolean,
+    existing: CartItem[],
+    added: CartItem[],
+    removed: CartItem[]
 }

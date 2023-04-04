@@ -4,7 +4,7 @@ import Part from "../model/part.js";
 import handleError from "../config/mailer.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { Request, Response } from "express";
-import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
+import { AssetEvent, AssetHistory, AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
 import mongoose, { CallbackError } from "mongoose";
 import partRecord from "../model/partRecord.js";
 
@@ -459,7 +459,12 @@ const assetManager = {
                     // Create date object
                     let dateObject = new Date(updateDate)
                     // Check for asset updates
-                    let assetUpdate = allAssets.find(ass => (ass.date_created <= dateObject && dateObject < ass.date_replaced)||ass.date_created <= dateObject && ass.date_replaced == null)
+                    let assetUpdate = allAssets.find(ass => ass.date_created <= dateObject && dateObject < ass.date_replaced)
+                    if(!assetUpdate) {
+                        assetUpdate = allAssets.find(ass => ass.date_created <= dateObject && ass.date_replaced == null)
+                    }
+                    console.log(assetUpdate)
+                    let assetUpdated = assetUpdate?.date_created == dateObject
                     // Check for parts that are already present
                     let tempExistingParts = await PartRecord.find({
                         asset_tag: asset.asset_tag, 
@@ -530,8 +535,9 @@ const assetManager = {
                     if (index < arr.length - 1)
                         nextDate = new Date(arr[index+1])
                     // Return history data
-                    return { date_begin: dateObject, dateEnd: nextDate, asset: assetUpdate?._id, existing: existingParts, added: addedParts, removed: removedParts}
+                    return { date_begin: dateObject, date_end: nextDate, asset_id: assetUpdate?._id, info_updated: assetUpdated, existing: existingParts, added: addedParts, removed: removedParts } as AssetEvent
                 }))
+                history.reverse()
                 res.status(200).json(history)
             }
             // Get ID from query string
