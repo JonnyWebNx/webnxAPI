@@ -174,8 +174,6 @@ const assetManager = {
             let { asset, parts } = req.body;
             if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
-                console.log("Huh?")
-                console.log(asset.asset_tag)
                 return res.status(400).send("Invalid request");
             }
             let current_date = Date.now()
@@ -243,7 +241,6 @@ const assetManager = {
                     // Subtract from user's inventory and add to asset
                     let userInventoryCount = await PartRecord.count({owner: req.user.user_id, next: null, nxid: differencesPartIDs[i]})
                     if (userInventoryCount < differencesQuantities[i]) {
-                        console.log("testing")
                         return res.status(400).send("Not enough parts in your inventory");
                     }
                     // Save results to avoid duplicate queries
@@ -313,11 +310,8 @@ const assetManager = {
             delete asset.date_created
             delete asset.by
             delete asset.__v
-            console.log(getAsset)
-            console.log(asset)
         
             if(JSON.stringify(getAsset) != JSON.stringify(asset)) {
-                console.log("UPDATE")
                 asset.prev = save_id
                 asset.next = null
                 asset.date_created = current_date
@@ -328,20 +322,16 @@ const assetManager = {
                         handleError(err)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
-                    console.log(new_asset)
                     Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id, date_replaced: current_date }, (err: CallbackError, updated_asset: AssetSchema) => {
                         if (err) {
                             handleError(err)
                             return res.status(500).send("API could not handle your request: " + err);
                         }
-                        console.log(new_asset.prev)
-                        console.log(updated_asset.next)
                         res.status(200).json(new_asset)
                     })
                 })
             }
             else {
-                console.log("NO UPDATE")
                 res.status(200).json(asset)
             }
         } catch(err) {
@@ -400,7 +390,7 @@ const assetManager = {
             let records = await PartRecord.find({ asset_tag, next: null,})   
             let current_date = Date.now()
 
-            records.map(async (record) => {
+            await Promise.all(records.map(async (record) => {
                 let createOptions = {
                     nxid: record.nxid,
                     owner: "all",
@@ -412,7 +402,7 @@ const assetManager = {
                     next: null,
                 } as PartRecordSchema
                 await partRecord.findByIdAndUpdate(createOptions.prev, {next: "deleted"})
-            })
+            }))
             Asset.findOne({asset_tag, next: null}, (err: CallbackError, asset: AssetSchema) => {
                 if(err) {
                     res.status(500).send("API could not handle your request: "+err);
@@ -490,7 +480,6 @@ const assetManager = {
                     if(!assetUpdate) {
                         assetUpdate = allAssets.find(ass => ass.date_created <= dateObject && ass.date_replaced == null)
                     }
-                    console.log(assetUpdate)
                     let assetUpdated = assetUpdate?.date_created.toISOString() == dateObject.toISOString()
                     // Check for parts that are already present
                     let tempExistingParts = await PartRecord.find({
@@ -574,7 +563,6 @@ const assetManager = {
             }
             // Get ID from query string
             let id = req.query.id as string
-            console.log(id)
             // Check if ID is null or doesn't match ID type
             if (!id||!(/WNX([0-9]{7})+/.test(id)||mongoose.Types.ObjectId.isValid(id)))
             return res.status(400).send("Invalid request");

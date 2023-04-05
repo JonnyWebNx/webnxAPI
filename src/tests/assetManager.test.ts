@@ -4,7 +4,7 @@ import {jest} from '@jest/globals'
 import { AssetSchema, CartItem, LoadedCartItem,  } from "../app/interfaces"
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 const ASSET_TAG = "WNX0016472"
-const ASSET_MONGO_ID = "63a3701b9d12bfd7c59e4854"
+// const ASSET_MONGO_ID = "63a3701b9d12bfd7c59e4854"
 const TEXT_SEARCH_QUERY_STRING = "?searchString=wnx&pageNum=1&pageSize=50"
 const ADVANCED_SEARCH_QUERY_STRING = "?asset_type=Server&advanced=true"
 const TEST_ASSET = {
@@ -266,7 +266,13 @@ describe("Get asset by ID", () => {
     })
     it("Tech can get asset by mongo ID",async () => {
         let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_MONGO_ID}`)
+            .get(`/api/asset/id?id=${ASSET_TAG}`)
+            .set("Authorization", TECH_TOKEN!)
+        expect(res.status).toBe(200)
+        expect(res.body._id).toBeDefined()
+        expect(res.body.asset_tag).toBeDefined()
+        let res2 = await request("localhost:4001")
+            .get(`/api/asset/id?id=${res.body._id}`)
             .set("Authorization", TECH_TOKEN!)
         expect(res.status).toBe(200)
         expect(res.body._id).toBeDefined()
@@ -274,7 +280,13 @@ describe("Get asset by ID", () => {
     })
     it("Kiosk can get asset by mongo ID",async () => {
         let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_MONGO_ID}`)
+            .get(`/api/asset/id?id=${ASSET_TAG}`)
+            .set("Authorization", KIOSK_TOKEN!)
+        expect(res.status).toBe(200)
+        expect(res.body._id).toBeDefined()
+        expect(res.body.asset_tag).toBeDefined()
+        let res2 = await request("localhost:4001")
+            .get(`/api/asset/id?id=${res.body._id}`)
             .set("Authorization", KIOSK_TOKEN!)
         expect(res.status).toBe(200)
         expect(res.body._id).toBeDefined()
@@ -282,7 +294,13 @@ describe("Get asset by ID", () => {
     })
     it("Clerk can get asset by mongo ID",async () => {
         let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_MONGO_ID}`)
+            .get(`/api/asset/id?id=${ASSET_TAG}`)
+            .set("Authorization", INVENTORY_TOKEN!)
+        expect(res.status).toBe(200)
+        expect(res.body._id).toBeDefined()
+        expect(res.body.asset_tag).toBeDefined()
+        let res2 = await request("localhost:4001")
+            .get(`/api/asset/id?id=${res.body._id}`)
             .set("Authorization", INVENTORY_TOKEN!)
         expect(res.status).toBe(200)
         expect(res.body._id).toBeDefined()
@@ -290,7 +308,13 @@ describe("Get asset by ID", () => {
     })
     it("Admin can get asset by mongo ID",async () => {
         let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_MONGO_ID}`)
+            .get(`/api/asset/id?id=${ASSET_TAG}`)
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(res.status).toBe(200)
+        expect(res.body._id).toBeDefined()
+        expect(res.body.asset_tag).toBeDefined()
+        let res2 = await request("localhost:4001")
+            .get(`/api/asset/id?id=${res.body._id}`)
             .set("Authorization", ADMIN_TOKEN!)
         expect(res.status).toBe(200)
         expect(res.body._id).toBeDefined()
