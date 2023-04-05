@@ -109,9 +109,8 @@ export interface UserSchema {
     _id?: string | Types.ObjectId
 }
 
-export interface AssetHistory {
-    events: AssetEvent[]
-}
+export type AssetHistory = AssetEvent[]
+
 export interface AssetEvent {
     date_begin: Date,
     date_end: Date,

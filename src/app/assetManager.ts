@@ -31,7 +31,9 @@ const assetManager = {
             // Remove date created if present
             delete asset.date_created;
             // Set by attribute to requesting user
+            let dateCreated = Date.now()
             asset.by = req.user.user_id;
+            asset.date_created = dateCreated;
             asset.prev = null;
             asset.next = null;
             /**
@@ -45,6 +47,7 @@ const assetManager = {
                         location: "Asset",
                         asset_tag: asset.asset_tag,
                         by: req.user.user_id,
+                        date_created: dateCreated
                     })
                 }
             }))
@@ -192,12 +195,12 @@ const assetManager = {
             let existingPartIDs = [] as string[]
             let existingQuantities = [] as number[]
             // Get NXID and quantites into seperate arrays so indexOf() can be used
-            parts.map((part: CartItem) => {
+            partRecords.map((part: PartRecordSchema) => {
                 // Get index of part ID
-                let index = existingPartIDs.indexOf(part.nxid)
+                let index = existingPartIDs.indexOf(part.nxid!)
                 if(index==-1) {
                     // If part isn't in array, add it with a quantity of one
-                    existingPartIDs.push(part.nxid)
+                    existingPartIDs.push(part.nxid!)
                     existingQuantities.push(1)
                 } else {
                     // If part already exists, increment quantity
@@ -296,27 +299,49 @@ const assetManager = {
                 }
             }))
             // Update the asset object and return to user before updating parts records
-            let getAsset = await Asset.findOne({asset_tag: asset.asset_tag, next: null})
+            let getAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: asset.asset_tag, next: null}))) as AssetSchema
+            let save_id = asset._id
+            delete getAsset.prev
+            delete getAsset._id
+            delete getAsset.next
+            delete getAsset.date_created
+            delete getAsset.by
+            delete getAsset.__v
+            delete asset.prev
+            delete asset._id
+            delete asset.next
+            delete asset.date_created
+            delete asset.by
+            delete asset.__v
+            console.log(getAsset)
+            console.log(asset)
+        
             if(JSON.stringify(getAsset) != JSON.stringify(asset)) {
-                asset.prev = asset._id
+                console.log("UPDATE")
+                asset.prev = save_id
                 asset.next = null
                 asset.date_created = current_date
+                asset.by = req.user.user_id
                 delete asset._id
                 Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
-                        if (err) {
+                    if (err) {
                         handleError(err)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
+                    console.log(new_asset)
                     Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id, date_replaced: current_date }, (err: CallbackError, updated_asset: AssetSchema) => {
                         if (err) {
                             handleError(err)
                             return res.status(500).send("API could not handle your request: " + err);
                         }
+                        console.log(new_asset.prev)
+                        console.log(updated_asset.next)
                         res.status(200).json(new_asset)
                     })
                 })
             }
             else {
+                console.log("NO UPDATE")
                 res.status(200).json(asset)
             }
         } catch(err) {
@@ -419,9 +444,11 @@ const assetManager = {
     getAssetHistory: async (req: Request, res: Response) => {
         try {
             let getHistory = async (err: CallbackError, asset: AssetSchema) => {
-                if (err) {
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
+                try{
+
+                    if (err) {
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
                 let dates = [] as string[]
                 // Get all assets associated with NXID
                 let allAssets = await Asset.find({asset_tag: asset.asset_tag})
@@ -431,7 +458,7 @@ const assetManager = {
                 allAssets.map(async (thisAsset) => {
                     let date = thisAsset.date_created as Date
                     if((date!=null)&&(dates.indexOf(date.toISOString())<0))
-                        dates.push(date.toISOString())
+                    dates.push(date.toISOString())
                 })
                 // Get all part add and remove dates
                 allPartRecords.map(async (record) => {
@@ -439,17 +466,17 @@ const assetManager = {
                     let date = record.date_created as Date
                     // Check if date is already in array
                     if((date!=null)&&(dates.indexOf(date.toISOString())<0))
-                        dates.push(date.toISOString())
+                    dates.push(date.toISOString())
                     // Get date replaced
                     date = record.date_replaced as Date
                     // Check if date is already in array
                     if((date!=null)&&(dates.indexOf(date.toISOString())<0))
-                        dates.push(date.toISOString())
+                    dates.push(date.toISOString())
                 })
                 // Sort the dates
                 dates = dates.sort((a: string, b: string) => { 
                     if (new Date(a)>new Date(b))
-                        return 1
+                    return 1
                     return -1
                 })
                 // Get rid of duplicates
@@ -464,7 +491,7 @@ const assetManager = {
                         assetUpdate = allAssets.find(ass => ass.date_created <= dateObject && ass.date_replaced == null)
                     }
                     console.log(assetUpdate)
-                    let assetUpdated = assetUpdate?.date_created == dateObject
+                    let assetUpdated = assetUpdate?.date_created.toISOString() == dateObject.toISOString()
                     // Check for parts that are already present
                     let tempExistingParts = await PartRecord.find({
                         asset_tag: asset.asset_tag, 
@@ -498,10 +525,10 @@ const assetManager = {
                         let existingRecord = existingParts.find((rec => rec.nxid == record.nxid))
                         // If it exists, increment the quantity
                         if(existingRecord)
-                            existingRecord.quantity += 1
+                        existingRecord.quantity += 1
                         // If not, push a new object
                         else
-                            existingParts.push({nxid: record.nxid, quantity: 1})
+                        existingParts.push({nxid: record.nxid, quantity: 1})
                     })
                     // Check if parts were added on this time
                     let addedParts = [] as CartItem[]
@@ -511,10 +538,10 @@ const assetManager = {
                         let existingRecord = addedParts.find((rec => rec.nxid == record.nxid))
                         // If it exists, increment
                         if(existingRecord)
-                            existingRecord.quantity += 1
+                        existingRecord.quantity += 1
                         // If not, push a new object
                         else
-                            addedParts.push({nxid: record.nxid, quantity: 1})
+                        addedParts.push({nxid: record.nxid, quantity: 1})
                     })
                     // Check if parts were removed
                     let removedParts = [] as CartItem[]
@@ -524,28 +551,33 @@ const assetManager = {
                         let existingRecord = removedParts.find((rec => rec.nxid == record.nxid))
                         // If it exists, increment
                         if(existingRecord)
-                            existingRecord.quantity += 1
+                        existingRecord.quantity += 1
                         // If not, push a new object
                         else
-                            removedParts.push({nxid: record.nxid, quantity: 1})
+                        removedParts.push({nxid: record.nxid, quantity: 1})
                     })
                     // Get current date (will be returned if asset is most recent)
                     let nextDate = new Date(Date.now())
                     // Get end date for current iteration
                     if (index < arr.length - 1)
                         nextDate = new Date(arr[index+1])
-                    // Return history data
-                    return { date_begin: dateObject, date_end: nextDate, asset_id: assetUpdate?._id, info_updated: assetUpdated, existing: existingParts, added: addedParts, removed: removedParts } as AssetEvent
+                        // Return history data
+                        return { date_begin: dateObject, date_end: nextDate, asset_id: assetUpdate?._id, info_updated: assetUpdated, existing: existingParts, added: addedParts, removed: removedParts } as AssetEvent
                 }))
                 history.reverse()
-                res.status(200).json(history)
+                res.status(200).json(history as AssetHistory)
+                }
+                catch(err) {
+                    handleError(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
             }
             // Get ID from query string
             let id = req.query.id as string
             console.log(id)
             // Check if ID is null or doesn't match ID type
             if (!id||!(/WNX([0-9]{7})+/.test(id)||mongoose.Types.ObjectId.isValid(id)))
-                return res.status(400).send("Invalid request");
+            return res.status(400).send("Invalid request");
             // If NXID
             if (/WNX([0-9]{7})+/.test(id)) {
                 Asset.findOne({asset_tag: id, next: null}, getHistory)
