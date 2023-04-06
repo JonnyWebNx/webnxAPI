@@ -33,6 +33,7 @@ const partManager = {
             if (!(nxid&&manufacturer&&name&&type)) {
                 return res.status(400).send("Invalid request");
             }
+            // Regex check the NXID
             if (!/PNX([0-9]{7})+/.test(nxid)) {
                 return res.status(400).send("Invalid part ID");
             }
@@ -47,14 +48,28 @@ const partManager = {
                     // Return and send error to client side for prompt
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                for (let i = 0; i < quantity; i++) {
-                    // Create part records to match the quantity and location of the part schema creation
-                    PartRecord.create({
-                        nxid: part.nxid,
-                        building: req.body.building ? req.body.building : req.user.building,/*req.user.building,*/
-                        location: req.body.location ? req.body.location : "Parts Room",
-                        by: req.user.user_id
-                    }, callbackHandler.callbackHandleError)
+                // Shared create options
+                let createOptions = {
+                    nxid: part.nxid,
+                    building: req.body.building ? req.body.building : req.user.building,/*req.user.building,*/
+                    location: req.body.location ? req.body.location : "Parts Room",
+                    by: req.user.user_id
+                }
+                // If parts have serial numbers, map one record per serial number
+                if(part.serialized) {
+                    let serials = req.body.part.serials as string[]
+                    Promise.all(serials.map(async (serial) => {
+                        let optionsCopy = JSON.parse(JSON.stringify(createOptions))
+                        optionsCopy.serial = serial
+                        PartRecord.create(optionsCopy, callbackHandler.callbackHandleError)
+                    }))
+                }
+                // If parts do not have serial numbers, create generic records
+                else {
+                    for (let i = 0; i < quantity; i++) {
+                        // Create part records to match the quantity and location of the part schema creation
+                        PartRecord.create(createOptions, callbackHandler.callbackHandleError)
+                    }
                 }
                 // Succesful query
                 return res.status(200).json(part);
@@ -154,31 +169,56 @@ const partManager = {
                     next: null
                 });
                 // Insufficient stock
-                if (quantity < item.quantity) {
+                if (quantity < item.quantity!) {
                     return res.status(400).send("Insufficient stock.")
                 }
             }))
             // Loop through each item and create new parts record and update old parts record
             await Promise.all(cart.map(async (item: CartItem) => {
-                // Find all matching part records to minimize requests and ensure updates don't conflict when using async part updating
-                let records = await PartRecord.find({
-                    nxid: item.nxid,
-                    location: "Parts Room",
-                    building: item.building,
-                    next: null
-                });
-                // Loop for quanity of part item
-                for (let j = 0; j < item.quantity; j++) {
-                    // Create new iteration
-                    PartRecord.create({
-                        nxid: item.nxid,
-                        owner: user_id,
-                        location: "Tech Inventory",
+                // If part is serialized
+                if(item.serial) {
+                    // Find matching part
+                    let prevPart = await PartRecord.findOne({
+                        nxid: item.nxid, 
+                        serial: item.serial,
+                        location: "Parts Room",
                         building: item.building,
-                        by: req.user.user_id,
-                        prev: records[j]._id,
                         next: null
-                    }, callbackHandler.updateRecord);
+                    })
+                    // If found, create new record
+                    if (prevPart) {
+                        PartRecord.create({
+                            nxid: item.nxid,
+                            owner: user_id,
+                            location: "Tech Inventory",
+                            building: item.building,
+                            by: req.user.user_id,
+                            prev: prevPart._id,
+                            next: null
+                        }, callbackHandler.updateRecord);
+                    }
+                }
+                else {
+                    // Find all matching part records to minimize requests and ensure updates don't conflict when using async part updating
+                    let records = await PartRecord.find({
+                        nxid: item.nxid,
+                        location: "Parts Room",
+                        building: item.building,
+                        next: null
+                    });
+                    // Loop for quanity of part item
+                    for (let j = 0; j < item.quantity!; j++) {
+                        // Create new iteration
+                        PartRecord.create({
+                            nxid: item.nxid,
+                            owner: user_id,
+                            location: "Tech Inventory",
+                            building: item.building,
+                            by: req.user.user_id,
+                            prev: records[j]._id,
+                            next: null
+                        }, callbackHandler.updateRecord);
+                    }
                 }
             }))
             // Success
@@ -202,37 +242,71 @@ const partManager = {
             }
             // Check quantities before updating records
             await Promise.all(inventory.map(async(item: CartItem) => {
-                let quantity = await PartRecord.count({
-                    nxid: item.nxid,
-                    next: null,
-                    owner: user_id
-                })
-                // If check in quantity is greater than 
-                // inventory quantity
-                if (item.quantity > quantity) {
-                    return res.status(400).send("Invalid request")
+                if(item.serial) {
+                    let part = await PartRecord.findOne({
+                        nxid: item.nxid,
+                        next: null,
+                        owner: user_id,
+                        serial: item.serial
+                    })
+                    if(!part) {
+                        return res.status(400).send("Invalid request")
+                    }
+                }
+                else {
+                    let quantity = await PartRecord.count({
+                        nxid: item.nxid,
+                        next: null,
+                        owner: user_id
+                    })
+                    // If check in quantity is greater than 
+                    // inventory quantity
+                    if (item.quantity! > quantity) {
+                        return res.status(400).send("Invalid request")
+                    }
                 }
             }))
             // Iterate through each item and update records
             await Promise.all(inventory.map(async(item: CartItem) => {
                 // Get database quantity
-                const records = await PartRecord.find({
-                    nxid: item.nxid,
-                    next: null,
-                    owner: user_id
-                });
-                // Loop through the quantity of the item and 
-                // change records
-                for (let i = 0; i < item.quantity; i++) {
-                    // Create new part record - set prev to old record
-                    await PartRecord.create({
+                if (item.serial) {
+                    let part = await PartRecord.findOne({
                         nxid: item.nxid,
                         next: null,
-                        prev: records[i]._id,
-                        location: "Parts Room",
-                        building: req.user.building,
-                        by: req.user.user_id
-                    }, callbackHandler.updateRecord);
+                        owner: user_id,
+                        serial: item.serial
+                    })
+                    if(part!=null) {
+                        PartRecord.create({
+                            nxid: item.nxid,
+                            next: null,
+                            prev: part._id,
+                            location: "Parts Room",
+                            serial: item.serial,
+                            building: req.user.building,
+                            by: req.user.user_id
+                        }, callbackHandler.updateRecord)
+                    }
+                }
+                else {
+                    const records = await PartRecord.find({
+                        nxid: item.nxid,
+                        next: null,
+                        owner: user_id
+                    });
+                    // Loop through the quantity of the item and 
+                    // change records
+                    for (let i = 0; i < item.quantity!; i++) {
+                        // Create new part record - set prev to old record
+                        await PartRecord.create({
+                            nxid: item.nxid,
+                            next: null,
+                            prev: records[i]._id,
+                            location: "Parts Room",
+                            building: req.user.building,
+                            by: req.user.user_id
+                        }, callbackHandler.updateRecord);
+                    }
                 }
             }))
             // Success
@@ -326,6 +400,18 @@ const partManager = {
         try {
             // Find part
             const { part } = req.body
+            function updatePart(err: MongooseError, parts: PartSchema[]) {
+                if (err) {
+                    handleError(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                // Change every part record
+                parts.map((part)=>{  
+                    PartRecord.findByIdAndUpdate(part._id, {
+                        nxid: updatedPart!.nxid
+                    }, callbackHandler.callbackHandleError);
+                })
+            }
             // Updated part is the old part from database
             let updatedPart = await Part.findByIdAndUpdate(part._id, part);
             if (updatedPart == null) {
@@ -333,20 +419,7 @@ const partManager = {
             }
             if (part.nxid != updatedPart.nxid) {
                 // Update old NXID to new NXID
-                PartRecord.find({ nxid: updatedPart.nxid },
-                    (err: MongooseError, parts: PartSchema[]) => {
-                        if (err) {
-                            handleError(err)
-                            return res.status(500).send("API could not handle your request: " + err);
-                        }
-                        // Change every part record
-                        parts.map((part)=>{  
-                            PartRecord.findByIdAndUpdate(part._id, {
-                                nxid: updatedPart!.nxid
-                            }, callbackHandler.callbackHandleError);
-                        })
-                    }
-                )
+                PartRecord.find({ nxid: updatedPart.nxid }, updatePart)
             }
             return res.status(201).json(updatedPart);
         } catch (err) {
@@ -490,34 +563,50 @@ const partManager = {
     getUserInventory: async (req: Request, res: Response) => {
         try {
             const { user_id } = req.query.user_id ? req.query : req.user
+            // Check role
             if((user_id!=req.user.user_id)&&(req.user.role=="tech"))
                 return res.status(403).send("You cannot view another user's inventory");
+            // Fetch part records
             PartRecord.find({ next: null, owner: user_id ? user_id : req.user.user_id }, async (err: MongooseError, records: PartRecordSchema[]) => {
                 if (err) {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                let existingPartIDs = []
-                let existingQuantities = []
-                // Get NXID and quantities into separate arrays so indexOf() can be used
-                for (const part of records) {
-                    // Get index of part ID
-                    let index = existingPartIDs.indexOf(part.nxid)
-                    if (index == -1) {
-                        // If part isn't in array, add it with a quantity of one
-                        existingPartIDs.push(part.nxid)
-                        existingQuantities.push(1)
-                    } else {
-                        // If part already exists, increment quantity
-                        existingQuantities[index] += 1
+                let unserializedParts = new Map<string, number>();
+                let serializedParts = new Map<string, string[]>()
+                await Promise.all(records.map((record) => {
+                    if(record.serial) {
+                        let array = [] as string[]
+                        if(serializedParts.has(record.serial))
+                            array = serializedParts.get(record.serial)!
+                        array?.push(record.serial)
+                        serializedParts.set(record.serial, array)
                     }
-                }
-                let loadedCartItems = []
+                    else if (unserializedParts.has(record.nxid!)) {
+                        unserializedParts.set(record.nxid!, unserializedParts.get(record.nxid!)! + 1)
+                    }
+                    else {
+                        unserializedParts.set(record.nxid!, 1)
+                    }
+                }))
+                let loadedCartItems = [] as LoadedCartItem[]
                 // Get part info and push as LoadedCartItem interface from the front end
-                for (let i = 0; i < existingPartIDs.length; i++) {
-                    let part = await Part.findOne({ nxid: existingPartIDs[i] })
-                    loadedCartItems.push({ part, quantity: existingQuantities[i] })
-                }
+                serializedParts.forEach((serials, nxid) => {
+                    Part.findOne({nxid}, (err: MongooseError, part: PartSchema) => {
+                        if(err) {
+                            return res.status(500).send("API could not handle your request: " + err);                
+                        }
+                        loadedCartItems.push({part: part, serials: serials})
+                    })
+                })
+                unserializedParts.forEach((quantity, nxid) => {
+                    Part.findOne({nxid}, (err: MongooseError, part: PartSchema) => {
+                        if(err) {
+                            return res.status(500).send("API could not handle your request: " + err);                
+                        }
+                        loadedCartItems.push({part: part, quantity: quantity})
+                    })
+                })
                 res.status(200).json(loadedCartItems)
             })
         } catch (err) {

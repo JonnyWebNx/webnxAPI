@@ -40,7 +40,7 @@ const assetManager = {
              * @TODO figure out how to handle parts records when creating assets
              */
             await Promise.all(parts.map(async (part) => {
-                for (let i = 0; i < part.quantity; i++) {
+                for (let i = 0; i < part.quantity!; i++) {
                     await PartRecord.create({
                         nxid: part.nxid,
                         building: req.user.building,
@@ -214,7 +214,7 @@ const assetManager = {
                 if(index == -1) {
                     // If part didn't exist before, add it to differences as is
                     differencesPartIDs.push(part.nxid)
-                    differencesQuantities.push(part.quantity)
+                    differencesQuantities.push(part.quantity!)
                 }
                 else {
                     // Find the difference of quantites
@@ -514,7 +514,7 @@ const assetManager = {
                         let existingRecord = existingParts.find((rec => rec.nxid == record.nxid))
                         // If it exists, increment the quantity
                         if(existingRecord)
-                        existingRecord.quantity += 1
+                        existingRecord.quantity! += 1
                         // If not, push a new object
                         else
                         existingParts.push({nxid: record.nxid, quantity: 1})
@@ -527,7 +527,7 @@ const assetManager = {
                         let existingRecord = addedParts.find((rec => rec.nxid == record.nxid))
                         // If it exists, increment
                         if(existingRecord)
-                        existingRecord.quantity += 1
+                        existingRecord.quantity! += 1
                         // If not, push a new object
                         else
                         addedParts.push({nxid: record.nxid, quantity: 1})
@@ -540,7 +540,7 @@ const assetManager = {
                         let existingRecord = removedParts.find((rec => rec.nxid == record.nxid))
                         // If it exists, increment
                         if(existingRecord)
-                        existingRecord.quantity += 1
+                        existingRecord.quantity! += 1
                         // If not, push a new object
                         else
                         removedParts.push({nxid: record.nxid, quantity: 1})

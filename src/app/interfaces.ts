@@ -40,6 +40,7 @@ export interface PartSchema {
     port_type?: string,
     cable_end1?: string,
     cable_end2?: string,
+    serialized?: boolean
 }
 
 export interface AssetSchema {
@@ -85,7 +86,8 @@ export interface PartRecordSchema {
 // User state interface
 export interface CartItem {
     nxid: string,
-    quantity: number,
+    quantity?: number,
+    serial?: string,
     location?: string,
     building?: number
 }
@@ -93,7 +95,9 @@ export interface CartItem {
 // Contains all part data
 export interface LoadedCartItem {
     part: PartSchema,
-    quantity: number
+    quantity?: number,
+    serials?: string[],
+    serial?: string
 }
 
 // User schema
