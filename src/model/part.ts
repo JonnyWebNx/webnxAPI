@@ -5,6 +5,7 @@ const partSchema = new mongoose.Schema({
     manufacturer: { type: String, required: true },
     name: { type: String, required: true },
     type: { type: String, required: true },
+    serialized: { type: Boolean, required: true},
     frequency: { type: Number },
     chipset: { type: String },
     memory_type: { type: String },

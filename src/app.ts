@@ -135,7 +135,6 @@ app.get("/api/*", async (req, res) => {
     return res.status(400).send("Invalid request.");
 });
 app.put("/api/*", async (req, res) => {
-    console.log("the fuck?")
     return res.status(400).send("Invalid request.");
 });
 app.delete("/api/*", async (req, res) => {

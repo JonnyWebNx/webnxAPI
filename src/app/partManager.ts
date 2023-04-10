@@ -27,6 +27,7 @@ const partManager = {
     // Create
     createPart: async (req: Request, res: Response) => {
         try {
+            console.log(req.body.part)
             // Get part info from request body
             const { nxid, manufacturer, name, type, quantity } = req.body.part;
             // If any part info is missing, return invalid request
@@ -162,15 +163,27 @@ const partManager = {
             // Find each item and check quantities before updating
             await Promise.all(cart.map(async (item: CartItem) => {
                 // Check quantity before
-                let quantity = await PartRecord.count({
-                    nxid: item.nxid,
-                    location: "Parts Room",
-                    building: item.building,
-                    next: null
-                });
-                // Insufficient stock
-                if (quantity < item.quantity!) {
-                    return res.status(400).send("Insufficient stock.")
+                if(item.serial) {
+                    let serializedItem = await PartRecord.findOne({
+                        nxid: item.nxid,
+                        location: "Parts Room",
+                        building: item.building,
+                        next: null,
+                        serial: item.serial
+                    })
+                    if(!serializedItem)
+                        return res.status(400).send("Insufficient stock.")
+                } else {
+                    let quantity = await PartRecord.count({
+                        nxid: item.nxid,
+                        location: "Parts Room",
+                        building: item.building,
+                        next: null
+                    });
+                    // Insufficient stock
+                    if (quantity < item.quantity!) {
+                        return res.status(400).send("Insufficient stock.")
+                    }
                 }
             }))
             // Loop through each item and create new parts record and update old parts record
@@ -433,6 +446,10 @@ const partManager = {
             // Get info from request
             let { part, owner } = req.body
             const { nxid, quantity, location, building } = part;
+            let serials = [] as string[]
+            if(part.serials) {
+                serials = part.serials
+            }
             // If any part info is missing, return invalid request
             if (!(nxid && quantity && location && building)||(quantity < 1))
                 return res.status(400).send("Invalid request");
@@ -444,6 +461,7 @@ const partManager = {
                 next: null,
                 by: req.user.user_id,
             } as PartRecordSchema
+
             // If asset, make sure asset exists
             switch(location) {
                 case "Asset":
@@ -479,9 +497,18 @@ const partManager = {
             Part.findOne({ nxid }, (err: MongooseError, part: PartSchema) => {
                 if (err)
                     return res.status(500).send("API could not handle your request: " + err);
-                for (let i = 0; i < quantity; i++) {
-                    // Create new parts records to match the quantity
-                    PartRecord.create(createOptions, callbackHandler.callbackHandleError);
+                if(serials.length > 0) {
+                    serials.map((serial) => {
+                        let createOptionsCopy = JSON.parse(JSON.stringify(createOptions))
+                        createOptionsCopy.serial = serial
+                        PartRecord.create(createOptions, callbackHandler.callbackHandleError);
+                    })
+                }
+                else {
+                    for (let i = 0; i < quantity; i++) {
+                        // Create new parts records to match the quantity
+                        PartRecord.create(createOptions, callbackHandler.callbackHandleError);
+                    }
                 }
                 // Success
                 res.status(200).send("Successfully added to inventory")
