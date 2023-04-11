@@ -599,15 +599,13 @@ const partManager = {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
+                let cachedRecords = new Map<string, PartSchema>();
                 let unserializedParts = new Map<string, number>();
-                let serializedParts = new Map<string, string[]>()
+                let cartItems = [] as CartItem[]
+
                 await Promise.all(records.map((record) => {
                     if(record.serial) {
-                        let array = [] as string[]
-                        if(serializedParts.has(record.serial))
-                            array = serializedParts.get(record.serial)!
-                        array?.push(record.serial)
-                        serializedParts.set(record.serial, array)
+                        cartItems.push({nxid: record.nxid!, serial: record.serial })
                     }
                     else if (unserializedParts.has(record.nxid!)) {
                         unserializedParts.set(record.nxid!, unserializedParts.get(record.nxid!)! + 1)
@@ -616,25 +614,27 @@ const partManager = {
                         unserializedParts.set(record.nxid!, 1)
                     }
                 }))
-                let loadedCartItems = [] as LoadedCartItem[]
                 // Get part info and push as LoadedCartItem interface from the front end
-                serializedParts.forEach((serials, nxid) => {
-                    Part.findOne({nxid}, (err: MongooseError, part: PartSchema) => {
-                        if(err) {
-                            return res.status(500).send("API could not handle your request: " + err);                
-                        }
-                        loadedCartItems.push({part: part, serials: serials})
-                    })
-                })
                 unserializedParts.forEach((quantity, nxid) => {
-                    Part.findOne({nxid}, (err: MongooseError, part: PartSchema) => {
-                        if(err) {
-                            return res.status(500).send("API could not handle your request: " + err);                
-                        }
-                        loadedCartItems.push({part: part, quantity: quantity})
-                    })
+                    cartItems.push({nxid: nxid, quantity: quantity})
                 })
-                res.status(200).json(loadedCartItems)
+                await Promise.all(cartItems.map(async (item) =>{
+                    if (!cachedRecords.has(item.nxid)) {
+                        cachedRecords.set(item.nxid, {})
+                        let part = await Part.findOne({nxid: item.nxid})
+                        if(part) {
+                            cachedRecords.set(item.nxid, part)
+                        }
+                    }
+                }))
+
+                console.log(cachedRecords)
+                console.log(cartItems)
+                
+                let parts = Array.from(cachedRecords, (record) => {
+                    return { nxid: record[0], part: record[1]}
+                })
+                res.status(200).json({ parts: parts, records: cartItems})
             })
         } catch (err) {
             handleError(err)
