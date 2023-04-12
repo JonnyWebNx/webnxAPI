@@ -79,7 +79,7 @@ app.post("/api/register", sanitize, register);
 app.post("/api/part", auth, clerkAdminPermission, sanitize, partManager.createPart);
 app.post("/api/part/add", auth, clerkAdminPermission, sanitize, partManager.addToInventory);
 app.post("/api/checkout", auth, kioskPermission, sanitize, partManager.checkout);
-app.post("/api/checkin", kioskPermission, auth, sanitize, partManager.checkin)
+app.post("/api/checkin", auth, kioskPermission, sanitize, partManager.checkin)
 app.post("/api/part/move", auth, sanitize, partManager.movePartRecords);
 // Read    throw new TypeError('path must be absolute or specify root to res.sendFile');
 app.get("/api/part", auth, sanitize, partManager.getPart);

@@ -4,7 +4,7 @@ import Part from "../model/part.js";
 import handleError from "../config/mailer.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { Request, Response } from "express";
-import { AssetEvent, AssetHistory, AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
+import { AssetEvent, AssetHistory, AssetSchema, CartItem, PartRecordSchema, PartSchema } from "./interfaces.js";
 import mongoose, { CallbackError } from "mongoose";
 import partRecord from "../model/partRecord.js";
 
@@ -40,15 +40,28 @@ const assetManager = {
              * @TODO figure out how to handle parts records when creating assets
              */
             await Promise.all(parts.map(async (part) => {
-                for (let i = 0; i < part.quantity!; i++) {
+                if(part.serial) {
                     await PartRecord.create({
                         nxid: part.nxid,
                         building: req.user.building,
                         location: "Asset",
                         asset_tag: asset.asset_tag,
+                        serial: part.serial,
                         by: req.user.user_id,
                         date_created: dateCreated
                     })
+                }
+                else {
+                    for (let i = 0; i < part.quantity!; i++) {
+                        await PartRecord.create({
+                            nxid: part.nxid,
+                            building: req.user.building,
+                            location: "Asset",
+                            asset_tag: asset.asset_tag,
+                            by: req.user.user_id,
+                            date_created: dateCreated
+                        })
+                    }
                 }
             }))
             // Create a new asset
@@ -169,132 +182,145 @@ const assetManager = {
         }
     },
     updateAsset: async (req: Request, res: Response) => {
-        // Not my proudest code
         try {
+            // Get data from request body
             let { asset, parts } = req.body;
+            // Check if asset is valid
             if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
                 return res.status(400).send("Invalid request");
             }
-            let current_date = Date.now()
-            // Set by attribute to requesting user
+            // Save current time for updates
+            let current_date = Date.now();
+            // Prep asset for updates
             asset.by = req.user.user_id;
-            // Get current date
-            asset.date_updated = Date.now();
-            if(!parts) {
-                parts = []
-            }
-            // Find part records currently associated with asset
-            let partRecords = await PartRecord.find({
+            asset.date_updated = current_date;
+            // Get part records that are currently on asset
+            let existingParts = await PartRecord.find({
                 asset_tag: asset.asset_tag, 
                 next: null
             })
-            // 
-            let existingPartIDs = [] as string[]
-            let existingQuantities = [] as number[]
-            // Get NXID and quantites into seperate arrays so indexOf() can be used
-            partRecords.map((part: PartRecordSchema) => {
-                // Get index of part ID
-                let index = existingPartIDs.indexOf(part.nxid!)
-                if(index==-1) {
-                    // If part isn't in array, add it with a quantity of one
-                    existingPartIDs.push(part.nxid!)
-                    existingQuantities.push(1)
-                } else {
-                    // If part already exists, increment quantity
-                    existingQuantities[index] += 1
-                }
-            })
-            // Array of part differences - {nxid: WNX0001778, quantity: -2}, {nxid: WNX0002753, quantity: (+)4}
-            let differencesPartIDs = [] as string[]
-            let differencesQuantities = [] as number[]
-            // Iterate through submitted parts
-            parts.map((part: CartItem) => {
-                let index = existingPartIDs.indexOf(part.nxid!)
-                if(index == -1) {
-                    // If part didn't exist before, add it to differences as is
-                    differencesPartIDs.push(part.nxid)
-                    differencesQuantities.push(part.quantity!)
+            // Store existing parts in a more usable format
+            let unserializedPartsOnAsset = new Map<string, number>();
+            let serializedPartsOnAsset = [] as CartItem[];
+            let unserializedPartsOnRequest = new Map<string, number>();
+            let serializedPartsOnRequest = [] as CartItem[];
+            // Map part records to new format
+            
+            existingParts.map((p)=>{
+                if(p.serial) {
+                    // Push to array
+                    serializedPartsOnAsset.push({ nxid: p.nxid, serial: p.serial });
                 }
                 else {
-                    // Find the difference of quantites
-                    // If new quantity was 4 and old quantity was 3, only 1 part record will need to be added
-                    let quantityDifference = part.quantity! - existingQuantities[index]
-                    differencesPartIDs.push(part.nxid)
-                    differencesQuantities.push(quantityDifference)
-                }
+                    // Create variable
+                    let newQuantity = 0;
+                    // If part already exists
+                    if(unserializedPartsOnAsset.has(p.nxid)) {
+                        // Increment quantity
+                        newQuantity = unserializedPartsOnAsset.get(p.nxid)!+1;
+                    }
+                    else {
+                        // Part is not in map, set quantity to one
+                        newQuantity = 1;
+                    }
+                    // Update map
+                    unserializedPartsOnAsset.set(p.nxid, newQuantity);
+                }    
             })
-            // Check for parts that were absent from submission 
-            for(let i = 0; i < existingPartIDs.length; i++) {
-                // Check for every existing part on the difference list
-                let index = differencesPartIDs.indexOf(existingPartIDs[i])
-                // If part is missing - add it to list as a fully removed part
-                if(index == -1) {
-                    differencesPartIDs.push(existingPartIDs[i])
-                    differencesQuantities.push(-1*existingQuantities[i])
+            parts.map((p: CartItem)=>{
+                if(p.serial) {
+                    // Push to array
+                    serializedPartsOnRequest.push({ nxid: p.nxid, serial: p.serial });
                 }
+                else if (p.quantity) {
+                    unserializedPartsOnRequest.set(p.nxid, p.quantity);
+                }    
+            })
+            // Parts removed from asset
+            let removed = [] as CartItem[]
+            // Parts added to asset
+            let added = [] as CartItem[]
+            // Check for serialized parts removed from asset
+            function checkDifferenceSerialized(array1: CartItem[], array2: CartItem[], differenceDest: CartItem[]) {
+                array1.map((p)=>{
+                    let existing = array2.find((e)=>(p.nxid==e.nxid)&&(p.serial==e.serial));
+                    if(!existing)
+                        differenceDest.push(p)
+                })
             }
-            // Store results so only one query is needed    
-            // Go through all parts being added to asset and make sure the user has required parts before editing anything
-            for (let i = 0; i < differencesPartIDs.length; i++) {
-                if (differencesQuantities[i]>0) {
-                    // Subtract from user's inventory and add to asset
-                    let userInventoryCount = await PartRecord.count({owner: req.user.user_id, next: null, nxid: differencesPartIDs[i]})
-                    if (userInventoryCount < differencesQuantities[i]) {
-                        return res.status(400).send("Not enough parts in your inventory");
+            checkDifferenceSerialized(serializedPartsOnAsset, serializedPartsOnRequest, removed)
+            checkDifferenceSerialized(serializedPartsOnRequest, serializedPartsOnAsset, added)
+            function checkDifferenceUnserialized(map1: Map<string, number>, map2: Map<string, number>, differenceDest: CartItem[]) {
+                map1.forEach((v,k)=>{
+                    if(map2.has(k)) {
+                        let reqQuantity = map2.get(k)!
+                        let difference = reqQuantity - v;
+                        if(difference > 0)
+                            differenceDest.push({nxid: k, quantity: difference})    
                     }
-                    // Save results to avoid duplicate queries
-                }
+                    else {
+                        differenceDest.push({nxid: k, quantity: v})
+                    }
+                })
             }
-            delete asset.date_updated
-            // Edit parts records after confirming quantities and updating Asset object
-            await Promise.all(differencesPartIDs.map(async(id, i, arr) => {
-                if (differencesQuantities[i]===0) {
-                    return
-                }
-                let searchOptions = {}
-                let createOptions = {} as PartRecordSchema
-                if (differencesQuantities[i]>0) {
-                    // If parts are being added to asset: 
-                    searchOptions = {
-                        owner: req.user.user_id,
-                        next: null,
-                        nxid: differencesPartIDs[i]
+            checkDifferenceUnserialized(unserializedPartsOnAsset, unserializedPartsOnRequest, removed)
+            checkDifferenceUnserialized(unserializedPartsOnRequest, unserializedPartsOnAsset, added)
+            // Check for removed unserialized parts
+            function updateParts(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: CartItem[]) {
+                arr.map(async (p)=>{
+                    let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
+                    let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
+                    sOptions.nxid = p.nxid
+                    cOptions.nxid = p.nxid
+                    if(p.serial) {
+                        cOptions.serial = p.serial
+                        sOptions.serial = p.serial
+                        let prev = await PartRecord.findOne(sOptions)
+                        if(!prev)
+                            return
+                        cOptions.prev = prev._id
+                        PartRecord.create(cOptions, callbackHandler.updateRecord)
                     }
-                    createOptions = {
-                        asset_tag: asset.asset_tag,
-                        building: asset.building,
-                        location: "Asset",
-                        date_created: current_date,
-                        by: req.user.user_id,
-                        next: null,
-                    } as PartRecordSchema
-                } else {
-                    // If parts are being removed from asset: 
-                    searchOptions = {
-                        nxid: differencesPartIDs[i],
-                        asset_tag: asset.asset_tag,
-                        next: null
+                    else if(p.quantity) {
+                        let toBeUpdated = await PartRecord.find(sOptions)
+                        if (toBeUpdated.length < p.quantity)
+                            return
+                        for (let i = 0; i < p.quantity; i++) {
+                            cOptions.prev = toBeUpdated[i]._id
+                            PartRecord.create(cOptions, callbackHandler.updateRecord)
+                        }
                     }
-                    differencesQuantities[i] = (-1*differencesQuantities[i])
-                    createOptions = {
-                        owner: req.user.user_id,
-                        building: req.user.building,
-                        location: "Tech Inventory",
-                        by: req.user.user_id,
-                        date_created: current_date,
-                        next: null,
-                    } as PartRecordSchema
-                }
-                // Get parts records that will be updated
-                let oldRecords = await PartRecord.find(searchOptions)
-                createOptions.nxid = differencesPartIDs[i]
-                // Create a new record for each part and update previous iteration
-                for (let j = 0; j < differencesQuantities[i]; j++) {
-                    createOptions.prev = oldRecords[j]._id
-                    PartRecord.create(createOptions, callbackHandler.updateRecord)
-                }
-            }))
+                })
+            }
+            let removedOptions = {
+                owner: req.user.user_id,
+                building: req.user.building,
+                location: "Tech Inventory",
+                by: req.user.user_id,
+                date_created: current_date,
+                next: null,
+            } as PartRecordSchema
+    
+            let addedOptions = {
+                asset_tag: asset.asset_tag,
+                building: asset.building,
+                location: "Asset",
+                date_created: current_date,
+                by: req.user.user_id,
+                next: null,
+            } as PartRecordSchema
+            let assetSearchOptions = {
+                asset_tag: asset.asset_tag,
+                next: null
+            }
+            let userSearchOptions = {
+                owner: req.user.user_id,
+                next: null
+            }
+            updateParts(removedOptions, assetSearchOptions, removed)
+            updateParts(addedOptions, userSearchOptions, added)
+    
             // Update the asset object and return to user before updating parts records
             let getAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: asset.asset_tag, next: null}))) as AssetSchema
             let save_id = asset._id
@@ -302,15 +328,19 @@ const assetManager = {
             delete getAsset._id
             delete getAsset.next
             delete getAsset.date_created
+            delete getAsset.date_replaced
+            delete getAsset.date_updated
             delete getAsset.by
             delete getAsset.__v
+
             delete asset.prev
             delete asset._id
             delete asset.next
             delete asset.date_created
+            delete asset.date_replaced
+            delete asset.date_updated
             delete asset.by
             delete asset.__v
-        
             if(JSON.stringify(getAsset) != JSON.stringify(asset)) {
                 asset.prev = save_id
                 asset.next = null
@@ -343,38 +373,44 @@ const assetManager = {
         try {
             const { asset_tag } = req.query
             // Find all parts records associated with asset tag
-            PartRecord.find({asset_tag, next: null}, async (err: CallbackError, partsRecords: PartRecordSchema[]) => {
-                if(err) {
+            PartRecord.find({asset_tag, next: null}, async (err: CallbackError, records: PartRecordSchema[]) => {
+                if (err) {
                     handleError(err)
-                    return res.status(500).send("API could not handle your request: "+err);
+                    return res.status(500).send("API could not handle your request: " + err);
                 }
-                // Temporary arrays
-                let partIDs = []
-                let quantities = []
-                // Go through every part records and change duplicates to new quantities
-                for (let i = 0; i < partsRecords.length; i++) {
-                    let index = partIDs.indexOf(partsRecords[i].nxid)
-                    // If part isn't already in array
-                    if (index == -1) {
-                        // Push part to arrays with a quantity of 1
-                        partIDs.push(partsRecords[i].nxid)
-                        quantities.push(1)
-                    } else {
-                        // Part is already in array - update quantity
-                        quantities[index] += 1
+                let cachedRecords = new Map<string, PartSchema>();
+                let unserializedParts = new Map<string, number>();
+                let cartItems = [] as CartItem[]
+
+                await Promise.all(records.map((record) => {
+                    if(record.serial) {
+                        cartItems.push({nxid: record.nxid!, serial: record.serial })
                     }
-                }
-                // Array that will be returned
-                let partsAsLoadedCartItem = []
-                // Go through part
-                for (let i = 0; i < partIDs.length; i++) {
-                    // Get part info
-                    let partInfo = await Part.findOne({nxid: partIDs[i]})
-                    partsAsLoadedCartItem.push({part: partInfo, quantity: quantities[i]})
-                    
-                }
-                // Done
-                res.status(200).json(partsAsLoadedCartItem)
+                    else if (unserializedParts.has(record.nxid!)) {
+                        unserializedParts.set(record.nxid!, unserializedParts.get(record.nxid!)! + 1)
+                    }
+                    else {
+                        unserializedParts.set(record.nxid!, 1)
+                    }
+                }))
+                // Get part info and push as LoadedCartItem interface from the front end
+                unserializedParts.forEach((quantity, nxid) => {
+                    cartItems.push({nxid: nxid, quantity: quantity})
+                })
+                await Promise.all(cartItems.map(async (item) =>{
+                    if (!cachedRecords.has(item.nxid)) {
+                        cachedRecords.set(item.nxid, {})
+                        let part = await Part.findOne({nxid: item.nxid})
+                        if(part) {
+                            cachedRecords.set(item.nxid, part)
+                        }
+                    }
+                }))
+
+                let parts = Array.from(cachedRecords, (record) => {
+                    return { nxid: record[0], part: record[1]}
+                })
+                res.status(200).json({ parts: parts, records: cartItems})
             })
         } catch(err) {
             handleError(err)
@@ -511,39 +547,54 @@ const assetManager = {
                     // Loop over every part already on asset
                     tempExistingParts.map((record) => {
                         // Check if part is already in array
-                        let existingRecord = existingParts.find((rec => rec.nxid == record.nxid))
-                        // If it exists, increment the quantity
-                        if(existingRecord)
-                        existingRecord.quantity! += 1
-                        // If not, push a new object
-                        else
-                        existingParts.push({nxid: record.nxid, quantity: 1})
+                        if(record.serial) {
+                            existingParts.push({nxid: record.nxid, serial: record.serial})
+                        }
+                        else {
+                            let existingRecord = existingParts.find((rec => rec.nxid == record.nxid))
+                            // If it exists, increment the quantity
+                            if(existingRecord)
+                            existingRecord.quantity! += 1
+                            // If not, push a new object
+                            else
+                            existingParts.push({nxid: record.nxid, quantity: 1})
+                        }
                     })
                     // Check if parts were added on this time
                     let addedParts = [] as CartItem[]
                     // Filter for added parts, and loop over all of them
                     allPartRecords.filter(record => record.date_created.toISOString() == updateDate).map((record) => {
                         // Check if part is already in array
-                        let existingRecord = addedParts.find((rec => rec.nxid == record.nxid))
-                        // If it exists, increment
-                        if(existingRecord)
-                        existingRecord.quantity! += 1
-                        // If not, push a new object
-                        else
-                        addedParts.push({nxid: record.nxid, quantity: 1})
+                        if (record.serial) {
+                            addedParts.push({nxid: record.nxid, serial: record.serial})
+                        }
+                        else {
+                            let existingRecord = addedParts.find((rec => rec.nxid == record.nxid))
+                            // If it exists, increment
+                            if(existingRecord)
+                            existingRecord.quantity! += 1
+                            // If not, push a new object
+                            else
+                            addedParts.push({nxid: record.nxid, quantity: 1})
+                        }
                     })
                     // Check if parts were removed
                     let removedParts = [] as CartItem[]
                     // Filter for removed parts, and loop over all of them
                     allPartRecords.filter(record => (record.date_replaced!=undefined)&&(record.date_replaced.toISOString() == updateDate)).map((record) => {
-                        // Check if part is already in array
-                        let existingRecord = removedParts.find((rec => rec.nxid == record.nxid))
-                        // If it exists, increment
-                        if(existingRecord)
-                        existingRecord.quantity! += 1
-                        // If not, push a new object
-                        else
-                        removedParts.push({nxid: record.nxid, quantity: 1})
+                        if(record.serial) {
+                            removedParts.push({nxid: record.nxid, serial: record.serial})
+                        }
+                        else {
+                            // Check if part is already in array
+                            let existingRecord = removedParts.find((rec => rec.nxid == record.nxid))
+                            // If it exists, increment
+                            if(existingRecord)
+                            existingRecord.quantity! += 1
+                            // If not, push a new object
+                            else
+                            removedParts.push({nxid: record.nxid, quantity: 1})
+                        }
                     })
                     // Get current date (will be returned if asset is most recent)
                     let nextDate = new Date(Date.now())

@@ -20,6 +20,7 @@ import path from 'path';
 import { PartSchema } from "./interfaces.js";
 import config from '../config.js'
 import { existsSync } from 'fs';
+import user from '../model/user.js';
 
 const { UPLOAD_DIRECTORY } = config
 
@@ -27,7 +28,6 @@ const partManager = {
     // Create
     createPart: async (req: Request, res: Response) => {
         try {
-            console.log(req.body.part)
             // Get part info from request body
             const { nxid, manufacturer, name, type, quantity } = req.body.part;
             // If any part info is missing, return invalid request
@@ -161,31 +161,35 @@ const partManager = {
                     return res.status(400).send("Invalid request")
             }
             // Find each item and check quantities before updating
+            let sufficientStock = true
             await Promise.all(cart.map(async (item: CartItem) => {
                 // Check quantity before
                 if(item.serial) {
                     let serializedItem = await PartRecord.findOne({
                         nxid: item.nxid,
                         location: "Parts Room",
-                        building: item.building,
+                        building: req.user.building,
                         next: null,
                         serial: item.serial
                     })
-                    if(!serializedItem)
-                        return res.status(400).send("Insufficient stock.")
+                    if(serializedItem==undefined) {
+                        sufficientStock = false
+                    }
                 } else {
                     let quantity = await PartRecord.count({
                         nxid: item.nxid,
                         location: "Parts Room",
-                        building: item.building,
+                        building: req.user.building,
                         next: null
                     });
                     // Insufficient stock
                     if (quantity < item.quantity!) {
-                        return res.status(400).send("Insufficient stock.")
+                        sufficientStock = false
                     }
                 }
             }))
+            if(!sufficientStock)
+                return res.status(400).send("Insufficient stock.")
             // Loop through each item and create new parts record and update old parts record
             await Promise.all(cart.map(async (item: CartItem) => {
                 // If part is serialized
@@ -195,7 +199,7 @@ const partManager = {
                         nxid: item.nxid, 
                         serial: item.serial,
                         location: "Parts Room",
-                        building: item.building,
+                        building: req.user.building,
                         next: null
                     })
                     // If found, create new record
@@ -203,8 +207,9 @@ const partManager = {
                         PartRecord.create({
                             nxid: item.nxid,
                             owner: user_id,
+                            serial: item.serial,
                             location: "Tech Inventory",
-                            building: item.building,
+                            building: req.user.building,
                             by: req.user.user_id,
                             prev: prevPart._id,
                             next: null
@@ -216,7 +221,7 @@ const partManager = {
                     let records = await PartRecord.find({
                         nxid: item.nxid,
                         location: "Parts Room",
-                        building: item.building,
+                        building: req.user.building,
                         next: null
                     });
                     // Loop for quanity of part item
@@ -226,7 +231,7 @@ const partManager = {
                             nxid: item.nxid,
                             owner: user_id,
                             location: "Tech Inventory",
-                            building: item.building,
+                            building: req.user.building,
                             by: req.user.user_id,
                             prev: records[j]._id,
                             next: null
@@ -628,9 +633,6 @@ const partManager = {
                     }
                 }))
 
-                console.log(cachedRecords)
-                console.log(cartItems)
-                
                 let parts = Array.from(cachedRecords, (record) => {
                     return { nxid: record[0], part: record[1]}
                 })
