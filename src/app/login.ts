@@ -20,13 +20,23 @@ const login = async (req: Request, res: Response):Promise<void> => {
         // Compare password
         if (user && (await bcrypt.compare(password, user.password))) {
             // Create token if password correct
-            const token = jwt.sign(
-                { user_id: user._id, email, role: user.role, building: user.building },
-                JWT_SECRET!,
-                {
-                    expiresIn: JWT_EXPIRES_IN,
-                }
-            );
+            let token = ""
+            // No expiry time for kiosk
+            if (user.role=="kiosk") {
+                token = jwt.sign(
+                    { user_id: user._id, email, role: user.role, building: user.building },
+                    JWT_SECRET!
+                );
+            }
+            else {
+                token = jwt.sign(
+                    { user_id: user._id, email, role: user.role, building: user.building },
+                    JWT_SECRET!,
+                    {
+                        expiresIn: JWT_EXPIRES_IN,
+                    }
+                );
+            }
             // console.log(user.role+": "+token)
             // Turn user into JSON object
             let { password: pass, ...returnUser } = user

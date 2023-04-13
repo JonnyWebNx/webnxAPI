@@ -1,4 +1,3 @@
-
 /**
  * @author Cameron McKay
  * 
@@ -13,14 +12,13 @@ import Asset from '../model/asset.js'
 import User from "../model/user.js";
 import handleError from "../config/mailer.js";
 import callbackHandler from '../middleware/callbackHandlers.js'
-import { AssetSchema, CartItem, LoadedCartItem, PartRecordSchema } from "./interfaces.js";
+import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
 import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
 import { PartSchema } from "./interfaces.js";
 import config from '../config.js'
 import { existsSync } from 'fs';
-import user from '../model/user.js';
 
 const { UPLOAD_DIRECTORY } = config
 
@@ -390,20 +388,26 @@ const partManager = {
                         handleError(err)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
+                    // Map for all parts
                     let returnParts = await Promise.all(parts.map(async (part)=>{
+                        // Check parts room quantity
                         let count = await PartRecord.count({
                             nxid: part.nxid,
                             next: null,
                             location: location ? location : "Parts Room",
                             building: building ? building : req.user.building
                         });
+                        // Get total quantity
                         let total_count = await PartRecord.count({
                             nxid: part.nxid,
                             next: null
                         });
+                        // Copy part
                         let tempPart = JSON.parse(JSON.stringify(part))
+                        // Add quantities
                         tempPart.quantity = count;
                         tempPart.total_quantity = total_count;
+                        // Return
                         return tempPart
                     }))
                     return res.status(200).json(returnParts);
@@ -452,11 +456,19 @@ const partManager = {
             let { part, owner } = req.body
             const { nxid, quantity, location, building } = part;
             let serials = [] as string[]
-            if(part.serials) {
-                serials = part.serials
+            if(part.serial) {
+                serials = part.serial
+                // Splits string at newline
+                .split('\n')
+                // Filters out blank lines
+                .filter((sn: string) => sn != '')
+                // Gets rid of duplicates
+                .filter((sn: string, i: number, arr: string[]) => i == arr.indexOf(sn))
+                .map((sn: string) => sn.replace(/[, ]+/g, " ").trim());
             }
             // If any part info is missing, return invalid request
-            if (!(nxid && quantity && location && building)||(quantity < 1))
+            console.log(part)
+            if (!(nxid && location && building)||(quantity < 1&&serials.length<1))
                 return res.status(400).send("Invalid request");
             let createOptions = {
                 nxid,
@@ -499,14 +511,38 @@ const partManager = {
                     break
             }
             // Find part info
-            Part.findOne({ nxid }, (err: MongooseError, part: PartSchema) => {
+            
+            Part.findOne({ nxid }, async (err: MongooseError, part: PartSchema) => {
                 if (err)
                     return res.status(500).send("API could not handle your request: " + err);
                 if(serials.length > 0) {
+                    // Get existing records to check serials
+                    let records = await PartRecord.find({nxid, next: null}) as PartRecordSchema[];
+                    // Use hashmap for easier and faster checks
+                    let serialMap = new Map<string, PartRecordSchema>()
+                    // Map array to hashmap
+                    records.map((r)=>{
+                        serialMap.set(r.serial!, r)
+                    })
+                    // Set sentinel value
+                    let existingSerial = ""
+                    // Check all serials 
                     serials.map((serial) => {
+                        // If serial exists in hashmap, set sentinel value
+                        if (serialMap.has(serial))
+                            existingSerial = serial
+                    })
+                    // If serial already exists, return error
+                    if(existingSerial!="")
+                        return res.status(400).send(`Serial number ${existingSerial} already in inventory`);
+                    // All serials are new, continue
+                    serials.map(async (serial) => {
+                        // Make copy
                         let createOptionsCopy = JSON.parse(JSON.stringify(createOptions))
+                        // Add serial
                         createOptionsCopy.serial = serial
-                        PartRecord.create(createOptions, callbackHandler.callbackHandleError);
+                        // Create PartRecords
+                        PartRecord.create(createOptionsCopy, callbackHandler.callbackHandleError);
                     })
                 }
                 else {
@@ -562,8 +598,16 @@ const partManager = {
         try {
             // Get key to find distinct values
             const { key, where } = req.query;
+            let temp = where as PartRecordSchema
+            // Check for null
+            if(temp&&temp.next!&&temp.next=="null")
+                temp.next = null
+            // Check for null
+            if(temp&&temp.prev!&&temp.prev=="null")
+                temp.prev = null
+            console.log(temp)
             // Find all distinct part records
-            PartRecord.find(where as PartRecordSchema).distinct(key as string, (err: MongooseError, record: PartRecordSchema[]) => {
+            PartRecord.find(temp).distinct(key as string, (err: MongooseError, record: PartRecordSchema[]) => {
                 if (err)
                     res.status(500).send("API could not handle your request: " + err);
                 else
@@ -604,38 +648,60 @@ const partManager = {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
+                // Store part info
                 let cachedRecords = new Map<string, PartSchema>();
+                // Unserialized parts and quantities
                 let unserializedParts = new Map<string, number>();
+                // Serialized parts
                 let cartItems = [] as CartItem[]
 
                 await Promise.all(records.map((record) => {
+                    // If serialized
                     if(record.serial) {
+                        // Push straight to cart items
                         cartItems.push({nxid: record.nxid!, serial: record.serial })
                     }
+                    // If unserialized and map already has part
                     else if (unserializedParts.has(record.nxid!)) {
+                        // Increment quantity
                         unserializedParts.set(record.nxid!, unserializedParts.get(record.nxid!)! + 1)
                     }
+                    // Map does not have part
                     else {
+                        // Start at 1
                         unserializedParts.set(record.nxid!, 1)
                     }
                 }))
                 // Get part info and push as LoadedCartItem interface from the front end
                 unserializedParts.forEach((quantity, nxid) => {
+                    // Push unserialized parts to array
                     cartItems.push({nxid: nxid, quantity: quantity})
                 })
+                // Check all cart items
                 await Promise.all(cartItems.map(async (item) =>{
+                    // Check if part record cache already contains part info
                     if (!cachedRecords.has(item.nxid)) {
+                        // Set temp value
                         cachedRecords.set(item.nxid, {})
+                        // Find part info
                         let part = await Part.findOne({nxid: item.nxid})
+                        // If part info found
                         if(part) {
+                            // Set new value
                             cachedRecords.set(item.nxid, part)
+                        }
+                        // Part info not found
+                        else {
+                            // Error - reset 
+                            cachedRecords.delete(item.nxid)
                         }
                     }
                 }))
-
+                // Map part info to array (Maps can't be sent through Express/HTTP ???)
                 let parts = Array.from(cachedRecords, (record) => {
                     return { nxid: record[0], part: record[1]}
                 })
+                // Send response
                 res.status(200).json({ parts: parts, records: cartItems})
             })
         } catch (err) {

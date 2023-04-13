@@ -1,3 +1,11 @@
+/**
+* @author Cameron McKay
+* 
+* @email cameron@webnx.com
+* 
+* @brief Asset manager object for querying database and creating responses
+* 
+*/
 import Asset from "../model/asset.js";
 import PartRecord from "../model/partRecord.js";
 import Part from "../model/part.js";
@@ -36,9 +44,22 @@ const assetManager = {
             asset.date_created = dateCreated;
             asset.prev = null;
             asset.next = null;
-            /**
-             * @TODO figure out how to handle parts records when creating assets
-             */
+            // Set sentinel value
+            let existingSerial = ""
+            // Check all part records
+            await Promise.all(parts.map(async(part)=> {
+                // If serialized
+                if (part.serial) {
+                    // Check if serial number already exists
+                    let existing = await PartRecord.findOne({nxid: part.nxid, next: null, serial: part.serial});
+                    // If exists, set sentinel value
+                    if(existing)
+                        existingSerial = part.serial
+                }
+            }))
+            // If serial already exists, return error
+            if(existingSerial!="")
+                return res.status(400).send(`Serial number ${existingSerial} already in inventory`);
             await Promise.all(parts.map(async (part) => {
                 if(part.serial) {
                     await PartRecord.create({
