@@ -422,7 +422,13 @@ const partManager = {
         try {
             // Find part
             const { part } = req.body
-            console.log(part)
+
+            /**
+             * 
+             * @TODO Part validation logic
+             * 
+             */
+
             function updatePart(err: MongooseError, parts: PartSchema[]) {
                 if (err) {
                     handleError(err)
@@ -468,7 +474,6 @@ const partManager = {
                 .map((sn: string) => sn.replace(/[, ]+/g, " ").trim());
             }
             // If any part info is missing, return invalid request
-            console.log(part)
             if (!(nxid && location && building)||(quantity < 1&&serials.length<1))
                 return res.status(400).send("Invalid request");
             let createOptions = {
@@ -606,7 +611,6 @@ const partManager = {
             // Check for null
             if(temp&&temp.prev!&&temp.prev=="null")
                 temp.prev = null
-            console.log(temp)
             // Find all distinct part records
             PartRecord.find(temp).distinct(key as string, (err: MongooseError, record: PartRecordSchema[]) => {
                 if (err)

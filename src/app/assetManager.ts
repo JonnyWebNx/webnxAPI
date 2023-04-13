@@ -42,8 +42,16 @@ const assetManager = {
             let dateCreated = Date.now()
             asset.by = req.user.user_id;
             asset.date_created = dateCreated;
+            asset.date_updated = dateCreated;
             asset.prev = null;
             asset.next = null;
+
+            /**
+             * 
+             * @TODO Asset validation logic
+             * 
+             */
+
             // Set sentinel value
             let existingSerial = ""
             // Check all part records
@@ -216,6 +224,13 @@ const assetManager = {
             // Prep asset for updates
             asset.by = req.user.user_id;
             asset.date_updated = current_date;
+
+            /**
+             * 
+             * @TODO Asset validation logic
+             * 
+             */
+
             // Get part records that are currently on asset
             let existingParts = await PartRecord.find({
                 asset_tag: asset.asset_tag, 
@@ -366,6 +381,7 @@ const assetManager = {
                 asset.prev = save_id
                 asset.next = null
                 asset.date_created = current_date
+                asset.date_updated = current_date
                 asset.by = req.user.user_id
                 delete asset._id
                 Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
@@ -383,6 +399,9 @@ const assetManager = {
                 })
             }
             else {
+                if(added.length>0||removed.length>0) {
+                    await Asset.findByIdAndUpdate(save_id, { date_updated: current_date })
+                }
                 res.status(200).json(asset)
             }
         } catch(err) {
@@ -533,11 +552,11 @@ const assetManager = {
                     // Create date object
                     let dateObject = new Date(updateDate)
                     // Check for asset updates
-                    let assetUpdate = allAssets.find(ass => ass.date_created <= dateObject && dateObject < ass.date_replaced)
+                    let assetUpdate = allAssets.find(ass => ass.date_created! <= dateObject && dateObject < ass.date_replaced)
                     if(!assetUpdate) {
-                        assetUpdate = allAssets.find(ass => ass.date_created <= dateObject && ass.date_replaced == null)
+                        assetUpdate = allAssets.find(ass => ass.date_created! <= dateObject && ass.date_replaced == null)
                     }
-                    let assetUpdated = assetUpdate?.date_created.toISOString() == dateObject.toISOString()
+                    let assetUpdated = assetUpdate?.date_created!.toISOString() == dateObject.toISOString()
                     // Check for parts that are already present
                     let tempExistingParts = await PartRecord.find({
                         asset_tag: asset.asset_tag, 
