@@ -32,6 +32,7 @@ export interface PartSchema {
     frequency?: number,
     chipset?: string,
     memory_type?: string,
+    memory_gen?: string,
     peripheral_type?: string,
     storage_interface?: string,
     capacity?: number,

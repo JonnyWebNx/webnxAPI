@@ -10,6 +10,7 @@ const partSchema = new mongoose.Schema({
     chipset: { type: String },
     memory_type: { type: String },
     // new
+    memory_gen: { type: String },
     shelf_location: { type: String },
     peripheral_type: { type: String },
     storage_interface: { type: String },

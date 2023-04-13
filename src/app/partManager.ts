@@ -422,6 +422,7 @@ const partManager = {
         try {
             // Find part
             const { part } = req.body
+            console.log(part)
             function updatePart(err: MongooseError, parts: PartSchema[]) {
                 if (err) {
                     handleError(err)
