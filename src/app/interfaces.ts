@@ -58,6 +58,7 @@ export interface AssetSchema {
     serial?: string,
     rails?: Boolean,
     live?: Boolean,
+    in_rack?: Boolean,
     bay?: string | number,
     power_port?: string,
     public_port?: string,

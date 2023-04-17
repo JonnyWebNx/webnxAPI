@@ -23,6 +23,7 @@ const asset = new mongoose.Schema({
     rails: { type: Boolean },
     // Status
     live: { type: Boolean, default: false},
+    in_rack: { type: Boolean },
     // Bay
     bay: { type: Number },
     // Physical location

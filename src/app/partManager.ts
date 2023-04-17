@@ -28,6 +28,8 @@ const partManager = {
         try {
             // Get part info from request body
             const { nxid, manufacturer, name, type, quantity } = req.body.part;
+
+            let part = req.body.part as PartSchema
             // If any part info is missing, return invalid request
             if (!(nxid&&manufacturer&&name&&type)) {
                 return res.status(400).send("Invalid request");
@@ -37,12 +39,51 @@ const partManager = {
                 return res.status(400).send("Invalid part ID");
             }
             // Try to add part to database
-            /**
-             * @TODO Add part validation logic
-             */
+            let newPart = {} as PartSchema
+            switch(part.type) {
+                default:
+                    newPart.nxid = part.nxid
+                    newPart.manufacturer = part.manufacturer
+                    newPart.name = part.name
+                    newPart.type = part.type
+                    newPart.serialized = part.serialized        
+                case "Memory":
+                    newPart.frequency = part.frequency
+                    newPart.capacity = part.capacity
+                    newPart.memory_type = part.memory_type
+                    newPart.memory_gen = part.memory_gen
+                    break
+                case "CPU":
+                    newPart.frequency = part.frequency
+                    newPart.chipset = part.chipset
+                    break
+                case "Motherboard":
+                    newPart.memory_type = part.memory_type
+                    newPart.chipset = part.chipset
+                    break
+                case "Peripheral Card":
+                    newPart.peripheral_type = part.peripheral_type
+                    newPart.num_ports = part.num_ports
+                    newPart.port_type = part.port_type
+                    break
+                case "Storage":
+                    newPart.capacity = part.capacity
+                    newPart.capacity_unit = part.capacity_unit
+                case "Backplane":
+                    newPart.storage_interface = part.storage_interface
+                    newPart.port_type = part.port_type
+                    break;
+                case "GPU":
+                    break
+                case "Cable":
+                    newPart.cable_end1 = part.cable_end1
+                    newPart.cable_end2 = part.cable_end2
+                    break                
+            }
+
             // Send part to database
-            req.body.part.created_by = req.user.user_id;
-            await Part.create(req.body.part, (err: MongooseError, part: PartSchema) => {
+            newPart.created_by = req.user.user_id;
+            await Part.create(newPart, (err: MongooseError, part: PartSchema) => {
                 if (err) {
                     // Return and send error to client side for prompt
                     return res.status(500).send("API could not handle your request: " + err);
@@ -421,34 +462,73 @@ const partManager = {
     updatePartInfo: async (req: Request, res: Response) => {
         try {
             // Find part
-            const { part } = req.body
+            let part = req.body.part
 
-            /**
-             * 
-             * @TODO Part validation logic
-             * 
-             */
+            let newPart = {} as PartSchema
+            switch(part.type) {
+                default:
+                    newPart.nxid = part.nxid
+                    newPart.manufacturer = part.manufacturer
+                    newPart.name = part.name
+                    newPart.type = part.type
+                    newPart.serialized = part.serialized        
+                case "Memory":
+                    newPart.frequency = part.frequency
+                    newPart.capacity = part.capacity
+                    newPart.memory_type = part.memory_type
+                    newPart.memory_gen = part.memory_gen
+                    break
+                case "CPU":
+                    newPart.frequency = part.frequency
+                    newPart.chipset = part.chipset
+                    break
+                case "Motherboard":
+                    newPart.memory_type = part.memory_type
+                    newPart.chipset = part.chipset
+                    break
+                case "Peripheral Card":
+                    newPart.peripheral_type = part.peripheral_type
+                    newPart.num_ports = part.num_ports
+                    newPart.port_type = part.port_type
+                    break
+                case "Storage":
+                    newPart.capacity = part.capacity
+                    newPart.capacity_unit = part.capacity_unit
+                case "Backplane":
+                    newPart.storage_interface = part.storage_interface
+                    newPart.port_type = part.port_type
+                    break;
+                case "GPU":
+                    break
+                case "Cable":
+                    newPart.cable_end1 = part.cable_end1
+                    newPart.cable_end2 = part.cable_end2
+                    break                
+            }
 
-            function updatePart(err: MongooseError, parts: PartSchema[]) {
+            // Send part to database
+            newPart.created_by = req.user.user_id;
+
+            function updatePartRecords(err: MongooseError, parts: PartSchema[]) {
                 if (err) {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 // Change every part record
-                parts.map((part)=>{  
-                    PartRecord.findByIdAndUpdate(part._id, {
+                parts.map((p)=>{  
+                    PartRecord.findByIdAndUpdate(p._id, {
                         nxid: updatedPart!.nxid
                     }, callbackHandler.callbackHandleError);
                 })
             }
             // Updated part is the old part from database
-            let updatedPart = await Part.findByIdAndUpdate(part._id, part);
+            let updatedPart = await Part.findByIdAndUpdate(part._id, newPart);
             if (updatedPart == null) {
                 return res.status(400).send("Part not found.");
             }
             if (part.nxid != updatedPart.nxid) {
                 // Update old NXID to new NXID
-                PartRecord.find({ nxid: updatedPart.nxid }, updatePart)
+                PartRecord.find({ nxid: updatedPart.nxid }, updatePartRecords)
             }
             return res.status(201).json(updatedPart);
         } catch (err) {

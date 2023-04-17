@@ -46,11 +46,34 @@ const assetManager = {
             asset.prev = null;
             asset.next = null;
 
-            /**
-             * 
-             * @TODO Asset validation logic
-             * 
-             */
+            switch(asset.asset_type) {
+                case "Server":
+                case "Switch":
+                case "PDU":
+                    // Remove location if no rails are present
+                    if(!asset.in_rack||!asset.rails) {
+                        delete asset.public_port;
+                        delete asset.private_port;
+                        delete asset.ipmi_port;
+                        delete asset.power_port;
+                    }
+                    // Remove SID if not live
+                    if(!asset.live) {
+                        delete asset.sid;
+                    }
+                    break;
+                case "Laptop":
+                default:
+                    delete asset.rails;
+                    delete asset.in_rack;
+                    delete asset.live;
+                    delete asset.public_port;
+                    delete asset.private_port;
+                    delete asset.ipmi_port;
+                    delete asset.power_port;
+                    delete asset.sid;
+                    break;
+            }
 
             // Set sentinel value
             let existingSerial = ""
@@ -221,15 +244,38 @@ const assetManager = {
             }
             // Save current time for updates
             let current_date = Date.now();
+            asset = asset as AssetSchema
             // Prep asset for updates
             asset.by = req.user.user_id;
             asset.date_updated = current_date;
-
-            /**
-             * 
-             * @TODO Asset validation logic
-             * 
-             */
+            switch(asset.asset_type) {
+                case "Server":
+                case "Switch":
+                case "PDU":
+                    // Remove location if no rails are present
+                    if(!asset.in_rack||!asset.rails) {
+                        delete asset.public_port;
+                        delete asset.private_port;
+                        delete asset.ipmi_port;
+                        delete asset.power_port;
+                    }
+                    // Remove SID if not live
+                    if(!asset.live) {
+                        delete asset.sid;
+                    }
+                    break;
+                case "Laptop":
+                default:
+                    delete asset.rails;
+                    delete asset.in_rack;
+                    delete asset.live;
+                    delete asset.public_port;
+                    delete asset.private_port;
+                    delete asset.ipmi_port;
+                    delete asset.power_port;
+                    delete asset.sid;
+                    break;
+            }
 
             // Get part records that are currently on asset
             let existingParts = await PartRecord.find({
