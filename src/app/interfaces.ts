@@ -122,6 +122,7 @@ export interface AssetEvent {
     date_begin: Date,
     date_end: Date,
     asset_id: string | Types.ObjectId,
+    by: string | Types.ObjectId,
     info_updated: boolean,
     existing: CartItem[],
     added: CartItem[],

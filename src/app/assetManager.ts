@@ -596,6 +596,7 @@ const assetManager = {
                 // For each date find matching asset, added parts, and removed parts
                 let history = await Promise.all(dates.map(async (updateDate, index, arr) => {
                     // Create date object
+                    let by = ''
                     let dateObject = new Date(updateDate)
                     // Check for asset updates
                     let assetUpdate = allAssets.find(ass => ass.date_created! <= dateObject && dateObject < ass.date_replaced)
@@ -650,6 +651,9 @@ const assetManager = {
                     let addedParts = [] as CartItem[]
                     // Filter for added parts, and loop over all of them
                     allPartRecords.filter(record => record.date_created.toISOString() == updateDate).map((record) => {
+                        if(by=='') {
+                            by = record.by
+                        }
                         // Check if part is already in array
                         if (record.serial) {
                             addedParts.push({nxid: record.nxid, serial: record.serial})
@@ -666,8 +670,12 @@ const assetManager = {
                     })
                     // Check if parts were removed
                     let removedParts = [] as CartItem[]
+                    let tempRecordID = ''
                     // Filter for removed parts, and loop over all of them
                     allPartRecords.filter(record => (record.date_replaced!=undefined)&&(record.date_replaced.toISOString() == updateDate)).map((record) => {
+                        if(by=='') {
+                            tempRecordID = record.next
+                        }
                         if(record.serial) {
                             removedParts.push({nxid: record.nxid, serial: record.serial})
                         }
@@ -684,11 +692,20 @@ const assetManager = {
                     })
                     // Get current date (will be returned if asset is most recent)
                     let nextDate = new Date(Date.now())
+                    console.log(by)
+                    if(by==''&&tempRecordID!='') {
+                        let test = await PartRecord.findById(tempRecordID)
+                        if(test&&test.by)
+                            by = test.by
+                    }
+                    if(by=='')
+                        by = assetUpdate?.by!
+                    console.log(by)
                     // Get end date for current iteration
                     if (index < arr.length - 1)
                         nextDate = new Date(arr[index+1])
                         // Return history data
-                        return { date_begin: dateObject, date_end: nextDate, asset_id: assetUpdate?._id, info_updated: assetUpdated, existing: existingParts, added: addedParts, removed: removedParts } as AssetEvent
+                        return { date_begin: dateObject, date_end: nextDate, asset_id: assetUpdate?._id, info_updated: assetUpdated, existing: existingParts, added: addedParts, removed: removedParts, by: by } as AssetEvent
                 }))
                 history.reverse()
                 res.status(200).json(history as AssetHistory)
