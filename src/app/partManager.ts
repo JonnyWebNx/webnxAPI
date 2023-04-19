@@ -40,13 +40,13 @@ const partManager = {
             }
             // Try to add part to database
             let newPart = {} as PartSchema
+            newPart.nxid = part.nxid
+            newPart.manufacturer = part.manufacturer
+            newPart.name = part.name
+            newPart.type = part.type
+            newPart.shelf_location = part.shelf_location
+            newPart.serialized = part.serialized        
             switch(part.type) {
-                default:
-                    newPart.nxid = part.nxid
-                    newPart.manufacturer = part.manufacturer
-                    newPart.name = part.name
-                    newPart.type = part.type
-                    newPart.serialized = part.serialized        
                 case "Memory":
                     newPart.frequency = part.frequency
                     newPart.capacity = part.capacity
@@ -58,7 +58,7 @@ const partManager = {
                     newPart.chipset = part.chipset
                     break
                 case "Motherboard":
-                    newPart.memory_type = part.memory_type
+                    newPart.memory_gen = part.memory_gen
                     newPart.chipset = part.chipset
                     break
                 case "Peripheral Card":
@@ -96,7 +96,7 @@ const partManager = {
                     by: req.user.user_id
                 }
                 // If parts have serial numbers, map one record per serial number
-                if(part.serialized) {
+                if(part.serialized&&req.body.part.serials) {
                     let serials = req.body.part.serials as string[]
                     Promise.all(serials.map(async (serial) => {
                         let optionsCopy = JSON.parse(JSON.stringify(createOptions))
@@ -464,14 +464,15 @@ const partManager = {
             // Find part
             let part = req.body.part
 
+            // Try to add part to database
             let newPart = {} as PartSchema
+            newPart.nxid = part.nxid
+            newPart.manufacturer = part.manufacturer
+            newPart.name = part.name
+            newPart.type = part.type
+            newPart.shelf_location = part.shelf_location
+            newPart.serialized = part.serialized        
             switch(part.type) {
-                default:
-                    newPart.nxid = part.nxid
-                    newPart.manufacturer = part.manufacturer
-                    newPart.name = part.name
-                    newPart.type = part.type
-                    newPart.serialized = part.serialized        
                 case "Memory":
                     newPart.frequency = part.frequency
                     newPart.capacity = part.capacity
@@ -483,7 +484,7 @@ const partManager = {
                     newPart.chipset = part.chipset
                     break
                 case "Motherboard":
-                    newPart.memory_type = part.memory_type
+                    newPart.memory_gen = part.memory_gen
                     newPart.chipset = part.chipset
                     break
                 case "Peripheral Card":

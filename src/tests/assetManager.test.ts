@@ -3,7 +3,7 @@ import config from "../config"
 import {jest} from '@jest/globals'
 import { AssetSchema, CartItem, LoadedCartItem,  } from "../app/interfaces"
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
-const ASSET_TAG = "WNX0016472"
+const ASSET_TAG = "WNX0016280"
 // const ASSET_MONGO_ID = "63a3701b9d12bfd7c59e4854"
 const TEXT_SEARCH_QUERY_STRING = "?searchString=wnx&pageNum=1&pageSize=50"
 const ADVANCED_SEARCH_QUERY_STRING = "?asset_type=Server&advanced=true"
@@ -26,9 +26,9 @@ const INCOMPLETE_ASSET = {
     bay: 3,
 }
 const PARTS_LIST = [
-    { nxid: "PNX0016489", quantity: 2} as CartItem,
+    { nxid: "PNX0016477", quantity: 2} as CartItem,
     { nxid: "PNX0016498", quantity: 4} as CartItem,
-    { nxid: "PNX0016470", quantity: 1} as CartItem,
+    { nxid: "PNX0011639", quantity: 1} as CartItem,
     { nxid: "PNX0016009", quantity: 1} as CartItem,
 ]
 
@@ -44,327 +44,153 @@ function generateIncompleteAsset() {
     tempAsset.asset_tag = `WNX${num}`
     return tempAsset as AssetSchema;
 }
-function partsListsMatch(reqList: CartItem[], resList: LoadedCartItem[]) {
-    let tempReqList = JSON.parse(JSON.stringify(reqList))
-    let tempResList = JSON.parse(JSON.stringify(resList))
-    for (let i = 0; i < tempReqList.length; i++) {
-        for (let j = 0; j < tempResList.length; j++) {
-            if ((tempReqList[i].nxid == tempResList[j].part.nxid) && (tempReqList[i].quantity == tempResList[j].quantity)) {
-                tempReqList.splice(i,1);
-                tempResList.splice(j,1);
-                i--;
-                j--;
-                break;
-            }
-        }
-    }
-    return ((tempReqList.length == 0)&&(tempResList.length == 0))
+function partsListsMatch(reqList: CartItem[], resList: CartItem[]) {
+    let tempReqList = JSON.parse(JSON.stringify(reqList)) as CartItem[]
+    let tempResList = JSON.parse(JSON.stringify(resList)) as CartItem[]
+    tempReqList.sort((e, i) => {
+        if(e.nxid > i.nxid )
+            return 1
+        if(e.nxid < i.nxid)
+            return -1
+        return 0
+    })
+    tempResList.sort((e, i) => {
+        if(e.nxid > i.nxid )
+            return 1
+        if(e.nxid < i.nxid)
+            return -1
+        return 0
+    })
+    return (JSON.stringify(tempReqList)==JSON.stringify(tempResList))
 }
 
 describe("Asset text search", () => {
+    const assetSearch = (keywords: string, token: string)  => {
+        request("localhost:4001")
+            .get(`/api/asset/search${keywords}`)
+            .set("Authorization", token)
+            .then((res)=>{
+                expect(res.status).toBe(200)
+                expect(res.body.length).toBeGreaterThan(0)
+                expect(res.body[0]._id).toBeDefined()
+                expect(res.body[0].asset_tag).toBeDefined()
+            })
+    }
     it("Returns a 401 status when unauthenticated", async() => {
         let res = await request("localhost:4001")
             .get("/api/asset/search")
         expect(res.status).toBe(401)
     })
-    it("Tech can search assets - empty search string", async() => {
-        let res = await request("localhost:4001")
-            .get("/api/asset/search")
-            .set("Authorization", TECH_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Kiosk can search assets - empty search string", async() => {
-        let res = await request("localhost:4001")
-            .get("/api/asset/search")
-            .set("Authorization", KIOSK_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Inventory clerk can search assets - empty search string", async() => {
-        let res = await request("localhost:4001")
-            .get("/api/asset/search")
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Admin clerk can search assets - empty search string", async() => {
-        let res = await request("localhost:4001")
-            .get("/api/asset/search")
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Tech can search assets - keyword search", async() => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/search${TEXT_SEARCH_QUERY_STRING}`)
-            .set("Authorization", TECH_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Kiosk can search assets - keyword search", async() => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/search${TEXT_SEARCH_QUERY_STRING}`)
-            .set("Authorization", KIOSK_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Inventory clerk can search assets - keyword search", async() => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/search${TEXT_SEARCH_QUERY_STRING}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Admin clerk can search assets - keyword search", async() => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/search${TEXT_SEARCH_QUERY_STRING}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
+    it("Tech can search assets - empty search string", () => assetSearch("", TECH_TOKEN!))
+    it("Kiosk can search assets - empty search string", () => assetSearch("", KIOSK_TOKEN!))
+    it("Inventory clerk can search assets - empty search string", () => assetSearch("", INVENTORY_TOKEN!))
+    it("Admin clerk can search assets - empty search string", () => assetSearch("", ADMIN_TOKEN!))
+    it("Tech can search assets - keyword search", () => assetSearch(TEXT_SEARCH_QUERY_STRING, TECH_TOKEN!))
+    it("Kiosk can search assets - keyword search", () => assetSearch(TEXT_SEARCH_QUERY_STRING, KIOSK_TOKEN!))
+    it("Inventory clerk can search assets - keyword search", () => assetSearch(TEXT_SEARCH_QUERY_STRING, INVENTORY_TOKEN!))
+    it("Admin clerk can search assets - keyword search", () => assetSearch(TEXT_SEARCH_QUERY_STRING, ADMIN_TOKEN!))
 })
 
 describe("Get assets by data", () => {
+    const getAsset = (search: string, token: string)  => {
+        request("localhost:4001")
+            .get(`/api/asset${search}`)
+            .set("Authorization", token)
+            .then((res) => {
+                expect(res.status).toBe(200)
+                expect(res.body.length).toBeGreaterThan(0)
+                expect(res.body[0]._id).toBeDefined()
+                expect(res.body[0].asset_tag).toBeDefined()
+            })
+    }
     it("Returns a 401 status when unauthenticated", async() => {
         let res = await request("localhost:4001")
             .get("/api/asset")
         expect(res.status).toBe(401)
     })
-    it("Tech can get assets by data - empty request", async() => {
-        let res = await request("localhost:4001")
-            .get("/api/asset")
-            .set("Authorization", TECH_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Kiosk can get assets by data - empty request", async() => {
-        let res = await request("localhost:4001")
-            .get("/api/asset")
-            .set("Authorization", KIOSK_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Inventory clerk can get assets by data - empty request", async() => {
-        let res = await request("localhost:4001")
-            .get("/api/asset")
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Admin can get assets by data - empty request", async() => {
-        let res = await request("localhost:4001")
-            .get("/api/asset")
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
+    it("Tech can get assets by data - empty request", () => getAsset("", TECH_TOKEN!))
+    it("Kiosk can get assets by data - empty request", () => getAsset("", KIOSK_TOKEN!))
+    it("Inventory clerk can get assets by data - empty request", () => getAsset("", INVENTORY_TOKEN!))
+    it("Admin can get assets by data - empty request", () => getAsset("", ADMIN_TOKEN!))
     it("Returns a 401 status when unauthenticated - filter by live servers", async() => {
         let res = await request("localhost:4001")
             .get(`/api/asset${ADVANCED_SEARCH_QUERY_STRING}`)
         expect(res.status).toBe(401)
     })
-    it("Tech can get assets by data - filter by live servers", async() => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset${ADVANCED_SEARCH_QUERY_STRING}`)
-            .set("Authorization", TECH_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Kiosk can get assets by data - filter by live servers", async() => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset${ADVANCED_SEARCH_QUERY_STRING}`)
-            .set("Authorization", KIOSK_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Inventory clerk can get assets by data - filter by live servers", async() => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset${ADVANCED_SEARCH_QUERY_STRING}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
-    it("Admin can get assets by data - filter by live servers", async() => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset${ADVANCED_SEARCH_QUERY_STRING}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body.length).toBeGreaterThan(0)
-        expect(res.body[0]._id).toBeDefined()
-        expect(res.body[0].asset_tag).toBeDefined()
-    })
+    it("Tech can get assets by data - filter by live servers", () => getAsset(ADVANCED_SEARCH_QUERY_STRING, TECH_TOKEN!))
+    it("Kiosk can get assets by data - filter by live servers", () => getAsset(ADVANCED_SEARCH_QUERY_STRING, KIOSK_TOKEN!))
+    it("Inventory clerk can get assets by data - filter by live servers", () => getAsset(ADVANCED_SEARCH_QUERY_STRING, INVENTORY_TOKEN!))
+    it("Admin can get assets by data - filter by live servers", () => getAsset(ADVANCED_SEARCH_QUERY_STRING, ADMIN_TOKEN!))
 })
 
 describe("Get asset by ID", () => {
+    const getByAssetTag = (asset_tag: string, token: string)  => {
+        request("localhost:4001")
+        .get(`/api/asset/id?id=${asset_tag}`)
+        .set("Authorization", token)
+        .then((res)=>{
+            expect(res.status).toBe(200)
+            expect(res.body._id).toBeDefined()
+            expect(res.body.asset_tag).toBeDefined()
+        })
+    }
+    const getByMongoID = (asset_tag: string, token: string)  => {
+        request("localhost:4001")
+            .get(`/api/asset/id?id=${ASSET_TAG}`)
+            .set("Authorization", TECH_TOKEN!)
+            .then((res)=>{
+                expect(res.status).toBe(200)
+                expect(res.body._id).toBeDefined()
+                expect(res.body.asset_tag).toBeDefined()
+                request("localhost:4001")
+                    .get(`/api/asset/id?id=${res.body._id}`)
+                    .set("Authorization", TECH_TOKEN!)
+                    .then((res2)=>{
+                        expect(res2.status).toBe(200)
+                        expect(res2.body._id).toBeDefined()
+                        expect(res2.body.asset_tag).toBeDefined()
+                    })
+            })
+    }
+
     it("Returns a 401 status when unauthenticated", async() => {
         let res = await request("localhost:4001")
             .get(`/api/asset/id?id=${ASSET_TAG}`)
         expect(res.status).toBe(401)
     })
-    it("Tech can get asset by asset tag",async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_TAG}`)
-            .set("Authorization", TECH_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-    })
-    it("Kiosk can get asset by asset tag",async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_TAG}`)
-            .set("Authorization", KIOSK_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-    })
-    it("Clerk can get asset by asset tag",async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_TAG}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-    })
-    it("Admin can get asset by asset tag",async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_TAG}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-    })
-    it("Tech can get asset by mongo ID",async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_TAG}`)
-            .set("Authorization", TECH_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-        let res2 = await request("localhost:4001")
-            .get(`/api/asset/id?id=${res.body._id}`)
-            .set("Authorization", TECH_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-    })
-    it("Kiosk can get asset by mongo ID",async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_TAG}`)
-            .set("Authorization", KIOSK_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-        let res2 = await request("localhost:4001")
-            .get(`/api/asset/id?id=${res.body._id}`)
-            .set("Authorization", KIOSK_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-    })
-    it("Clerk can get asset by mongo ID",async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_TAG}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-        let res2 = await request("localhost:4001")
-            .get(`/api/asset/id?id=${res.body._id}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-    })
-    it("Admin can get asset by mongo ID",async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_TAG}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-        let res2 = await request("localhost:4001")
-            .get(`/api/asset/id?id=${res.body._id}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body._id).toBeDefined()
-        expect(res.body.asset_tag).toBeDefined()
-    })
+    it("Tech can get asset by asset tag",() => getByAssetTag(ASSET_TAG, TECH_TOKEN!))
+    it("Kiosk can get asset by asset tag", () => getByAssetTag(ASSET_TAG, KIOSK_TOKEN!))
+    it("Clerk can get asset by asset tag", () => getByAssetTag(ASSET_TAG, INVENTORY_TOKEN!))
+    it("Admin can get asset by asset tag", () => getByAssetTag(ASSET_TAG, ADMIN_TOKEN!))
+    it("Tech can get asset by mongo ID", () => getByMongoID(ASSET_TAG, TECH_TOKEN!))
+    it("Kiosk can get asset by mongo ID", () => getByMongoID(ASSET_TAG, KIOSK_TOKEN!))
+    it("Clerk can get asset by mongo ID", () => getByMongoID(ASSET_TAG, INVENTORY_TOKEN!))
+    it("Admin can get asset by mongo ID", () => getByMongoID(ASSET_TAG, ADMIN_TOKEN!))
 })
 
 describe("Get parts on asset", () => {
+    const getParts = (asset_tag: string, token: string)  => {
+        request("localhost:4001")
+            .get(`/api/asset/parts?asset_tag=${asset_tag}`)
+            .set("Authorization", token)
+            .then((res)=>{
+                expect(res.status).toBe(200)
+                expect(res.body.parts).toBeDefined()
+                expect(res.body.records).toBeDefined()
+                expect(res.body.parts.length).toBeGreaterThan(0)
+                expect(res.body.records.length).toBeGreaterThan(0)
+            })
+    }
     it("Returns 401 status when unauthenticated", async () => {
         let res = await request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
         expect(res.status).toBe(401)
         expect(res.body[0]).toBeUndefined()
     })
-    it("Returns parts when authenticated - Tech", async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", TECH_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body[0]).toBeDefined()
-        expect(typeof(res.body[0].quantity)).toBe(typeof(1))
-        expect(res.body[0].part._id).toBeDefined()
-    })
-    it("Returns parts when authenticated - Kiosk", async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", KIOSK_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body[0]).toBeDefined()
-        expect(typeof(res.body[0].quantity)).toBe(typeof(1))
-        expect(res.body[0].part._id).toBeDefined()
-    })
-    it("Returns parts when authenticated - Clerk", async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body[0]).toBeDefined()
-        expect(typeof(res.body[0].quantity)).toBe(typeof(1))
-        expect(res.body[0].part._id).toBeDefined()
-    })
-    it("Returns parts when authenticated - Admin", async () => {
-        let res = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(res.status).toBe(200)
-        expect(res.body[0]).toBeDefined()
-        expect(typeof(res.body[0].quantity)).toBe(typeof(1))
-        expect(res.body[0].part._id).toBeDefined()
-    })
+    it("Returns parts when authenticated - Tech", () => getParts(ASSET_TAG, TECH_TOKEN!))
+    it("Returns parts when authenticated - Kiosk", () => getParts(ASSET_TAG, KIOSK_TOKEN!))
+    it("Returns parts when authenticated - Clerk", () => getParts(ASSET_TAG, INVENTORY_TOKEN!))
+    it("Returns parts when authenticated - Admin", () => getParts(ASSET_TAG, ADMIN_TOKEN!))
 })
 
 describe("Asset creation and deletion", () => {
@@ -385,102 +211,47 @@ describe("Asset creation and deletion", () => {
             .set("Authorization", KIOSK_TOKEN!)
         expect(res.status).toBe(401)
     })
-    it("Returns 400 status when asset is incomplete - Tech",async () => {
-        let res = await request("localhost:4001")
+    const check400 = (token: string) => {
+        request("localhost:4001")
             .post("/api/asset")
             .send({asset: generateIncompleteAsset(), parts: []})
             .set('Content-Type', 'application/json')
             .set('Accept', 'application/json')
-            .set("Authorization", TECH_TOKEN!)
-        expect(res.status).toBe(400)
-    })
-    it("Returns 400 status when asset is incomplete - Clerk",async () => {
-        let res = await request("localhost:4001")
-            .post("/api/asset")
-            .send({asset: generateIncompleteAsset(), parts: []})
-            .set('Content-Type', 'application/json')
-            .set('Accept', 'application/json')
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(res.status).toBe(400)
-    })
-    it("Returns 400 status when asset is incomplete - Admin",async () => {
-        let res = await request("localhost:4001")
-            .post("/api/asset")
-            .send({asset: generateIncompleteAsset(), parts: []})
-            .set('Content-Type', 'application/json')
-            .set('Accept', 'application/json')
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(res.status).toBe(400)
-    })
-    it("Create asset, ensure parts were added correctly, then delete asset and send parts to all techs - Tech",async () => {
+            .set("Authorization", token)
+            .then((res)=>{
+                expect(res.status).toBe(400)
+            })
+    }
+    it("Returns 400 status when asset is incomplete - Tech", () => check400(TECH_TOKEN!))
+    it("Returns 400 status when asset is incomplete - Clerk", () => check400(INVENTORY_TOKEN!))
+    it("Returns 400 status when asset is incomplete - Admin", () => check400(ADMIN_TOKEN!))
+    const createAndDeleteAsset = async (token: string) => {
         let asset = generateAsset();
         let assetRes = await request("localhost:4001")
             .post("/api/asset")
             .send({asset, parts: PARTS_LIST})
             .set('Content-Type', 'application/json')
             .set('Accept', 'application/json')
-            .set("Authorization", TECH_TOKEN!)
+            .set("Authorization", token)
         expect(assetRes.status).toBe(200)
         let partRes = await request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${asset.asset_tag}`)
-            .set("Authorization", TECH_TOKEN!)
+            .set("Authorization", token)
         expect(partRes.status).toBe(200)
-        expect(partsListsMatch(PARTS_LIST, partRes.body)).toBe(true)
+        expect(partsListsMatch(PARTS_LIST, partRes.body.records)).toBe(true)
         let deleteRes = await request("localhost:4001")
             .delete(`/api/asset?asset_tag=${asset.asset_tag}`)
             .set("Authorization", ADMIN_TOKEN!)
         expect(deleteRes.status).toBe(200)
         let partRes2 = await request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${asset.asset_tag}`)
-            .set("Authorization", TECH_TOKEN!)
-        expect(partRes2.body.length).toBe(0)
-    })
-    it("Create asset, ensure parts were added correctly, then delete asset and send parts to all techs - Clerk",async () => {
-        let asset = generateAsset();
-        let assetRes = await request("localhost:4001")
-            .post("/api/asset")
-            .send({asset, parts: PARTS_LIST})
-            .set('Content-Type', 'application/json')
-            .set('Accept', 'application/json')
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(assetRes.status).toBe(200)
-        let partRes = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${asset.asset_tag}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(partRes.status).toBe(200)
-        expect(partsListsMatch(PARTS_LIST, partRes.body)).toBe(true)
-        let deleteRes = await request("localhost:4001")
-            .delete(`/api/asset?asset_tag=${asset.asset_tag}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(deleteRes.status).toBe(200)
-        let partRes2 = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${asset.asset_tag}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(partRes2.body.length).toBe(0)
-    })
-    it("Create asset, ensure parts were added correctly, then delete asset and send parts to all techs - Admin",async () => {
-        let asset = generateAsset();
-        let assetRes = await request("localhost:4001")
-            .post("/api/asset")
-            .send({asset, parts: PARTS_LIST})
-            .set('Content-Type', 'application/json')
-            .set('Accept', 'application/json')
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(assetRes.status).toBe(200)
-        let partRes = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${asset.asset_tag}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(partRes.status).toBe(200)
-        expect(partsListsMatch(PARTS_LIST, partRes.body)).toBe(true)
-        let deleteRes = await request("localhost:4001")
-            .delete(`/api/asset?asset_tag=${asset.asset_tag}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(deleteRes.status).toBe(200)
-        let partRes2 = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${asset.asset_tag}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(partRes2.body.length).toBe(0)
-    })
+            .set("Authorization", token)
+        expect(partRes2.body.records.length).toBe(0)
+    }
+
+    it("Create asset, ensure parts were added correctly, then delete asset and send parts to all techs - Tech", () => createAndDeleteAsset(TECH_TOKEN!))
+    it("Create asset, ensure parts were added correctly, then delete asset and send parts to all techs - Clerk", () => createAndDeleteAsset(INVENTORY_TOKEN!))
+    it("Create asset, ensure parts were added correctly, then delete asset and send parts to all techs - Admin", () => createAndDeleteAsset(ADMIN_TOKEN!))
 })
 
 describe("Update asset", () => {
@@ -492,334 +263,98 @@ describe("Update asset", () => {
             .set('Accept', 'application/json')
         expect(res.status).toBe(401)
     })
-    it("Tech can add and remove parts with correct quantities", async () => {
+    function timeout(ms) {
+        jest.useRealTimers()
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    const addAndRemoveParts = async(token: string) => {
         jest.useRealTimers()
         let invRes = await request("localhost:4001")
             .get("/api/user/inventory")
-            .set("Authorization", TECH_TOKEN!)
+            .set("Authorization", token)
         expect(invRes.status).toBe(200)
-        let startInventory = invRes.body as LoadedCartItem[]
+        let startInventory = invRes.body.records as CartItem[];
 
+        // Get parts on asset
         let assetPartRes = await request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", TECH_TOKEN!)
+            .set("Authorization", token)
         expect(assetPartRes.status).toBe(200)
-        let startAssetParts = assetPartRes.body as LoadedCartItem[]
-
-        let newList = JSON.parse(JSON.stringify(startAssetParts)) as LoadedCartItem[]
-        let originalUnloadedList = [] as CartItem[]
-        for (let item of newList) {
-            originalUnloadedList.push({ nxid: item.part.nxid!, quantity: item.quantity })
-        }
-
-        for (let item of startInventory) {
-            newList.push(JSON.parse(JSON.stringify(item)))
-        }
-
-        let unloadedNewList = [] as CartItem[]
-        for (let item of newList) {
-            let found = false
-            for (let unloadedItem of unloadedNewList) {
-                if(unloadedItem.nxid === item.part.nxid) {
-                    found = true;
-                    unloadedItem.quantity += item.quantity
-                    break
-                }
-            }
-            if (!found)
-                unloadedNewList.push({nxid: item.part.nxid!, quantity: item.quantity})
-        }
+        // Map as cart items
+        let startAssetParts = assetPartRes.body.records as CartItem[];
 
         let assetRes = await request("localhost:4001")
             .get(`/api/asset?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", TECH_TOKEN!)
+            .set("Authorization", token)
         expect(assetRes.status).toBe(200)
         let asset = assetRes.body[0] as AssetSchema
         
         
         let update1res = await request("localhost:4001")
             .put("/api/asset")
-            .set("Authorization", TECH_TOKEN!)
-            .send({ asset, parts: unloadedNewList})
+            .set("Authorization", token)
+            .send({ asset, parts: startInventory})
         expect(update1res.status).toBe(200)
-        await new Promise(res => setTimeout(res, 500))
+
         let invRes2 = await request("localhost:4001")
             .get("/api/user/inventory")
-            .set("Authorization", TECH_TOKEN!)
+            .set("Authorization", token)
         expect(invRes2.status).toBe(200)
-        expect(invRes2.body.length).toBe(0)
+        expect(invRes2.body.records.length==startAssetParts.length)
 
         let update2res = await request("localhost:4001")
             .put("/api/asset")
-            .set("Authorization", TECH_TOKEN!)
-            .send({ asset, parts: originalUnloadedList})
+            .set("Authorization", token)
+            .send({ asset, parts: startAssetParts})
         expect(update2res.status).toBe(200)
-        await new Promise(res => setTimeout(res, 500))
+        await timeout(500)
         let invRes3 = await request("localhost:4001")
         .get("/api/user/inventory")
-        .set("Authorization", TECH_TOKEN!)
+        .set("Authorization", token)
         expect(invRes3.status).toBe(200)
         
         
         let assetPartRes2 = await request("localhost:4001")
         .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-        .set("Authorization", TECH_TOKEN!)
-        let afterAssetPartList = assetPartRes2.body as LoadedCartItem[]
+        .set("Authorization", token)
+        let afterAssetPartList = assetPartRes2.body.records as CartItem[];
         expect(assetPartRes2.status).toBe(200)
         
         
-        let afterInv = invRes3.body as LoadedCartItem[]
+        let afterInv = invRes3.body.records as CartItem[]
         afterInv.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
+            if (a.nxid! >  b.nxid!)
                 return 1;
-            if (a.part.nxid! <  b.part.nxid!)
+            if (a.nxid! <  b.nxid!)
                 return -1;
             return 0;
             })
         startInventory.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
+            if (a.nxid! >  b.nxid!)
                 return 1;
-            if (a.part.nxid! <  b.part.nxid!)
+            if (a.nxid! <  b.nxid!)
                 return -1;
             return 0;
         })
         expect(JSON.stringify(afterInv) == JSON.stringify(startInventory)).toBe(true)
         
-        
         startAssetParts.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
+            if (a.nxid! >  b.nxid!)
                 return 1;
-            if (a.part.nxid! <  b.part.nxid!)
+            if (a.nxid! <  b.nxid!)
                 return -1;
             return 0;
         })
         afterAssetPartList.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
+            if (a.nxid! >  b.nxid!)
                 return 1;
-            if (a.part.nxid! <  b.part.nxid!)
+            if (a.nxid! <  b.nxid!)
                 return -1;
             return 0;
         })
         expect(JSON.stringify(startAssetParts) == JSON.stringify(afterAssetPartList)).toBe(true)
-    })
-    it("Clerk can add and remove parts with correct quantities", async () => {
-        jest.useRealTimers()
-        let invRes = await request("localhost:4001")
-            .get("/api/user/inventory")
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(invRes.status).toBe(200)
-        let startInventory = invRes.body as LoadedCartItem[]
-
-        let assetPartRes = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(assetPartRes.status).toBe(200)
-        let startAssetParts = assetPartRes.body as LoadedCartItem[]
-
-        let newList = JSON.parse(JSON.stringify(startAssetParts)) as LoadedCartItem[]
-        let originalUnloadedList = [] as CartItem[]
-        for (let item of newList) {
-            originalUnloadedList.push({ nxid: item.part.nxid!, quantity: item.quantity })
-        }
-
-        for (let item of startInventory) {
-            newList.push(JSON.parse(JSON.stringify(item)))
-        }
-
-        let unloadedNewList = [] as CartItem[]
-        for (let item of newList) {
-            let found = false
-            for (let unloadedItem of unloadedNewList) {
-                if(unloadedItem.nxid === item.part.nxid) {
-                    found = true;
-                    unloadedItem.quantity += item.quantity
-                    break
-                }
-            }
-            if (!found)
-                unloadedNewList.push({nxid: item.part.nxid!, quantity: item.quantity})
-        }
-
-        let assetRes = await request("localhost:4001")
-            .get(`/api/asset?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(assetRes.status).toBe(200)
-        let asset = assetRes.body[0] as AssetSchema
-        
-        
-        let update1res = await request("localhost:4001")
-            .put("/api/asset")
-            .set("Authorization", INVENTORY_TOKEN!)
-            .send({ asset, parts: unloadedNewList})
-        expect(update1res.status).toBe(200)
-        await new Promise(res => setTimeout(res, 500))
-        let invRes2 = await request("localhost:4001")
-            .get("/api/user/inventory")
-            .set("Authorization", INVENTORY_TOKEN!)
-        expect(invRes2.status).toBe(200)
-        expect(invRes2.body.length).toBe(0)
-
-        let update2res = await request("localhost:4001")
-            .put("/api/asset")
-            .set("Authorization", INVENTORY_TOKEN!)
-            .send({ asset, parts: originalUnloadedList})
-        expect(update2res.status).toBe(200)
-        await new Promise(res => setTimeout(res, 500))
-        let invRes3 = await request("localhost:4001")
-        .get("/api/user/inventory")
-        .set("Authorization", INVENTORY_TOKEN!)
-        expect(invRes3.status).toBe(200)
-        
-        
-        let assetPartRes2 = await request("localhost:4001")
-        .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-        .set("Authorization", INVENTORY_TOKEN!)
-        let afterAssetPartList = assetPartRes2.body as LoadedCartItem[]
-        expect(assetPartRes2.status).toBe(200)
-        
-        
-        let afterInv = invRes3.body as LoadedCartItem[]
-        afterInv.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
-                return 1;
-            if (a.part.nxid! <  b.part.nxid!)
-                return -1;
-            return 0;
-            })
-        startInventory.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
-                return 1;
-            if (a.part.nxid! <  b.part.nxid!)
-                return -1;
-            return 0;
-        })
-        expect(JSON.stringify(afterInv) == JSON.stringify(startInventory)).toBe(true)
-        
-        
-        startAssetParts.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
-                return 1;
-            if (a.part.nxid! <  b.part.nxid!)
-                return -1;
-            return 0;
-        })
-        afterAssetPartList.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
-                return 1;
-            if (a.part.nxid! <  b.part.nxid!)
-                return -1;
-            return 0;
-        })
-        expect(JSON.stringify(startAssetParts) == JSON.stringify(afterAssetPartList)).toBe(true)
-    })
-    it("Admin can add and remove parts with correct quantities", async () => {
-        jest.useRealTimers()
-        let invRes = await request("localhost:4001")
-            .get("/api/user/inventory")
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(invRes.status).toBe(200)
-        let startInventory = invRes.body as LoadedCartItem[]
-
-        let assetPartRes = await request("localhost:4001")
-            .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(assetPartRes.status).toBe(200)
-        let startAssetParts = assetPartRes.body as LoadedCartItem[]
-
-        let newList = JSON.parse(JSON.stringify(startAssetParts)) as LoadedCartItem[]
-        let originalUnloadedList = [] as CartItem[]
-        for (let item of newList) {
-            originalUnloadedList.push({ nxid: item.part.nxid!, quantity: item.quantity })
-        }
-
-        for (let item of startInventory) {
-            newList.push(JSON.parse(JSON.stringify(item)))
-        }
-
-        let unloadedNewList = [] as CartItem[]
-        for (let item of newList) {
-            let found = false
-            for (let unloadedItem of unloadedNewList) {
-                if(unloadedItem.nxid === item.part.nxid) {
-                    found = true;
-                    unloadedItem.quantity += item.quantity
-                    break
-                }
-            }
-            if (!found)
-                unloadedNewList.push({nxid: item.part.nxid!, quantity: item.quantity})
-        }
-
-        let assetRes = await request("localhost:4001")
-            .get(`/api/asset?asset_tag=${ASSET_TAG}`)
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(assetRes.status).toBe(200)
-        let asset = assetRes.body[0] as AssetSchema
-        
-        
-        let update1res = await request("localhost:4001")
-            .put("/api/asset")
-            .set("Authorization", ADMIN_TOKEN!)
-            .send({ asset, parts: unloadedNewList})
-        expect(update1res.status).toBe(200)
-        await new Promise(res => setTimeout(res, 500))
-        let invRes2 = await request("localhost:4001")
-            .get("/api/user/inventory")
-            .set("Authorization", ADMIN_TOKEN!)
-        expect(invRes2.status).toBe(200)
-        expect(invRes2.body.length).toBe(0)
-
-        let update2res = await request("localhost:4001")
-            .put("/api/asset")
-            .set("Authorization", ADMIN_TOKEN!)
-            .send({ asset, parts: originalUnloadedList})
-        expect(update2res.status).toBe(200)
-        await new Promise(res => setTimeout(res, 500))
-        let invRes3 = await request("localhost:4001")
-        .get("/api/user/inventory")
-        .set("Authorization", ADMIN_TOKEN!)
-        expect(invRes3.status).toBe(200)
-        
-        
-        let assetPartRes2 = await request("localhost:4001")
-        .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-        .set("Authorization", ADMIN_TOKEN!)
-        let afterAssetPartList = assetPartRes2.body as LoadedCartItem[]
-        expect(assetPartRes2.status).toBe(200)
-        
-        
-        let afterInv = invRes3.body as LoadedCartItem[]
-        afterInv.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
-                return 1;
-            if (a.part.nxid! <  b.part.nxid!)
-                return -1;
-            return 0;
-            })
-        startInventory.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
-                return 1;
-            if (a.part.nxid! <  b.part.nxid!)
-                return -1;
-            return 0;
-        })
-        expect(JSON.stringify(afterInv) == JSON.stringify(startInventory)).toBe(true)
-        
-        
-        startAssetParts.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
-                return 1;
-            if (a.part.nxid! <  b.part.nxid!)
-                return -1;
-            return 0;
-        })
-        afterAssetPartList.sort((a, b) => {
-            if (a.part.nxid! >  b.part.nxid!)
-                return 1;
-            if (a.part.nxid! <  b.part.nxid!)
-                return -1;
-            return 0;
-        })
-        expect(JSON.stringify(startAssetParts) == JSON.stringify(afterAssetPartList)).toBe(true)
-    })
+    }
+    it("Tech can add and remove parts with correct quantities", () => addAndRemoveParts(TECH_TOKEN!))
+    it("Clerk can add and remove parts with correct quantities", () => addAndRemoveParts(INVENTORY_TOKEN!))
+    it("Admin can add and remove parts with correct quantities", () => addAndRemoveParts(ADMIN_TOKEN!))
 })
