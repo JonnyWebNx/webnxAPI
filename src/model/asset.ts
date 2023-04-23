@@ -26,6 +26,7 @@ const asset = new mongoose.Schema({
     in_rack: { type: Boolean },
     // Bay
     bay: { type: Number },
+    nodes: { type: Array<string> },
     // Physical location
     power_port: { type: String },
     public_port: { type: String },
@@ -39,6 +40,7 @@ const asset = new mongoose.Schema({
     date_created: { type: Date },
     date_updated: { type: Date },
     date_replaced: { type: Date, default: null },
+    notes: { type: String }
 });
 // Add index here
 export default mongoose.model("asset", asset);

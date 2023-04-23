@@ -1,7 +1,6 @@
 import request from 'supertest'
 import config from "../config"
-import {jest} from '@jest/globals'
-import { PartSchema, CartItem, LoadedCartItem,  } from "../app/interfaces"
+import { PartSchema } from "../app/interfaces"
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 
 const NXID = "PNX0016477"

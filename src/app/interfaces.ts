@@ -66,6 +66,7 @@ export interface AssetSchema {
     ipmi_port?: string,
     by?: string | Types.ObjectId,
     sid?: number,
+    notes?: string,
     date_created?: string | number | Date,
     date_updated?: string | number | Date,
     date_replaced?: string | number | Date,
