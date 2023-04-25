@@ -67,6 +67,16 @@ export interface AssetSchema {
     by?: string | Types.ObjectId,
     sid?: number,
     notes?: string,
+
+    units?: number,
+    num_psu?: number,
+    psu_model?: string,
+    long?: boolean,
+    num_bays?: number,
+    bay_type?: string,
+    pallet?: string,
+    fw_rev?: string,
+
     date_created?: string | number | Date,
     date_updated?: string | number | Date,
     date_replaced?: string | number | Date,

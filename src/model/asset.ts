@@ -21,6 +21,20 @@ const asset = new mongoose.Schema({
     serial: { type: String },
     // Has rails
     rails: { type: Boolean },
+
+    // 1U, 2U, 3U, etc.
+    units: { type: Number },
+    // POWER SUPPLY
+    num_psu: { type: Number },
+    psu_model: { type: String },
+    // Cable length
+    long: { type: Boolean },
+    short: { type: Boolean },
+    num_bays: { type: Number },
+    bay_type: { type: String }, 
+    pallet: { type: String },
+    fw_rev: { type: String },
+    
     // Status
     live: { type: Boolean, default: false},
     in_rack: { type: Boolean },
@@ -32,6 +46,10 @@ const asset = new mongoose.Schema({
     public_port: { type: String },
     private_port: { type: String },
     ipmi_port: { type: String },
+    
+    // Emails from migration
+    old_by: { type: String },
+    
     // Last updated by
     by: { type: String, required: true },
     sid: { type: Number },

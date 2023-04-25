@@ -15,8 +15,32 @@ import { Request, Response } from "express";
 import { AssetEvent, AssetHistory, AssetSchema, CartItem, PartRecordSchema, PartSchema } from "./interfaces.js";
 import mongoose, { CallbackError } from "mongoose";
 import partRecord from "../model/partRecord.js";
+import config from '../config.js';
+const { ADMIN_TOKEN } = config
 
 const assetManager = {
+    addMigratedAsset:async (req: Request, res: Response) => {
+        try {
+            let asset = req.body as AssetSchema
+            console.log(asset)
+            asset.building = 3
+            asset.migrated = true
+            asset.date_created = asset.date_updated
+            asset.by = '634e3e4a6c5d3490babcdc21'
+            Asset.create(asset, (err: CallbackError, record: AssetSchema) => {
+                if(err) {
+                    handleError(err)
+                    console.log(err)
+                    return res.status(500).send("API could not handle your request: "+err);        
+                }
+                res.status(200).send()
+            })
+        }
+        catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: "+err);
+        }
+    },
     addUntrackedAsset: async (req: Request, res: Response) => {
         try {
             // Get asset from request
@@ -221,7 +245,7 @@ const assetManager = {
                 } 
             }])
             .skip(pageSize * (pageNum - 1))
-            .limit(Number(pageSize))
+            .limit(Number(pageSize)+1)
             .exec((err, record) => {
                 if (err)
                     res.status(500).send("API could not handle your request: " + err);
@@ -692,7 +716,6 @@ const assetManager = {
                     })
                     // Get current date (will be returned if asset is most recent)
                     let nextDate = new Date(Date.now())
-                    console.log(by)
                     if(by==''&&tempRecordID!='') {
                         let test = await PartRecord.findById(tempRecordID)
                         if(test&&test.by)
@@ -700,7 +723,6 @@ const assetManager = {
                     }
                     if(by=='')
                         by = assetUpdate?.by!
-                    console.log(by)
                     // Get end date for current iteration
                     if (index < arr.length - 1)
                         nextDate = new Date(arr[index+1])

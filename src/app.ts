@@ -116,6 +116,12 @@ app.delete("/api/user", auth, adminPermission, sanitize, userManager.deleteUser)
 // ***    Assets    ****
 //Create
 app.post("/api/asset", auth, sanitize, assetManager.addUntrackedAsset);
+/**
+ * 
+ * NO AUTHENTICATION
+ * 
+ */
+app.post("/api/asset/migrate", sanitize, assetManager.addMigratedAsset);
 // Read
 app.get("/api/asset", auth, sanitize, assetManager.getAssets);
 app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
