@@ -76,6 +76,8 @@ export interface AssetSchema {
     bay_type?: string,
     pallet?: string,
     fw_rev?: string,
+    old_by?: string,
+    migrated?: boolean,
 
     date_created?: string | number | Date,
     date_updated?: string | number | Date,

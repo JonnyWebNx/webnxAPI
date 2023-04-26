@@ -34,7 +34,7 @@ const asset = new mongoose.Schema({
     bay_type: { type: String }, 
     pallet: { type: String },
     fw_rev: { type: String },
-    
+    migrated: { type: Boolean },
     // Status
     live: { type: Boolean, default: false},
     in_rack: { type: Boolean },

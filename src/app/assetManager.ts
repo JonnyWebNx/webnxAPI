@@ -15,14 +15,219 @@ import { Request, Response } from "express";
 import { AssetEvent, AssetHistory, AssetSchema, CartItem, PartRecordSchema, PartSchema } from "./interfaces.js";
 import mongoose, { CallbackError } from "mongoose";
 import partRecord from "../model/partRecord.js";
-import config from '../config.js';
-const { ADMIN_TOKEN } = config
+
+/**
+ * 
+ * @param parts 
+ * @param asset_tag 
+ * @param user_id 
+ * @param building 
+ * @param date 
+ * @returns Promise object for awaits
+ */
+function createPartRecords(parts: CartItem[], asset_tag: string, user_id: any, building: number, date: number) {
+    return Promise.all(parts.map(async (part) => {
+        if(part.serial) {
+            await PartRecord.create({
+                nxid: part.nxid,
+                building: building,
+                location: "Asset",
+                asset_tag: asset_tag,
+                serial: part.serial,
+                by: user_id,
+                date_created: date
+            })
+        }
+        else {
+            for (let i = 0; i < part.quantity!; i++) {
+                await PartRecord.create({
+                    nxid: part.nxid,
+                    building: building,
+                    location: "Asset",
+                    asset_tag: asset_tag,
+                    by: user_id,
+                    date_created: date
+                })
+            }
+        }
+    }))
+}
+
+/**
+ * 
+ * @param asset 
+ * @returns Copy of asset with extra information removed
+ */
+function cleanseAsset(asset: AssetSchema) {
+    let copy = JSON.parse(JSON.stringify(asset))
+    switch(copy.asset_type) {
+        case "Server":
+            delete copy.public_port;
+            delete copy.private_port;
+            delete copy.ipmi_port;
+            delete copy.power_port;
+            delete copy.sid;
+            break;
+        case "Switch":
+            delete copy.public_port;
+            delete copy.private_port;
+            delete copy.ipmi_port;
+            delete copy.power_port;
+            delete copy.sid;
+            break;
+        case "PDU":
+            // Remove location if no rails are present
+            if(!copy.in_rack||!copy.rails) {
+                delete copy.public_port;
+                delete copy.private_port;
+                delete copy.ipmi_port;
+                delete copy.power_port;
+            }
+            // Remove SID if not live
+            if(!copy.live) {
+                delete copy.sid;
+            }
+            break;
+        case "Laptop":
+        default:
+            delete copy.rails;
+            delete copy.in_rack;
+            delete copy.live;
+            delete copy.public_port;
+            delete copy.private_port;
+            delete copy.ipmi_port;
+            delete copy.power_port;
+            delete copy.sid;
+            break;
+    }
+    return copy;
+}
+
+/**
+ * 
+ * @param parts 
+ * @returns Serial number of existing part.  Empty string if none is found
+ */
+async function findExistingSerial(parts: CartItem[]) {
+    let existingSerial = ''
+    await Promise.all(parts.map(async(part)=> {
+        // If serialized
+        if (part.serial) {
+            // Check if serial number already exists
+            let existing = await PartRecord.findOne({nxid: part.nxid, next: null, serial: part.serial});
+            // If exists, set sentinel value
+            if(existing)
+                existingSerial = part.serial
+        }
+    }))
+    return existingSerial
+}
+
+/**
+ * 
+ * @param createOptions 
+ * @param searchOptions 
+ * @param arr 
+ */
+function updateParts(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: CartItem[], migrated: boolean) {
+    return Promise.all(arr.map(async (p)=>{
+        // Create Options
+        let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
+        // Search options
+        let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
+        sOptions.nxid = p.nxid
+        cOptions.nxid = p.nxid
+        if(p.serial) {
+            cOptions.serial = p.serial
+            sOptions.serial = p.serial
+            if (!migrated) {
+                let prev = await PartRecord.findOne(sOptions)
+                if(!prev)
+                    return
+                cOptions.prev = prev._id
+            }
+            PartRecord.create(cOptions, callbackHandler.updateRecord)
+        }
+        else if(p.quantity) {
+            if(migrated) {
+                for (let i = 0; i < p.quantity; i++) {
+                    PartRecord.create(cOptions, callbackHandler.callbackHandleError)
+                }
+            }
+            else {
+
+                let toBeUpdated = await PartRecord.find(sOptions)
+                if (toBeUpdated.length < p.quantity)
+                return
+                for (let i = 0; i < p.quantity; i++) {
+                    cOptions.prev = toBeUpdated[i]._id
+                    PartRecord.create(cOptions, callbackHandler.updateRecord)
+                }
+            }
+        }
+    }))
+}
+
+/**
+ * 
+ * @param map1 
+ * @param map2 
+ * @param differenceDest 
+ */
+function checkDifferenceUnserialized(map1: Map<string, number>, map2: Map<string, number>, differenceDest: CartItem[]) {
+    map1.forEach((v,k)=>{
+        if(map2.has(k)) {
+            let reqQuantity = map2.get(k)!
+            let difference = reqQuantity - v;
+            if(difference > 0)
+                differenceDest.push({nxid: k, quantity: difference})    
+        }
+        else {
+            differenceDest.push({nxid: k, quantity: v})
+        }
+    })
+}
+
+/**
+ * 
+ * @param asset1 
+ * @param asset2 
+ * @returns True if assets are similar.  False if assets are not.
+ */
+function assetsAreSimilar(asset1: AssetSchema, asset2: AssetSchema) {
+    // MAKE COPIES!!!!
+    let copy1 = JSON.parse(JSON.stringify(asset1))
+    let copy2 = JSON.parse(JSON.stringify(asset2))
+    // Delete unimportant information for comparison
+    delete copy1.prev
+    delete copy1._id
+    delete copy1.next
+    delete copy1.date_created
+    delete copy1.date_replaced
+    delete copy1.date_updated
+    delete copy1.by
+    delete copy1.__v
+    // Delete unimportant information for comparison
+    delete copy2.prev
+    delete copy2._id
+    delete copy2.next
+    delete copy2.date_created
+    delete copy2.date_replaced
+    delete copy2.date_updated
+    delete copy2.by
+    delete copy2.__v
+    // Return results of comparison
+    return JSON.stringify(copy1) == JSON.stringify(copy2)
+}
 
 const assetManager = {
     addMigratedAsset:async (req: Request, res: Response) => {
         try {
+            // Get asset from body
             let asset = req.body as AssetSchema
+            // Log it
             console.log(asset)
+            // Set building
             asset.building = 3
             asset.migrated = true
             asset.date_created = asset.date_updated
@@ -69,77 +274,18 @@ const assetManager = {
             asset.date_updated = dateCreated;
             asset.prev = null;
             asset.next = null;
+            delete asset.migrated;
 
-            switch(asset.asset_type) {
-                case "Server":
-                case "Switch":
-                case "PDU":
-                    // Remove location if no rails are present
-                    if(!asset.in_rack||!asset.rails) {
-                        delete asset.public_port;
-                        delete asset.private_port;
-                        delete asset.ipmi_port;
-                        delete asset.power_port;
-                    }
-                    // Remove SID if not live
-                    if(!asset.live) {
-                        delete asset.sid;
-                    }
-                    break;
-                case "Laptop":
-                default:
-                    delete asset.rails;
-                    delete asset.in_rack;
-                    delete asset.live;
-                    delete asset.public_port;
-                    delete asset.private_port;
-                    delete asset.ipmi_port;
-                    delete asset.power_port;
-                    delete asset.sid;
-                    break;
-            }
+            asset = cleanseAsset(asset)
 
             // Set sentinel value
-            let existingSerial = ""
-            // Check all part records
-            await Promise.all(parts.map(async(part)=> {
-                // If serialized
-                if (part.serial) {
-                    // Check if serial number already exists
-                    let existing = await PartRecord.findOne({nxid: part.nxid, next: null, serial: part.serial});
-                    // If exists, set sentinel value
-                    if(existing)
-                        existingSerial = part.serial
-                }
-            }))
+            let existingSerial = await findExistingSerial(parts)
             // If serial already exists, return error
             if(existingSerial!="")
                 return res.status(400).send(`Serial number ${existingSerial} already in inventory`);
-            await Promise.all(parts.map(async (part) => {
-                if(part.serial) {
-                    await PartRecord.create({
-                        nxid: part.nxid,
-                        building: req.user.building,
-                        location: "Asset",
-                        asset_tag: asset.asset_tag,
-                        serial: part.serial,
-                        by: req.user.user_id,
-                        date_created: dateCreated
-                    })
-                }
-                else {
-                    for (let i = 0; i < part.quantity!; i++) {
-                        await PartRecord.create({
-                            nxid: part.nxid,
-                            building: req.user.building,
-                            location: "Asset",
-                            asset_tag: asset.asset_tag,
-                            by: req.user.user_id,
-                            date_created: dateCreated
-                        })
-                    }
-                }
-            }))
+            
+            // Create part records
+            await createPartRecords(parts, asset.asset_tag!, req.user.user_id, asset.building!, dateCreated)
             // Create a new asset
             Asset.create(asset, (err, record) => {
                 if (err){
@@ -154,6 +300,12 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+    /**
+     * 
+     * @param req 
+     * @param res 
+     * @returns nothing
+     */
     getAssets: async (req: Request, res: Response) => {
         try {
             // get object from request
@@ -175,6 +327,12 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+    /**
+     * 
+     * @param req 
+     * @param res 
+     * @returns nothing
+     */
     getAssetByID: async (req: Request, res: Response) => {
         try {
             // Get id from query
@@ -205,6 +363,12 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+    /**
+     * 
+     * @param req 
+     * @param res 
+     * @returns nothing
+     */
     searchAssets: async (req: Request, res: Response) => {
         try {
 
@@ -272,35 +436,22 @@ const assetManager = {
             // Prep asset for updates
             asset.by = req.user.user_id;
             asset.date_updated = current_date;
-            switch(asset.asset_type) {
-                case "Server":
-                case "Switch":
-                case "PDU":
-                    // Remove location if no rails are present
-                    if(!asset.in_rack||!asset.rails) {
-                        delete asset.public_port;
-                        delete asset.private_port;
-                        delete asset.ipmi_port;
-                        delete asset.power_port;
-                    }
-                    // Remove SID if not live
-                    if(!asset.live) {
-                        delete asset.sid;
-                    }
-                    break;
-                case "Laptop":
-                default:
-                    delete asset.rails;
-                    delete asset.in_rack;
-                    delete asset.live;
-                    delete asset.public_port;
-                    delete asset.private_port;
-                    delete asset.ipmi_port;
-                    delete asset.power_port;
-                    delete asset.sid;
-                    break;
+            asset = cleanseAsset(asset)
+            let isMigrated = false
+            if(asset.migrated) {
+                isMigrated = true
+                let existingAsset = await Asset.findOne({asset_tag: asset.asset_tag, next: null})
+                
+                if(existingAsset!=undefined) {
+                    if(!existingAsset.migrated)
+                        return res.status(400).send("Asset has already been migrated");
+                }
+                else {
+                    return res.status(400).send("Could not find migrated asset");
+                }
             }
-
+            delete asset.migrated
+            delete asset.old_by
             // Get part records that are currently on asset
             let existingParts = await PartRecord.find({
                 asset_tag: asset.asset_tag, 
@@ -355,50 +506,17 @@ const assetManager = {
                         differenceDest.push(p)
                 })
             }
+
+            // Check for removed serialized parts
             checkDifferenceSerialized(serializedPartsOnAsset, serializedPartsOnRequest, removed)
+            // Check for added serialized parts
             checkDifferenceSerialized(serializedPartsOnRequest, serializedPartsOnAsset, added)
-            function checkDifferenceUnserialized(map1: Map<string, number>, map2: Map<string, number>, differenceDest: CartItem[]) {
-                map1.forEach((v,k)=>{
-                    if(map2.has(k)) {
-                        let reqQuantity = map2.get(k)!
-                        let difference = reqQuantity - v;
-                        if(difference > 0)
-                            differenceDest.push({nxid: k, quantity: difference})    
-                    }
-                    else {
-                        differenceDest.push({nxid: k, quantity: v})
-                    }
-                })
-            }
-            checkDifferenceUnserialized(unserializedPartsOnAsset, unserializedPartsOnRequest, removed)
-            checkDifferenceUnserialized(unserializedPartsOnRequest, unserializedPartsOnAsset, added)
+            
             // Check for removed unserialized parts
-            function updateParts(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: CartItem[]) {
-                arr.map(async (p)=>{
-                    let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
-                    let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
-                    sOptions.nxid = p.nxid
-                    cOptions.nxid = p.nxid
-                    if(p.serial) {
-                        cOptions.serial = p.serial
-                        sOptions.serial = p.serial
-                        let prev = await PartRecord.findOne(sOptions)
-                        if(!prev)
-                            return
-                        cOptions.prev = prev._id
-                        PartRecord.create(cOptions, callbackHandler.updateRecord)
-                    }
-                    else if(p.quantity) {
-                        let toBeUpdated = await PartRecord.find(sOptions)
-                        if (toBeUpdated.length < p.quantity)
-                            return
-                        for (let i = 0; i < p.quantity; i++) {
-                            cOptions.prev = toBeUpdated[i]._id
-                            PartRecord.create(cOptions, callbackHandler.updateRecord)
-                        }
-                    }
-                })
-            }
+            checkDifferenceUnserialized(unserializedPartsOnAsset, unserializedPartsOnRequest, removed)
+            // Check for added unserialized parts
+            checkDifferenceUnserialized(unserializedPartsOnRequest, unserializedPartsOnAsset, added)
+            
             let removedOptions = {
                 owner: req.user.user_id,
                 building: req.user.building,
@@ -424,54 +542,45 @@ const assetManager = {
                 owner: req.user.user_id,
                 next: null
             }
-            updateParts(removedOptions, assetSearchOptions, removed)
-            updateParts(addedOptions, userSearchOptions, added)
+            // Update removed parts
+            await updateParts(removedOptions, assetSearchOptions, removed, isMigrated)
+            // Update added parts
+            await updateParts(addedOptions, userSearchOptions, added, isMigrated)
     
             // Update the asset object and return to user before updating parts records
             let getAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: asset.asset_tag, next: null}))) as AssetSchema
-            let save_id = asset._id
-            delete getAsset.prev
-            delete getAsset._id
-            delete getAsset.next
-            delete getAsset.date_created
-            delete getAsset.date_replaced
-            delete getAsset.date_updated
-            delete getAsset.by
-            delete getAsset.__v
-
-            delete asset.prev
-            delete asset._id
-            delete asset.next
-            delete asset.date_created
-            delete asset.date_replaced
-            delete asset.date_updated
-            delete asset.by
-            delete asset.__v
-            if(JSON.stringify(getAsset) != JSON.stringify(asset)) {
-                asset.prev = save_id
-                asset.next = null
-                asset.date_created = current_date
-                asset.date_updated = current_date
-                asset.by = req.user.user_id
+            
+            // Check if assets are similar
+            if(!assetsAreSimilar(asset, getAsset)) {
+                // Assets are not similar
                 delete asset._id
+                asset.prev = getAsset._id
+                // Create new asset
                 Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
                     if (err) {
                         handleError(err)
                         return res.status(500).send("API could not handle your request: " + err);
                     }
+                    // Update old asset
                     Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id, date_replaced: current_date }, (err: CallbackError, updated_asset: AssetSchema) => {
                         if (err) {
                             handleError(err)
                             return res.status(500).send("API could not handle your request: " + err);
                         }
+                        // Return new asset
                         res.status(200).json(new_asset)
                     })
                 })
             }
             else {
+                // Assets are similar
+                // Check if parts were added or removed
                 if(added.length>0||removed.length>0) {
-                    await Asset.findByIdAndUpdate(save_id, { date_updated: current_date })
+                    // If parts were added or removed, set date_updated to current date
+                    await Asset.findByIdAndUpdate(asset._id, { date_updated: current_date })
+                    asset.date_updated = current_date
                 }
+                // Return asset
                 res.status(200).json(asset)
             }
         } catch(err) {
@@ -508,15 +617,23 @@ const assetManager = {
                     cartItems.push({nxid: nxid, quantity: quantity})
                 })
                 await Promise.all(cartItems.map(async (item) =>{
+                    // Check if part is cached
                     if (!cachedRecords.has(item.nxid)) {
+                        // Set temp value
                         cachedRecords.set(item.nxid, {})
+                        // Find part
                         let part = await Part.findOne({nxid: item.nxid})
+                        // Check if exists
                         if(part) {
+                            // If part was found, add to cache
                             cachedRecords.set(item.nxid, part)
+                        }
+                        else {
+                            // Part not found, remove temp value from cache
+                            cachedRecords.delete(item.nxid)
                         }
                     }
                 }))
-
                 let parts = Array.from(cachedRecords, (record) => {
                     return { nxid: record[0], part: record[1]}
                 })
