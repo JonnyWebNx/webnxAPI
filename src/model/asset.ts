@@ -28,8 +28,7 @@ const asset = new mongoose.Schema({
     num_psu: { type: Number },
     psu_model: { type: String },
     // Cable length
-    long: { type: Boolean },
-    short: { type: Boolean },
+    cable_type: { type: String },
     num_bays: { type: Number },
     bay_type: { type: String }, 
     pallet: { type: String },
@@ -40,7 +39,6 @@ const asset = new mongoose.Schema({
     in_rack: { type: Boolean },
     // Bay
     bay: { type: Number },
-    nodes: { type: Array<string> },
     // Physical location
     power_port: { type: String },
     public_port: { type: String },

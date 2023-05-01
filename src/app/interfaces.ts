@@ -71,7 +71,7 @@ export interface AssetSchema {
     units?: number,
     num_psu?: number,
     psu_model?: string,
-    long?: boolean,
+    cable_type?: string,
     num_bays?: number,
     bay_type?: string,
     pallet?: string,

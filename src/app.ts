@@ -36,7 +36,7 @@ const { ROOT_DIRECTORY } = config;
 const app = express();
 database();
 // SET UP CORS
-var whitelist = ['https://www.cameronmckay.xyz', 'https://cameronmckay.xyz', "http://localhost:8080"]
+var whitelist = ['https://www.cameronmckay.xyz', 'https://cameronmckay.xyz', "http://localhost:8080", "http://localhost:4001"]
 var corsOptions = {
     origin: (origin: string, callback: any) => {
         if (whitelist.indexOf(origin) !== -1) {

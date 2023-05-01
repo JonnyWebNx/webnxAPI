@@ -61,32 +61,44 @@ function createPartRecords(parts: CartItem[], asset_tag: string, user_id: any, b
 function cleanseAsset(asset: AssetSchema) {
     let copy = JSON.parse(JSON.stringify(asset))
     switch(copy.asset_type) {
-        case "Server":
-            delete copy.public_port;
-            delete copy.private_port;
-            delete copy.ipmi_port;
-            delete copy.power_port;
-            delete copy.sid;
-            break;
+        case "PDU":
         case "Switch":
             delete copy.public_port;
             delete copy.private_port;
             delete copy.ipmi_port;
-            delete copy.power_port;
             delete copy.sid;
+            delete copy.units;
+            delete copy.num_psu;
+            delete copy.psu_model;
+            delete copy.rails;
+            delete copy.in_rack;
+            if(copy.live) {
+                delete copy.pallet
+            }
+            else {
+                delete copy.power_port
+            }
             break;
-        case "PDU":
+        case "Server":
             // Remove location if no rails are present
-            if(!copy.in_rack||!copy.rails) {
+            if(!copy.in_rack&&!copy.live) {
                 delete copy.public_port;
                 delete copy.private_port;
                 delete copy.ipmi_port;
                 delete copy.power_port;
             }
+            else {
+                delete copy.pallet
+            }
             // Remove SID if not live
             if(!copy.live) {
                 delete copy.sid;
             }
+            if(copy.num_bays < 1)
+                delete copy.bay_type
+            if(copy.num_psu<1)
+                delete copy.psu_model
+            delete copy.fw_rev
             break;
         case "Laptop":
         default:
@@ -98,6 +110,9 @@ function cleanseAsset(asset: AssetSchema) {
             delete copy.ipmi_port;
             delete copy.power_port;
             delete copy.sid;
+            delete copy.units;
+            delete copy.num_psu;
+            delete copy.psu_model;
             break;
     }
     return copy;
