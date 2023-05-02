@@ -323,20 +323,29 @@ const assetManager = {
      */
     getAssets: async (req: Request, res: Response) => {
         try {
-            // get object from request
-            let asset = req.query as AssetSchema;
             // Clear unnecessary param
             if (req.query.advanced) {
                 delete req.query.advanced;
             }
+            if(!(req.query.pageSize&&req.query.pageNum))
+                return res.status(400).send(`Missing page number or page size`);      
+            let pageSize = parseInt(req.query.pageSize as string);
+            let pageNum = parseInt(req.query.pageNum as string);
+            delete req.query.pageNum
+            delete req.query.pageSize
+            // get object from request
+            let asset = req.query as AssetSchema;
             asset.next = null;
             // Send request to database
-            Asset.find(asset, (err: CallbackError, record: PartRecordSchema) => {
-                if (err)
-                    res.status(500).send("API could not handle your request: " + err);
-                else
-                    res.status(200).json(record);
-            });
+            Asset.find(asset)
+                .skip(pageSize * (pageNum - 1))
+                .limit(Number(pageSize)+1)
+                .exec((err, record) => {
+                    if (err)
+                        res.status(500).send("API could not handle your request: " + err);
+                    else
+                        res.status(200).json(record);
+                })
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);

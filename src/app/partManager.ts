@@ -579,7 +579,8 @@ const partManager = {
                     break
                 case "Tech Inventory":
                     // Check if id exists
-                    if (owner._id) {
+                    if (owner) {
+                        console.log(owner)
                         // Make sure tech exists
                         let tech = await User.findById(owner._id)
                         if (tech == null)
