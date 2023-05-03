@@ -292,7 +292,7 @@ const partManager = {
             let { user_id, inventory } = req.body
             // Make sure user is valid of 'all' as in
             // All Techs
-            if(user_id!='all') {
+            if(user_id!='all'&&user_id!='testing') {
                 let user = await User.findById(user_id).exec()
                 if(user_id==null||user_id==undefined||user==null)
                     return res.status(400).send("Invalid request")
@@ -595,6 +595,8 @@ const partManager = {
                 case "All Techs":
                     createOptions.owner = 'all'
                     break
+                case "Testing":
+                    createOptions.owner = 'testing'
                 default:
                     break
             }
@@ -876,6 +878,32 @@ const partManager = {
                     // Testing center
                     to.location = 'Testing Center'
                     break;
+                case 'sold':
+                    /**
+                     * 
+                     * 
+                     * 
+                     * 
+                     * 
+                     * 
+                     * 
+                     * 
+                     * 
+                        EBAY STUFF HERE
+
+
+
+
+
+
+
+
+                     */
+                    if(!to.ebay)
+                        return res.status(400).send("Ebay order ID not present");
+                    to.next = 'sold'
+                    to.location = 'sold'
+                    break;
                 // Add more cases here if necessary...
                 default:
                     if (!mongoose.Types.ObjectId.isValid(to.owner))
@@ -889,6 +917,8 @@ const partManager = {
                     to.location = 'Tech Inventory'
                     to.building = findUser.building
             }
+            if(to.owner!='sold')
+                delete to.ebay
             // Get records
             let fromRecords = await PartRecord.find(from)
             // Check quantities

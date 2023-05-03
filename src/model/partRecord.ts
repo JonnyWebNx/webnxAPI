@@ -17,6 +17,8 @@ const partRecord = new mongoose.Schema({
     serial: { type: String },
     // User ID of owner if part is checked out
     owner: { type: String },
+    // FOR EBAY
+    ebay: { type: String },
     // ID of the user who's request created the part record
     by: { type: String, required: true },
     // Date the part was created

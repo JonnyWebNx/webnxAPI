@@ -94,6 +94,7 @@ export interface PartRecordSchema {
     asset_tag?: string,
     serial?: string,
     owner?: string | Types.ObjectId,
+    ebay?: string,
     by?: string | Types.ObjectId,
     date_created?: string | number | Date,
     date_replaced?: string | number | Date,

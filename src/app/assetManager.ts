@@ -413,6 +413,7 @@ const assetManager = {
             // Add regex of keywords to all search options
             keywords.map((key) => {
                 searchOptions.push({ "asset_tag": { $regex: key, $options: "is" } })
+                searchOptions.push({ "notes": { $regex: key, $options: "is" } })
                 searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
                 searchOptions.push({ "asset_type": { $regex: key, $options: "is" } })
                 searchOptions.push({ "chassis_type": { $regex: key, $options: "is" } })
@@ -676,20 +677,12 @@ const assetManager = {
             // Find all parts records associated with asset tag
             let records = await PartRecord.find({ asset_tag, next: null,})   
             let current_date = Date.now()
-
+            // Find all records associated with asset
             await Promise.all(records.map(async (record) => {
-                let createOptions = {
-                    nxid: record.nxid,
-                    owner: "all",
-                    building: req.user.building,
-                    location: "All Techs",
-                    by: req.user.user_id,
-                    prev: record._id,
-                    date_created: current_date,
-                    next: null,
-                } as PartRecordSchema
-                await partRecord.findByIdAndUpdate(createOptions.prev, {next: "deleted"})
+                // Mark as deleted
+                await partRecord.findByIdAndUpdate(record._id, {next: "deleted"})
             }))
+            // Find asset
             Asset.findOne({asset_tag, next: null}, (err: CallbackError, asset: AssetSchema) => {
                 if(err) {
                     res.status(500).send("API could not handle your request: "+err);
@@ -699,16 +692,19 @@ const assetManager = {
                 asset.next = "deleted"
                 asset.date_created = current_date
                 delete asset._id
+                // Create new iteration of asset
                 Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
                     if(err) {
                         res.status(500).send("API could not handle your request: "+err);
                         return;
                     }
+                    // Update old iteration
                     Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id}, (err: CallbackError, new_asset: AssetSchema) => {
                         if(err) {
                             res.status(500).send("API could not handle your request: "+err);
                             return;
                         }
+                        // All done
                         res.status(200).send("Success")
                     })
                 })
