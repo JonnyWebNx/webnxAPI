@@ -6,6 +6,7 @@
  * @brief Part manager object for querying database and creating responses
  * 
  */
+import { stringSanitize, objectSanitize } from '../config/sanitize.js';
 import Part from '../model/part.js'
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
@@ -21,6 +22,53 @@ import config from '../config.js'
 import { existsSync } from 'fs';
 
 const { UPLOAD_DIRECTORY } = config
+
+
+function cleansePart(part: PartSchema) {
+    let newPart = {} as PartSchema
+    newPart.nxid = part.nxid
+    newPart.manufacturer = part.manufacturer
+    newPart.name = part.name
+    newPart.type = part.type
+    newPart.shelf_location = part.shelf_location
+    newPart.serialized = part.serialized        
+    switch(part.type) {
+        case "Memory":
+            newPart.frequency = part.frequency
+            newPart.capacity = part.capacity
+            newPart.memory_type = part.memory_type
+            newPart.memory_gen = part.memory_gen
+            break
+        case "CPU":
+            newPart.frequency = part.frequency
+            newPart.chipset = part.chipset
+            break
+        case "Motherboard":
+            newPart.memory_gen = part.memory_gen
+            newPart.chipset = part.chipset
+            break
+        case "Peripheral Card":
+            newPart.peripheral_type = part.peripheral_type
+            newPart.num_ports = part.num_ports
+            newPart.port_type = part.port_type
+            break
+        case "Storage":
+            newPart.capacity = part.capacity
+            newPart.capacity_unit = part.capacity_unit
+        case "Backplane":
+            newPart.storage_interface = part.storage_interface
+            newPart.port_type = part.port_type
+            break;
+        case "GPU":
+            break
+        case "Cable":
+            newPart.cable_end1 = part.cable_end1
+            newPart.cable_end2 = part.cable_end2
+            break                
+    }
+    
+    return objectSanitize(newPart, false) as PartSchema
+}
 
 const partManager = {
     // Create
@@ -39,47 +87,7 @@ const partManager = {
                 return res.status(400).send("Invalid part ID");
             }
             // Try to add part to database
-            let newPart = {} as PartSchema
-            newPart.nxid = part.nxid
-            newPart.manufacturer = part.manufacturer
-            newPart.name = part.name
-            newPart.type = part.type
-            newPart.shelf_location = part.shelf_location
-            newPart.serialized = part.serialized        
-            switch(part.type) {
-                case "Memory":
-                    newPart.frequency = part.frequency
-                    newPart.capacity = part.capacity
-                    newPart.memory_type = part.memory_type
-                    newPart.memory_gen = part.memory_gen
-                    break
-                case "CPU":
-                    newPart.frequency = part.frequency
-                    newPart.chipset = part.chipset
-                    break
-                case "Motherboard":
-                    newPart.memory_gen = part.memory_gen
-                    newPart.chipset = part.chipset
-                    break
-                case "Peripheral Card":
-                    newPart.peripheral_type = part.peripheral_type
-                    newPart.num_ports = part.num_ports
-                    newPart.port_type = part.port_type
-                    break
-                case "Storage":
-                    newPart.capacity = part.capacity
-                    newPart.capacity_unit = part.capacity_unit
-                case "Backplane":
-                    newPart.storage_interface = part.storage_interface
-                    newPart.port_type = part.port_type
-                    break;
-                case "GPU":
-                    break
-                case "Cable":
-                    newPart.cable_end1 = part.cable_end1
-                    newPart.cable_end2 = part.cable_end2
-                    break                
-            }
+            let newPart = cleansePart(part)
 
             // Send part to database
             newPart.created_by = req.user.user_id;
@@ -125,9 +133,23 @@ const partManager = {
         try {
             // Destructure request
             const { location, building } = req.query;
-            const req_part = req.query.part as PartSchema;
+            if (req.query.advanced) {
+                delete req.query.advanced;
+            }
+            if(!(req.query.pageSize&&req.query.pageNum))
+                return res.status(400).send(`Missing page number or page size`);      
+            let pageSize = parseInt(req.query.pageSize as string);
+            let pageNum = parseInt(req.query.pageNum as string);
+            delete req.query.pageNum
+            delete req.query.pageSize
+            delete req.query.location
+            delete req.query.building
+            let req_part = req.query as PartSchema
             // Find parts that match request
-            Part.find(req_part, async (err: CallbackError | null, parts: PartSchema[]) => {
+            Part.find(req_part)
+                .skip(pageSize * (pageNum - 1))
+                .limit(pageSize + 1)
+                .exec(async (err: CallbackError | null, parts: PartSchema[]) => {
                 if (err) {
                     // Database err
                     handleError(err)
@@ -199,6 +221,7 @@ const partManager = {
                 if(user_id==null||user_id==undefined||user==null)
                     return res.status(400).send("Invalid request")
             }
+            let current_date = Date.now();
             // Find each item and check quantities before updating
             let sufficientStock = true
             await Promise.all(cart.map(async (item: CartItem) => {
@@ -251,7 +274,8 @@ const partManager = {
                             building: req.user.building,
                             by: req.user.user_id,
                             prev: prevPart._id,
-                            next: null
+                            next: null,
+                            date_created: current_date,
                         }, callbackHandler.updateRecord);
                     }
                 }
@@ -273,7 +297,8 @@ const partManager = {
                             building: req.user.building,
                             by: req.user.user_id,
                             prev: records[j]._id,
-                            next: null
+                            next: null,
+                            date_created: current_date,
                         }, callbackHandler.updateRecord);
                     }
                 }
@@ -292,6 +317,8 @@ const partManager = {
             let { user_id, inventory } = req.body
             // Make sure user is valid of 'all' as in
             // All Techs
+            let current_date = Date.now();
+
             if(user_id!='all'&&user_id!='testing') {
                 let user = await User.findById(user_id).exec()
                 if(user_id==null||user_id==undefined||user==null)
@@ -341,7 +368,8 @@ const partManager = {
                             location: "Parts Room",
                             serial: item.serial,
                             building: req.user.building,
-                            by: req.user.user_id
+                            by: req.user.user_id,
+                            date_created: current_date,
                         }, callbackHandler.updateRecord)
                     }
                 }
@@ -361,7 +389,8 @@ const partManager = {
                             prev: records[i]._id,
                             location: "Parts Room",
                             building: req.user.building,
-                            by: req.user.user_id
+                            by: req.user.user_id,
+                            date_created: current_date,
                         }, callbackHandler.updateRecord);
                     }
                 }
@@ -377,82 +406,90 @@ const partManager = {
     },
     searchParts: async (req: Request, res: Response) => {
         try {
+            async function returnSearch(err: CallbackError | null, parts: PartSchema[]) {
+                if (err) {
+                    // Database err
+                    handleError(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                // Map for all parts
+                let returnParts = await Promise.all(parts.map(async (part)=>{
+                    // Check parts room quantity
+                    let count = await PartRecord.count({
+                        nxid: part.nxid,
+                        next: null,
+                        location: location ? location : "Parts Room",
+                        building: building ? building : req.user.building
+                    });
+                    // Get total quantity
+                    let total_count = await PartRecord.count({
+                        nxid: part.nxid,
+                        next: null
+                    });
+                    // Copy part
+                    let tempPart = JSON.parse(JSON.stringify(part))
+                    // Add quantities
+                    tempPart.quantity = count;
+                    tempPart.total_quantity = total_count;
+                    // Return
+                    return tempPart
+                }))
+                return res.status(200).json(returnParts);
+            }
             // Search data
             // Limit
             // Page number
-            const { searchString, pageSize, pageNum, building, location } = req.query;
+            let { searchString, pageSize, pageNum, building, location } = req.query;
             // Find parts
             // Skip - gets requested page number
             // Limit - returns only enough elements to fill page
 
             // Splice keywords from search string
-            let i = 0
-            let keywords = []
-            let spliced = false
             if(typeof(searchString)!="string") {
                 return res.status(400).send("Search string undefined");
             }
-            while (!spliced) {
-                // If end of string
-                if (searchString.indexOf(" ", i) == -1) {
-                    keywords.push(searchString.substring(i, searchString.length))
-                    spliced = true
-                } else {
-                    // Add spliced keyword to keyword array
-                    keywords.push(searchString.substring(i, searchString.indexOf(" ", i)))
-                    i = searchString.indexOf(" ", i) + 1
-                }
-            }
-            // Use keywords to build search options
-            let searchOptions = [] as any
-            // Add regex of keywords to all search options
-            await Promise.all(keywords.map(async (key) => {
-                searchOptions.push({ "nxid": { $regex: key, $options: "is" } })
-                searchOptions.push({ "name": { $regex: key, $options: "is" } })
-                searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
-                searchOptions.push({ "type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "location": { $regex: key, $options: "is" } })
-                searchOptions.push({ "storage_interface": { $regex: key, $options: "is" } })
-                searchOptions.push({ "port_type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "peripheral_type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "memory_type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
-                searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
-                searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
-            }))
-            Part.aggregate([{ $match: { $or: searchOptions } }])
+            searchString = stringSanitize(searchString, true)
+            
+            let fullText = false
+            let pp = await Part.findOne(searchString != ''? { $text: { $search: searchString } } : {})
+            if(pp!=undefined)
+                fullText = true
+
+            if (fullText) {
+                // Search data
+                Part.find(searchString != ''? { $text: { $search: searchString } } : {})
+                // Skip - gets requested page number
                 .skip(parseInt(pageSize as string) * (parseInt(pageNum as string) - 1))
+                // Limit - returns only enough elements to fill page
                 .limit(parseInt(pageSize as string) + 1)
-                .exec( async (err: CallbackError | null, parts: PartSchema[]) => {
-                    if (err) {
-                        // Database err
-                        handleError(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    }
-                    // Map for all parts
-                    let returnParts = await Promise.all(parts.map(async (part)=>{
-                        // Check parts room quantity
-                        let count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null,
-                            location: location ? location : "Parts Room",
-                            building: building ? building : req.user.building
-                        });
-                        // Get total quantity
-                        let total_count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null
-                        });
-                        // Copy part
-                        let tempPart = JSON.parse(JSON.stringify(part))
-                        // Add quantities
-                        tempPart.quantity = count;
-                        tempPart.total_quantity = total_count;
-                        // Return
-                        return tempPart
-                    }))
-                    return res.status(200).json(returnParts);
-                })
+                .exec(returnSearch)
+            }
+            else {
+                let keywords = [searchString]
+                keywords = keywords.concat(searchString.split(" "))
+                console.log(keywords)
+                // Use keywords to build search options
+                let searchOptions = [] as any
+                // Add regex of keywords to all search options
+                await Promise.all(keywords.map(async (key) => {
+                    searchOptions.push({ "nxid": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "name": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "shelf_location": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "storage_interface": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "port_type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "peripheral_type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "memory_type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
+                }))
+                Part.aggregate([{ $match: { $or: searchOptions } }])
+                    .skip(parseInt(pageSize as string) * (parseInt(pageNum as string) - 1))
+                    .limit(parseInt(pageSize as string) + 1)
+                    .exec(returnSearch)
+            }
         } catch (err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
@@ -465,47 +502,7 @@ const partManager = {
             let part = req.body.part
 
             // Try to add part to database
-            let newPart = {} as PartSchema
-            newPart.nxid = part.nxid
-            newPart.manufacturer = part.manufacturer
-            newPart.name = part.name
-            newPart.type = part.type
-            newPart.shelf_location = part.shelf_location
-            newPart.serialized = part.serialized        
-            switch(part.type) {
-                case "Memory":
-                    newPart.frequency = part.frequency
-                    newPart.capacity = part.capacity
-                    newPart.memory_type = part.memory_type
-                    newPart.memory_gen = part.memory_gen
-                    break
-                case "CPU":
-                    newPart.frequency = part.frequency
-                    newPart.chipset = part.chipset
-                    break
-                case "Motherboard":
-                    newPart.memory_gen = part.memory_gen
-                    newPart.chipset = part.chipset
-                    break
-                case "Peripheral Card":
-                    newPart.peripheral_type = part.peripheral_type
-                    newPart.num_ports = part.num_ports
-                    newPart.port_type = part.port_type
-                    break
-                case "Storage":
-                    newPart.capacity = part.capacity
-                    newPart.capacity_unit = part.capacity_unit
-                case "Backplane":
-                    newPart.storage_interface = part.storage_interface
-                    newPart.port_type = part.port_type
-                    break;
-                case "GPU":
-                    break
-                case "Cable":
-                    newPart.cable_end1 = part.cable_end1
-                    newPart.cable_end2 = part.cable_end2
-                    break                
-            }
+            let newPart = cleansePart(part)
 
             // Send part to database
             newPart.created_by = req.user.user_id;
@@ -879,30 +876,28 @@ const partManager = {
                     to.location = 'Testing Center'
                     break;
                 case 'sold':
-                    /**
-                     * 
-                     * 
-                     * 
-                     * 
-                     * 
-                     * 
-                     * 
-                     * 
-                     * 
-                        EBAY STUFF HERE
-
-
-
-
-
-
-
-
-                     */
                     if(!to.ebay)
                         return res.status(400).send("Ebay order ID not present");
                     to.next = 'sold'
                     to.location = 'sold'
+                    break;
+                case 'lost':
+                    if(req.user.role!='admin'&&req.user.role!='inventory')
+                        return res.status(400).send("You do not have permissions to mark parts as lost");
+                    to.next = 'lost'
+                    to.location = 'lost'
+                    break;
+                case 'broken':
+                    if(req.user.role!='admin'&&req.user.role!='inventory')
+                        return res.status(400).send("You do not have permissions to mark parts as broken");
+                    to.next = 'broken'
+                    to.location = 'broken'
+                    break;
+                case 'deleted':
+                    if(req.user.role!='admin'&&req.user.role!='inventory')
+                        return res.status(400).send("You do not have permissions to mark parts as deleted");
+                    to.next = 'deleted'
+                    to.location = 'deleted'
                     break;
                 // Add more cases here if necessary...
                 default:

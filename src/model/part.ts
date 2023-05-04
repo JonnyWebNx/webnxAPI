@@ -23,5 +23,18 @@ const partSchema = new mongoose.Schema({
     created_by: { type: String, default: null },
     date_created: { type: Date, default: Date.now() },
 });
-partSchema.index({ '$**': 'text' });
+partSchema.index({
+    'manufacturer': 'text',
+    'name': 'text',
+    'type': 'text',
+    'chipset': 'text',
+    'memory_type': 'text',
+    'memory_gen': 'text',
+    'shelf_location': 'text',
+    'peripheral_type': 'text',
+    'storage_interface': 'text',
+    'port_type': 'text',
+    'cable_end1': 'text',
+    'cable_end2': 'text',
+});
 export default mongoose.model("part", partSchema);

@@ -58,5 +58,17 @@ const asset = new mongoose.Schema({
     date_replaced: { type: Date, default: null },
     notes: { type: String }
 });
+asset.index({
+    'notes': 'text',
+    'sid': 'text',
+    'pallet': 'text',
+    'manufacturer': 'text',
+    'model': 'text',
+    'serial': 'text',
+    'power_port': 'text',
+    'public_port': 'text',
+    'private_port': 'text',
+    'ipmi_port': 'text'
+});
 // Add index here
 export default mongoose.model("asset", asset);

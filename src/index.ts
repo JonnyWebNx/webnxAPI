@@ -25,27 +25,8 @@ const port = config.PORT;
 
 // Open API_PORT for listening
 server.listen(port, () => {
-    console.log("\x1b[32m", "\x1b[1m",`                          
-    ▄█     █▄     ▄████████ ▀█████████▄  ███▄▄▄▄   ▀████    ▐████▀ 
-    ███     ███   ███    ███   ███    ███ ███▀▀▀██▄   ███▌   ████▀  
-    ███     ███   ███    █▀    ███    ███ ███   ███    ███  ▐███    
-    ███     ███  ▄███▄▄▄      ▄███▄▄▄██▀  ███   ███    ▀███▄███▀    
-    ███     ███ ▀▀███▀▀▀     ▀▀███▀▀▀██▄  ███   ███    ████▀██▄     
-    ███     ███   ███    █▄    ███    ██▄ ███   ███   ▐███  ▀███    
-    ███ ▄█▄ ███   ███    ███   ███    ███ ███   ███  ▄███     ███▄  
-     ▀███▀███▀    ██████████ ▄█████████▀   ▀█   █▀  ████       ███▄ 
-                                            
-                   ▄████████    ▄███████▄  ▄█   
-                  ███    ███   ███    ███ ███   
-                  ███    ███   ███    ███ ███▌ 
-                  ███    ███   ███    ███ ███▌
-                ▀███████████ ▀█████████▀  ███▌              
-                  ███    ███   ███        ███     
-                  ███    ███   ███        ███     
-                  ███    █▀   ▄████▀      █▀   
-
-WebNX API by Cameron McKay`,"\x1b[36m",`\nNow with Typescript!`,
-"\x1b[0m",`\nServer running on port ${config.PORT}`);
+    console.log("\x1b[32m", "\x1b[1m",`\nWebNX API by Cameron McKay`,"\u001b[35m",`\nVersion 1.0`,
+    "\x1b[0m",`\nServer running on port ${config.PORT}`);
 });
 
 PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
@@ -62,7 +43,7 @@ PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
   for(let record of records) {
     if (!record.nxid||nxids.indexOf(record.nxid)==-1) {
       count++
-      PartRecord.findByIdAndDelete(record._id, handleCallbackError)
+      // PartRecord.findByIdAndDelete(record._id, handleCallbackError)
     }
     if((record.date_replaced == null)&&(record.next!=null)&&(mongoose.Types.ObjectId.isValid(record.next))) {
       let nextRec = await PartRecord.findById(record.next)
@@ -78,11 +59,11 @@ PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
         count++
         let tempRecord = record as PartRecordSchema
         count ++
-        PartRecord.findByIdAndDelete(tempRecord._id, handleCallbackError)
+        // PartRecord.findByIdAndDelete(tempRecord._id, handleCallbackError)
         tempRecord = await PartRecord.findById(tempRecord.prev) as PartRecordSchema
         while((tempRecord!=null)&&(tempRecord.prev != null)) {
           count ++
-          PartRecord.findByIdAndDelete(tempRecord._id, handleCallbackError)
+          // PartRecord.findByIdAndDelete(tempRecord._id, handleCallbackError)
           tempRecord = await PartRecord.findById(tempRecord.prev) as PartRecordSchema
         }
       }

@@ -1,9 +1,9 @@
-import sanitize from "mongo-sanitize";
 import { Request, Response, NextFunction } from "express";
+import { objectSanitize } from "../config/sanitize.js";
 
 const sanitizeInput = (req: Request, res: Response, next: NextFunction) => {
-    req.query = sanitize(req.query);
-    req.body = sanitize(req.body);
+    req.query = objectSanitize(req.query, false);
+    req.body = objectSanitize(req.body, false);
     next();
 }
 

@@ -15,6 +15,7 @@ import { Request, Response } from "express";
 import { AssetEvent, AssetHistory, AssetSchema, CartItem, PartRecordSchema, PartSchema } from "./interfaces.js";
 import mongoose, { CallbackError } from "mongoose";
 import partRecord from "../model/partRecord.js";
+import { stringSanitize, objectSanitize } from "../config/sanitize.js";
 
 /**
  * 
@@ -115,7 +116,7 @@ function cleanseAsset(asset: AssetSchema) {
             delete copy.psu_model;
             break;
     }
-    return copy;
+    return objectSanitize(copy, false);
 }
 
 /**
@@ -395,11 +396,16 @@ const assetManager = {
      */
     searchAssets: async (req: Request, res: Response) => {
         try {
-
+            function returnAsset(err: CallbackError, record: AssetSchema[]) {
+                if (err)
+                    res.status(500).send("API could not handle your request: " + err);
+                else
+                    res.status(200).json(record);
+            }
             // Search data
             // Limit
             // Page number
-            const searchString = req.query.searchString? req.query.searchString as string : ""
+            const searchString = req.query.searchString? stringSanitize(req.query.searchString as string, true) : ""
             const pageSize = req.query.pageSize? parseInt(req.query.pageSize as string) : 25
             const pageNum = req.query.pageNum? parseInt(req.query.pageNum as string) : 1
             // Find parts
@@ -407,41 +413,55 @@ const assetManager = {
             // Limit - returns only enough elements to fill page
 
             // Split keywords from search string
-            let keywords = searchString.split(" ")
-            // Use keywords to build search options
-            let searchOptions = [] as any[]
-            // Add regex of keywords to all search options
-            keywords.map((key) => {
-                searchOptions.push({ "asset_tag": { $regex: key, $options: "is" } })
-                searchOptions.push({ "notes": { $regex: key, $options: "is" } })
-                searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
-                searchOptions.push({ "asset_type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "chassis_type": { $regex: key, $options: "is" } })
-                searchOptions.push({ "location": { $regex: key, $options: "is" } })
-                searchOptions.push({ "model": { $regex: key, $options: "is" } })
-                searchOptions.push({ "serial": { $regex: key, $options: "is" } })
-                searchOptions.push({ "power_port": { $regex: key, $options: "is" } })
-                searchOptions.push({ "public_port": { $regex: key, $options: "is" } })
-                searchOptions.push({ "private_port": { $regex: key, $options: "is" } })
-                searchOptions.push({ "ipmi_port": { $regex: key, $options: "is" } })
-            })
-            Asset.aggregate([{ $match: {
+            let fullText = false
+            // Check if text search yields results            
+            let ass = await Asset.findOne(searchString != ''? { $text: { $search: searchString } } : {})
+            // Set fulltext if text search yields results
+            if(ass!=undefined)
+                fullText = true
+            // Fulltext search
+            if (fullText) {
+                Asset.find(searchString != ''? { $text: { $search: searchString } } : {})
+                    .skip(pageSize * (pageNum - 1))
+                    .limit(Number(pageSize)+1)
+                    .exec(returnAsset)
+            }
+            else {
+                // Keyword search
+                let keywords = []
+                keywords.push(searchString)
+                keywords = keywords.concat(searchString.split(" "))
+                // Use keywords to build search options
+                let searchOptions = [] as any[]
+                // Add regex of keywords to all search options
+                keywords.map((key) => {
+                    searchOptions.push({ "asset_tag": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "notes": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "asset_type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "chassis_type": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "location": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "model": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "serial": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "power_port": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "public_port": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "private_port": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "ipmi_port": { $regex: key, $options: "is" } })
+                })
+                Asset.aggregate([{ $match: {
                     $and: [
                         { $or: searchOptions },
                         { next: null }
                     ]
                     
-                } 
-            }])
-            .skip(pageSize * (pageNum - 1))
-            .limit(Number(pageSize)+1)
-            .exec((err, record) => {
-                if (err)
-                    res.status(500).send("API could not handle your request: " + err);
-                else
-                    res.status(200).json(record);
-            })
+                        } 
+                    }])
+                    .skip(pageSize * (pageNum - 1))
+                    .limit(Number(pageSize)+1)
+                    .exec(returnAsset)
+            }
         } catch (err) {
+            console.log(err)
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);
         }

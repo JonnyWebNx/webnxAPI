@@ -24,7 +24,7 @@ import kioskClerkAdminPermission from './middleware/kioskClerkAdminPermission.js
 // Database modules
 import partManager from './app/partManager.js'
 import userManager from './app/userManager.js';
-import sanitize from './middleware/sanitize.js';
+import sanitize from './middleware/sanitizeInput.js';
 import assetManager from './app/assetManager.js'
 import path from 'node:path';
 import adminPermission from './middleware/adminPermission.js';
