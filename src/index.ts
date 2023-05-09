@@ -40,7 +40,7 @@ PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
   let nxids = parts.map((part)=> part.nxid)
   let count = 0;
   let replaceCount = 0;
-  if(records.length==0)
+  if(records.length==undefined)
     return
   for(let record of records) {
     if (!record.nxid||nxids.indexOf(record.nxid)==-1) {
@@ -82,7 +82,7 @@ asset.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
       return
     }
   }
-  if(records.length==0)
+  if(records.length==undefined)
     return
   for (let record of records) {
     if(((record.date_replaced==undefined)||(record.date_replaced==null))&&(record.next!=null)) {
