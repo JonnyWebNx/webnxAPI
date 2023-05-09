@@ -23,9 +23,10 @@ const handleError = (error: Error | MongooseError | string) => {
         subject: `Error at ${errorDate.toTimeString()}`,
         text: error
       };
-      transporter.sendMail(mailOptions as Options, function(error, info){
+      transporter.sendMail(mailOptions as Options, function(err, info){
         if (error) {
           console.log(error);
+          console.log(err)
         } else {
           console.log('Email sent: ' + info.response);
         }

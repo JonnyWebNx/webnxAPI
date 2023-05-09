@@ -461,7 +461,6 @@ const assetManager = {
                     .exec(returnAsset)
             }
         } catch (err) {
-            console.log(err)
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);
         }

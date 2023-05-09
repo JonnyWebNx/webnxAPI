@@ -99,7 +99,6 @@ const userManager = {
             const submittedUser = req.body.user
             var emailExists = await User.findOne({email: submittedUser.email});
             if (emailExists&&submittedUser._id!=emailExists._id){
-                console.log(emailExists);
                 // Email already exists in database and does not belong to user
                 return res.status(409).send("Email taken.")
             }

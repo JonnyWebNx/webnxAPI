@@ -6,7 +6,6 @@ import { PartRecordSchema } from '../app/interfaces.js'
 const callbackHandler = {
     updateRecord: (err: CallbackError, record: any) => {
         if (err) {
-            console.log(err)
             return handleError(err)
         }
         PartRecord.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, record: PartRecordSchema) => {

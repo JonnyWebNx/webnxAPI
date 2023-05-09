@@ -467,7 +467,6 @@ const partManager = {
             else {
                 let keywords = [searchString]
                 keywords = keywords.concat(searchString.split(" "))
-                console.log(keywords)
                 // Use keywords to build search options
                 let searchOptions = [] as any
                 // Add regex of keywords to all search options
@@ -577,7 +576,6 @@ const partManager = {
                 case "Tech Inventory":
                     // Check if id exists
                     if (owner) {
-                        console.log(owner)
                         // Make sure tech exists
                         let tech = await User.findById(owner._id)
                         if (tech == null)
