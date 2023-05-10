@@ -19,6 +19,10 @@ const login = async (req: Request, res: Response):Promise<void> => {
         var user = await User.findOne({ email });
         // Compare password
         if (user && (await bcrypt.compare(password, user.password))) {
+            if(!user.enabled) {
+                res.status(400).send("Your account is disabled.");
+                return
+            }
             // Create token if password correct
             let token = ""
             // No expiry time for kiosk

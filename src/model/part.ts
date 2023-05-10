@@ -11,6 +11,7 @@ const partSchema = new mongoose.Schema({
     memory_type: { type: String },
     // new
     memory_gen: { type: String },
+    rack_num: { type: Number },
     shelf_location: { type: String },
     peripheral_type: { type: String },
     storage_interface: { type: String },

@@ -31,6 +31,7 @@ function cleansePart(part: PartSchema) {
     newPart.name = part.name
     newPart.type = part.type
     newPart.shelf_location = part.shelf_location
+    newPart.rack_num = part.rack_num
     newPart.serialized = part.serialized        
     switch(part.type) {
         case "Memory":

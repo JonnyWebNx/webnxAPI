@@ -29,6 +29,7 @@ export interface PartSchema {
     quantity?: number,
     total_quantity?: number,
     shelf_location?: string,
+    rack_num?: number,
     frequency?: number,
     chipset?: string,
     memory_type?: string,

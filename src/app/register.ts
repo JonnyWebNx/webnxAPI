@@ -19,7 +19,7 @@ const register = async (req: Request, res: Response) => {
 
         // check if user already exists
         // Validate if user exists in our database
-        const oldUser = await User.findOne({ email });
+        const oldUser = await User.findOne({ email: email.toLowerCase() });
 
         if (oldUser) {
             return res.status(409).send("User already exists.  Please login.");
