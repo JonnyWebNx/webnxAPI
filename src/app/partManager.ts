@@ -26,7 +26,7 @@ const { UPLOAD_DIRECTORY } = config
 
 function cleansePart(part: PartSchema) {
     let newPart = {} as PartSchema
-    newPart.nxid = part.nxid
+    newPart.nxid = part.nxid?.toUpperCase()
     newPart.manufacturer = part.manufacturer
     newPart.name = part.name
     newPart.type = part.type
@@ -76,7 +76,8 @@ const partManager = {
     createPart: async (req: Request, res: Response) => {
         try {
             // Get part info from request body
-            const { nxid, manufacturer, name, type, quantity } = req.body.part;
+            let { nxid, manufacturer, name, type, quantity } = req.body.part as PartSchema; 
+            nxid = nxid ? nxid.toUpperCase() : '';
 
             let part = req.body.part as PartSchema
             // If any part info is missing, return invalid request
@@ -115,6 +116,8 @@ const partManager = {
                 }
                 // If parts do not have serial numbers, create generic records
                 else {
+                    if(quantity==undefined)
+                        quantity = 0
                     for (let i = 0; i < quantity; i++) {
                         // Create part records to match the quantity and location of the part schema creation
                         PartRecord.create(createOptions, callbackHandler.callbackHandleError)
@@ -185,8 +188,8 @@ const partManager = {
         try {
             let part = {} as PartSchema
             // Check if NXID
-            if (/PNX([0-9]{7})+/.test(req.query.id as string)) {
-                part = await Part.findOne({ nxid: { $eq: req.query.id } }) as PartSchema;
+            if (/PNX([0-9]{7})+/.test((req.query.id as string).toUpperCase())) {
+                part = await Part.findOne({ nxid: { $eq: (req.query.id as string).toUpperCase() } }) as PartSchema;
             }
             // If mongo ID
             else {
@@ -520,6 +523,11 @@ const partManager = {
                 })
             }
             // Updated part is the old part from database
+            if (!/PNX([0-9]{7})+/.test(newPart.nxid ? newPart.nxid : '')) {
+                return res.status(400).send("Invalid part ID");
+            }
+
+
             let updatedPart = await Part.findByIdAndUpdate(part._id, newPart);
             if (updatedPart == null) {
                 return res.status(400).send("Part not found.");

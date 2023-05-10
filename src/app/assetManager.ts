@@ -61,6 +61,7 @@ function createPartRecords(parts: CartItem[], asset_tag: string, user_id: any, b
  */
 function cleanseAsset(asset: AssetSchema) {
     let copy = JSON.parse(JSON.stringify(asset))
+    copy.nxid = copy.nxid.toUpperCase()
     switch(copy.asset_type) {
         case "PDU":
         case "Switch":
@@ -361,7 +362,7 @@ const assetManager = {
     getAssetByID: async (req: Request, res: Response) => {
         try {
             // Get id from query
-            const id = req.query.id as string
+            let id = (req.query.id as string).toUpperCase()
             // Test regex for NXID
             if (/WNX([0-9]{7})+/.test(id)||id=='test') {
                 // Find by NXID
