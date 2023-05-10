@@ -6,7 +6,7 @@ const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 const ASSET_TAG = "WNX0016280"
 // const ASSET_MONGO_ID = "63a3701b9d12bfd7c59e4854"
 const TEXT_SEARCH_QUERY_STRING = "?searchString=wnx&pageNum=1&pageSize=50"
-const ADVANCED_SEARCH_QUERY_STRING = "?asset_type=Server&advanced=true"
+const ADVANCED_SEARCH_QUERY_STRING = "?asset_type=Server&advanced=true&pageNum=1&pageSize=50"
 const TEST_ASSET = {
     asset_tag: "",
     building: 3,
@@ -76,10 +76,12 @@ describe("Asset text search", () => {
                 expect(res.body[0].asset_tag).toBeDefined()
             })
     }
-    it("Returns a 401 status when unauthenticated", async() => {
-        let res = await request("localhost:4001")
+    it("Returns a 401 status when unauthenticated", () => {
+        request("localhost:4001")
             .get("/api/asset/search")
-        expect(res.status).toBe(401)
+            .then((res)=>{
+                expect(res.status).toBe(401)
+            })
     })
     it("Tech can search assets - empty search string", () => assetSearch("", TECH_TOKEN!))
     it("Kiosk can search assets - empty search string", () => assetSearch("", KIOSK_TOKEN!))
@@ -103,19 +105,23 @@ describe("Get assets by data", () => {
                 expect(res.body[0].asset_tag).toBeDefined()
             })
     }
-    it("Returns a 401 status when unauthenticated", async() => {
-        let res = await request("localhost:4001")
+    it("Returns a 401 status when unauthenticated", () => {
+        request("localhost:4001")
             .get("/api/asset")
-        expect(res.status).toBe(401)
+            .then((res)=>{
+                expect(res.status).toBe(401)
+            })
     })
-    it("Tech can get assets by data - empty request", () => getAsset("", TECH_TOKEN!))
-    it("Kiosk can get assets by data - empty request", () => getAsset("", KIOSK_TOKEN!))
-    it("Inventory clerk can get assets by data - empty request", () => getAsset("", INVENTORY_TOKEN!))
-    it("Admin can get assets by data - empty request", () => getAsset("", ADMIN_TOKEN!))
-    it("Returns a 401 status when unauthenticated - filter by live servers", async() => {
-        let res = await request("localhost:4001")
+    it("Tech can get assets by data - empty request", () => getAsset("?pageNum=1&pageSize=50", TECH_TOKEN!))
+    it("Kiosk can get assets by data - empty request", () => getAsset("?pageNum=1&pageSize=50", KIOSK_TOKEN!))
+    it("Inventory clerk can get assets by data - empty request", () => getAsset("?pageNum=1&pageSize=50", INVENTORY_TOKEN!))
+    it("Admin can get assets by data - empty request", () => getAsset("?pageNum=1&pageSize=50", ADMIN_TOKEN!))
+    it("Returns a 401 status when unauthenticated - filter by live servers", () => {
+        request("localhost:4001")
             .get(`/api/asset${ADVANCED_SEARCH_QUERY_STRING}`)
-        expect(res.status).toBe(401)
+            .then((res)=>{
+                expect(res.status).toBe(401)
+            })
     })
     it("Tech can get assets by data - filter by live servers", () => getAsset(ADVANCED_SEARCH_QUERY_STRING, TECH_TOKEN!))
     it("Kiosk can get assets by data - filter by live servers", () => getAsset(ADVANCED_SEARCH_QUERY_STRING, KIOSK_TOKEN!))
@@ -131,32 +137,34 @@ describe("Get asset by ID", () => {
         .then((res)=>{
             expect(res.status).toBe(200)
             expect(res.body._id).toBeDefined()
-            expect(res.body.asset_tag).toBeDefined()
+            expect(res.body.asset_tag).toEqual(asset_tag)
         })
     }
     const getByMongoID = (asset_tag: string, token: string)  => {
         request("localhost:4001")
-            .get(`/api/asset/id?id=${ASSET_TAG}`)
-            .set("Authorization", TECH_TOKEN!)
+            .get(`/api/asset/id?id=${asset_tag}`)
+            .set("Authorization", token!)
             .then((res)=>{
                 expect(res.status).toBe(200)
                 expect(res.body._id).toBeDefined()
                 expect(res.body.asset_tag).toBeDefined()
                 request("localhost:4001")
                     .get(`/api/asset/id?id=${res.body._id}`)
-                    .set("Authorization", TECH_TOKEN!)
+                    .set("Authorization", token!)
                     .then((res2)=>{
                         expect(res2.status).toBe(200)
                         expect(res2.body._id).toBeDefined()
-                        expect(res2.body.asset_tag).toBeDefined()
+                        expect(res2.body.asset_tag).toEqual(asset_tag)
                     })
             })
     }
 
-    it("Returns a 401 status when unauthenticated", async() => {
-        let res = await request("localhost:4001")
+    it("Returns a 401 status when unauthenticated", () => {
+        request("localhost:4001")
             .get(`/api/asset/id?id=${ASSET_TAG}`)
-        expect(res.status).toBe(401)
+            .then((res)=>{
+                expect(res.status).toBe(401)
+            })
     })
     it("Tech can get asset by asset tag",() => getByAssetTag(ASSET_TAG, TECH_TOKEN!))
     it("Kiosk can get asset by asset tag", () => getByAssetTag(ASSET_TAG, KIOSK_TOKEN!))
@@ -181,11 +189,13 @@ describe("Get parts on asset", () => {
                 expect(res.body.records.length).toBeGreaterThan(0)
             })
     }
-    it("Returns 401 status when unauthenticated", async () => {
-        let res = await request("localhost:4001")
+    it("Returns 401 status when unauthenticated", () => {
+        request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
-        expect(res.status).toBe(401)
-        expect(res.body[0]).toBeUndefined()
+            .then((res)=>{
+                expect(res.status).toBe(401)
+                expect(res.body[0]).toBeUndefined()
+            })
     })
     it("Returns parts when authenticated - Tech", () => getParts(ASSET_TAG, TECH_TOKEN!))
     it("Returns parts when authenticated - Kiosk", () => getParts(ASSET_TAG, KIOSK_TOKEN!))
@@ -194,22 +204,26 @@ describe("Get parts on asset", () => {
 })
 
 describe("Asset creation and deletion", () => {
-    it("Returns 401 status when unauthenticated", async () => {
-        let res = await request("localhost:4001")
+    it("Returns 401 status when unauthenticated", () => {
+        request("localhost:4001")
             .post("/api/asset")
             .send(generateAsset())
             .set('Content-Type', 'application/json')
             .set('Accept', 'application/json')
-        expect(res.status).toBe(401)
+            .then((res)=>{
+                expect(res.status).toBe(401)
+            })
     })
-    it("Returns 401 status when user is Kiosk ",async () => {
-        let res = await request("localhost:4001")
+    it("Returns 401 status when user is Kiosk ", () => {
+        request("localhost:4001")
             .post("/api/asset")
             .send({ asset: generateAsset(), parts: []})
             .set('Content-Type', 'application/json')
             .set('Accept', 'application/json')
             .set("Authorization", KIOSK_TOKEN!)
-        expect(res.status).toBe(401)
+            .then((res)=>{
+                expect(res.status).toBe(401)
+            })
     })
     const check400 = (token: string) => {
         request("localhost:4001")
@@ -255,13 +269,15 @@ describe("Asset creation and deletion", () => {
 })
 
 describe("Update asset", () => {
-    it("If unauthenticated, return 401 status", async () => {
-        let res = await request("localhost:4001")
+    it("If unauthenticated, return 401 status", () => {
+        request("localhost:4001")
             .put("/api/asset")
             .send({asset: generateIncompleteAsset(), parts: []})
             .set('Content-Type', 'application/json')
             .set('Accept', 'application/json')
-        expect(res.status).toBe(401)
+            .then((res)=>{
+                expect(res.status).toBe(401)
+            })
     })
     function timeout(ms) {
         jest.useRealTimers()
@@ -284,11 +300,10 @@ describe("Update asset", () => {
         let startAssetParts = assetPartRes.body.records as CartItem[];
 
         let assetRes = await request("localhost:4001")
-            .get(`/api/asset?asset_tag=${ASSET_TAG}`)
+            .get(`/api/asset/id?id=${ASSET_TAG}`)
             .set("Authorization", token)
         expect(assetRes.status).toBe(200)
-        let asset = assetRes.body[0] as AssetSchema
-        
+        let asset = assetRes.body as AssetSchema
         
         let update1res = await request("localhost:4001")
             .put("/api/asset")
@@ -328,11 +343,35 @@ describe("Update asset", () => {
             if (a.nxid! <  b.nxid!)
                 return -1;
             return 0;
-            })
+        }).sort((a, b) => {
+            if (a.serial! >  b.serial!)
+                return 1;
+            if (a.serial! <  b.serial!)
+                return -1;
+            return 0;
+        }).sort((a, b) => {
+            if (a.quantity! >  b.quantity!)
+                return 1;
+            if (a.quantity! <  b.quantity!)
+                return -1;
+            return 0;
+        })
         startInventory.sort((a, b) => {
             if (a.nxid! >  b.nxid!)
                 return 1;
             if (a.nxid! <  b.nxid!)
+                return -1;
+            return 0;
+        }).sort((a, b) => {
+            if (a.serial! >  b.serial!)
+                return 1;
+            if (a.serial! <  b.serial!)
+                return -1;
+            return 0;
+        }).sort((a, b) => {
+            if (a.quantity! >  b.quantity!)
+                return 1;
+            if (a.quantity! <  b.quantity!)
                 return -1;
             return 0;
         })
@@ -344,11 +383,35 @@ describe("Update asset", () => {
             if (a.nxid! <  b.nxid!)
                 return -1;
             return 0;
+        }).sort((a, b) => {
+            if (a.serial! >  b.serial!)
+                return 1;
+            if (a.serial! <  b.serial!)
+                return -1;
+            return 0;
+        }).sort((a, b) => {
+            if (a.quantity! >  b.quantity!)
+                return 1;
+            if (a.quantity! <  b.quantity!)
+                return -1;
+            return 0;
         })
         afterAssetPartList.sort((a, b) => {
             if (a.nxid! >  b.nxid!)
                 return 1;
             if (a.nxid! <  b.nxid!)
+                return -1;
+            return 0;
+        }).sort((a, b) => {
+            if (a.serial! >  b.serial!)
+                return 1;
+            if (a.serial! <  b.serial!)
+                return -1;
+            return 0;
+        }).sort((a, b) => {
+            if (a.quantity! >  b.quantity!)
+                return 1;
+            if (a.quantity! <  b.quantity!)
                 return -1;
             return 0;
         })

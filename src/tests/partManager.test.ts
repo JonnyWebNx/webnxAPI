@@ -68,9 +68,15 @@ describe("Create, get, update and delete parts", () => {
         delete searchPart._id
         delete searchPart.total_quantity
         delete searchPart.quantity
-        var queryString = Object.keys(searchPart).map(key => "part[" + key + ']=' + searchPart[key]).join('&');
+        searchPart.location = "Parts Room"
+        searchPart.building = 3
+        searchPart.pageNum = 1
+        searchPart.pageSize = 50
+        let query = new URLSearchParams()
+        Object.keys(searchPart).map(key => {query.set(key, searchPart[key])});
+        let queryString = query.toString()
         let get2 = await request("localhost:4001")
-            .get(`/api/part?location=Parts+Room&building=3&${queryString}`)
+            .get(`/api/part?${queryString}`)
             .set("Authorization", token)
         expect(get2.statusCode).toBe(200)
         expect(get2.body[0].nxid).toBe(completePart.nxid)
@@ -143,9 +149,15 @@ describe("Tech", () => {
         delete searchPart.quantity
         delete searchPart.name
         delete searchPart.shelf_location
-        var queryString = Object.keys(searchPart).map(key => "part[" + key + ']=' + searchPart[key]).join('&');
+        searchPart.location = "Parts Room"
+        searchPart.building = 3
+        searchPart.pageNum = 1
+        searchPart.pageSize = 50
+        let query = new URLSearchParams()
+        Object.keys(searchPart).map(key => {query.set(key, searchPart[key])});
+        let queryString = query.toString()
         let get2 = await request("localhost:4001")
-            .get(`/api/part?location=Parts+Room&building=3&${queryString}`)
+            .get(`/api/part?${queryString}`)
             .set("Authorization", TECH_TOKEN!)
         expect(get2.statusCode).toBe(200)
     })
@@ -197,9 +209,15 @@ describe("Kiosk", () => {
         delete searchPart.quantity
         delete searchPart.name
         delete searchPart.shelf_location
-        var queryString = Object.keys(searchPart).map(key => "part[" + key + ']=' + searchPart[key]).join('&');
+        searchPart.location = "Parts Room"
+        searchPart.building = 3
+        searchPart.pageNum = 1
+        searchPart.pageSize = 50
+        let query = new URLSearchParams()
+        Object.keys(searchPart).map(key => {query.set(key, searchPart[key])});
+        let queryString = query.toString()
         let get2 = await request("localhost:4001")
-            .get(`/api/part?location=Parts+Room&building=3&${queryString}`)
+            .get(`/api/part?${queryString}`)
             .set("Authorization", KIOSK_TOKEN!)
         expect(get2.statusCode).toBe(200)
     })
