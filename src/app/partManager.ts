@@ -659,16 +659,17 @@ const partManager = {
             // Try to find and delete by ID
             if(req.query.nxid == undefined)
                 return res.status(400).send("NXID missing from request");
-            let { nxid } = req.query;
+            let nxid = (req.query.nxid as string).toUpperCase();
             // 
             let part = await Part.findOne({nxid})
-            if(part==null)
+            if(part==null||part==undefined)
                 return res.status(400).send("Part not found");
             // Delete info
             await Part.findByIdAndDelete(part?._id);
             // Find all associated parts records
             PartRecord.find({
-                nxid
+                nxid,
+                next: null
             }, (err: MongooseError, parts: PartRecordSchema[]) => {
                 if (err) {
                     // Error - don't return so other records will be deleted
@@ -677,9 +678,9 @@ const partManager = {
                 }
                 // Delete every part record
                 parts.map(async (part) => {
-                    await PartRecord.findByIdAndDelete(part._id)
+                    await PartRecord.findByIdAndUpdate(part._id, { next: 'deleted' })
                 })
-                res.status(200).json("Successfully deleted part and records");
+                res.status(200).send("Successfully deleted part and records");
             })
             // Success
         } catch (err) {
