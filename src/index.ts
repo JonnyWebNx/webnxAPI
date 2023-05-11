@@ -17,6 +17,7 @@ import mongoose, { MongooseError } from 'mongoose';
 import { PartRecordSchema, PartSchema } from './app/interfaces.js';
 import callbackHandler from './middleware/callbackHandlers.js';
 import asset from './model/asset.js';
+import { LIB_VERSION } from './version.js';
 // Hand off requests to app
 const server = http.createServer(app);
 
@@ -25,7 +26,7 @@ const port = config.PORT;
 
 // Open API_PORT for listening
 server.listen(port, () => {
-    console.log("\x1b[32m", "\x1b[1m",`\nWebNX API by Cameron McKay`,"\u001b[35m",`\nVersion 1.0`,
+    console.log("\x1b[32m", "\x1b[1m",`\nWebNX API by Cameron McKay`,"\u001b[35m",`\nVersion ${LIB_VERSION}`,
     "\x1b[0m",`\nServer running on port ${config.PORT}`);
 });
 
