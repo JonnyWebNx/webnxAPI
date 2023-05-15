@@ -32,7 +32,7 @@ export async function updatePartImage (req: Request, res: Response) {
         await sharp(tempPath)
         .resize(600)
         .webp()
-        .withMetadata()
+        .rotate()
         .toFile(targetPath)
         fs.unlinkSync(tempPath!)
         // Done
