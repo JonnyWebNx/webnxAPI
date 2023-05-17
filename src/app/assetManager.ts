@@ -192,26 +192,6 @@ function updateParts(createOptions: PartRecordSchema, searchOptions: PartRecordS
 
 /**
  * 
- * @param map1 
- * @param map2 
- * @param differenceDest 
- */
-function checkDifferenceUnserialized(map1: Map<string, number>, map2: Map<string, number>, differenceDest: CartItem[]) {
-    map1.forEach((v,k)=>{
-        if(map2.has(k)) {
-            let reqQuantity = map2.get(k)!
-            let difference = reqQuantity - v;
-            if(difference > 0)
-                differenceDest.push({nxid: k, quantity: difference})    
-        }
-        else {
-            differenceDest.push({nxid: k, quantity: v})
-        }
-    })
-}
-
-/**
- * 
  * @param asset1 
  * @param asset2 
  * @returns True if assets are similar.  False if assets are not.
@@ -475,6 +455,7 @@ const assetManager = {
         try {
             // Get data from request body
             let { asset, parts } = req.body;
+            console.log(parts)
             // Check if asset is valid
             if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
@@ -562,6 +543,20 @@ const assetManager = {
             // Check for added serialized parts
             checkDifferenceSerialized(serializedPartsOnRequest, serializedPartsOnAsset, added)
             
+            function checkDifferenceUnserialized(map1: Map<string, number>, map2: Map<string, number>, differenceDest: CartItem[]) {
+                map1.forEach((v, k)=>{
+                    if(map2.has(k)) {
+                        let reqQuantity = map2.get(k)!
+                        let difference = v - reqQuantity;
+                        if(difference > 0)
+                            differenceDest.push({nxid: k, quantity: difference})    
+                    }
+                    else {
+                        differenceDest.push({nxid: k, quantity: v})
+                    }
+                })
+            }
+
             // Check for removed unserialized parts
             checkDifferenceUnserialized(unserializedPartsOnAsset, unserializedPartsOnRequest, removed)
             // Check for added unserialized parts
@@ -592,6 +587,7 @@ const assetManager = {
                 owner: req.user.user_id,
                 next: null
             }
+            console.log(removed)
             // Update removed parts
             await updateParts(removedOptions, assetSearchOptions, removed, isMigrated)
             // Update added parts
