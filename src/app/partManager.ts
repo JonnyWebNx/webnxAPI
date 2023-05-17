@@ -39,14 +39,19 @@ function cleansePart(part: PartSchema) {
             newPart.capacity = part.capacity
             newPart.memory_type = part.memory_type
             newPart.memory_gen = part.memory_gen
+            if(part.mem_rank)
+                newPart.mem_rank = part.mem_rank
             break
         case "CPU":
-            newPart.frequency = part.frequency
-            newPart.chipset = part.chipset
+            if(part.frequency)
+                newPart.frequency = part.frequency
+            newPart.socket = part.socket
             break
         case "Motherboard":
             newPart.memory_gen = part.memory_gen
-            newPart.chipset = part.chipset
+            if(part.chipset)
+                newPart.chipset = part.chipset
+            newPart.socket = part.socket
             break
         case "Peripheral Card":
             newPart.peripheral_type = part.peripheral_type
@@ -66,6 +71,14 @@ function cleansePart(part: PartSchema) {
             newPart.cable_end1 = part.cable_end1
             newPart.cable_end2 = part.cable_end2
             break                
+        case "Heatsink":
+            newPart.socket = part.socket
+            newPart.size = part.size
+            newPart.active = part.active
+            break;
+        case "Optic":
+            newPart.cable_end1 = part.cable_end1;
+            break;
     }
     
     return objectSanitize(newPart, false) as PartSchema
@@ -90,7 +103,6 @@ const partManager = {
             }
             // Try to add part to database
             let newPart = cleansePart(part)
-
             // Send part to database
             newPart.created_by = req.user.user_id;
             await Part.create(newPart, (err: MongooseError, part: PartSchema) => {
@@ -194,6 +206,10 @@ const partManager = {
             // If mongo ID
             else {
                 part = await Part.findById(req.query.id) as PartSchema
+            }
+            if(part==null) {
+                console.log(req.query.id)
+                return res.status(400).send("Part not found.");
             }
             // Get the total quantity
             let total_quantity = await PartRecord.count({

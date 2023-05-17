@@ -1,5 +1,6 @@
 import type { Request } from 'express'
 import mongoose, { Types } from 'mongoose'
+import { BooleanLiteral } from 'typescript'
 
 export interface NXRequest extends Request {
     user: ReqUser
@@ -32,8 +33,12 @@ export interface PartSchema {
     rack_num?: number,
     frequency?: number,
     chipset?: string,
+    socket?: string,
+    size?: string,
+    active?: boolean;
     memory_type?: string,
     memory_gen?: string,
+    mem_rank?: string,
     peripheral_type?: string,
     storage_interface?: string,
     capacity?: number,
@@ -58,6 +63,7 @@ export interface AssetSchema {
     model?: string,
     serial?: string,
     rails?: Boolean,
+    cheat?: Boolean,
     live?: Boolean,
     in_rack?: Boolean,
     bay?: string | number,

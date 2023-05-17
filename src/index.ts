@@ -46,7 +46,7 @@ PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
   for(let record of records) {
     if (!record.nxid||nxids.indexOf(record.nxid)==-1) {
       count++
-      // PartRecord.findByIdAndDelete(record._id, handleCallbackError)
+      PartRecord.findByIdAndDelete(record._id, handleCallbackError)
     }
     if((record.date_replaced == null)&&(record.next!=null)&&(mongoose.Types.ObjectId.isValid(record.next))) {
       let nextRec = await PartRecord.findById(record.next)
@@ -66,7 +66,7 @@ PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
         tempRecord = await PartRecord.findById(tempRecord.prev) as PartRecordSchema
         while((tempRecord!=null)&&(tempRecord.prev != null)) {
           count ++
-          // PartRecord.findByIdAndDelete(tempRecord._id, handleCallbackError)
+          PartRecord.findByIdAndDelete(tempRecord._id, handleCallbackError)
           tempRecord = await PartRecord.findById(tempRecord.prev) as PartRecordSchema
         }
       }

@@ -22,7 +22,7 @@ export function stringSanitize(text: string, strict: boolean) {
             .replaceAll('|', '')
             .replaceAll('/', '')
             .replaceAll('*', '')
-            .replaceAll('.', '')
+            // .replaceAll('.', '')
     return text
 }
 

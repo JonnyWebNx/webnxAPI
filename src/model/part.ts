@@ -8,9 +8,13 @@ const partSchema = new mongoose.Schema({
     serialized: { type: Boolean, required: true},
     frequency: { type: Number },
     chipset: { type: String },
+    socket: { type: String },
+    size: { type: String },
+    active: { type: Boolean },
     memory_type: { type: String },
     // new
     memory_gen: { type: String },
+    mem_rank: { type: String },
     rack_num: { type: Number },
     shelf_location: { type: String },
     peripheral_type: { type: String },

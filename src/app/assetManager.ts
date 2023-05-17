@@ -60,8 +60,8 @@ function createPartRecords(parts: CartItem[], asset_tag: string, user_id: any, b
  * @returns Copy of asset with extra information removed
  */
 function cleanseAsset(asset: AssetSchema) {
-    let copy = JSON.parse(JSON.stringify(asset))
-    copy.nxid = copy.nxid.toUpperCase()
+    let copy = JSON.parse(JSON.stringify(asset)) as AssetSchema
+    copy.asset_tag = copy.asset_tag ? copy.asset_tag.toUpperCase() : ""
     switch(copy.asset_type) {
         case "PDU":
         case "Switch":
@@ -96,9 +96,12 @@ function cleanseAsset(asset: AssetSchema) {
             if(!copy.live) {
                 delete copy.sid;
             }
-            if(copy.num_bays < 1)
+            if(copy.live) {
+                delete copy.avail
+            }
+            if(!copy.num_bays||copy.num_bays < 1)
                 delete copy.bay_type
-            if(copy.num_psu<1)
+            if(!copy.num_psu||copy.num_psu<1)
                 delete copy.psu_model
             delete copy.fw_rev
             break;
@@ -115,6 +118,8 @@ function cleanseAsset(asset: AssetSchema) {
             delete copy.units;
             delete copy.num_psu;
             delete copy.psu_model;
+            delete copy.cheat;
+            delete copy.avail;
             break;
     }
     return objectSanitize(copy, false);

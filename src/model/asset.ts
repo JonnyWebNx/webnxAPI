@@ -21,6 +21,8 @@ const asset = new mongoose.Schema({
     serial: { type: String },
     // Has rails
     rails: { type: Boolean },
+    // Cheater rails?
+    cheat: {type: Boolean},
 
     // 1U, 2U, 3U, etc.
     units: { type: Number },
@@ -37,6 +39,7 @@ const asset = new mongoose.Schema({
     // Status
     live: { type: Boolean, default: false},
     in_rack: { type: Boolean },
+    avail: { type: Boolean },
     // Bay
     bay: { type: Number },
     // Physical location
