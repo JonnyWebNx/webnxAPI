@@ -1,7 +1,8 @@
 import request from 'supertest'
 import config from "../config"
+import { UserSchema } from '../app/interfaces'
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
-const USER_ID = "63619323e3467f5bd00257d1"
+const USER_ID = "634e3e4a6c5d3490babcdc21"
 const EXAMPLE_USER = {
     first_name: "Test",
     last_name: "User",
@@ -25,6 +26,23 @@ describe("Register, login, and delete user", () => {
             .set('Content-Type', 'application/json')
             .set('Accept', 'application/json')
         expect(incorrectLogin.statusCode).toBe(400)
+        let loginDisabled = await request("localhost:4001")
+            .post("/api/login")
+            .send({email: EXAMPLE_USER.email, password: EXAMPLE_USER.password})
+            .set('Content-Type', 'application/json')
+            .set('Accept', 'application/json')
+        expect(loginDisabled.statusCode).toBe(400);
+        let testUser = JSON.parse(JSON.stringify(EXAMPLE_USER)) as UserSchema
+        testUser.enabled = true
+        testUser._id = user_id
+        let enableUser = await request("localhost:4001")
+            .put("/api/user")
+            .send({user: testUser})
+            .set('Content-Type', 'application/json')
+            .set('Accept', 'application/json')
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(enableUser.statusCode).toBe(200);
+        await new Promise(res => setTimeout(res, 500))
         let login = await request("localhost:4001")
             .post("/api/login")
             .send({email: EXAMPLE_USER.email, password: EXAMPLE_USER.password})

@@ -3,7 +3,7 @@ import config from "../config"
 import { jest } from '@jest/globals'
 import { AssetSchema, CartItem } from "../app/interfaces"
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
-const ASSET_TAG = "WNX0016280"
+const ASSET_TAG = "WNX0017884"
 // const ASSET_MONGO_ID = "63a3701b9d12bfd7c59e4854"
 const TEXT_SEARCH_QUERY_STRING = "?searchString=wnx&pageNum=1&pageSize=50"
 const ADVANCED_SEARCH_QUERY_STRING = "?asset_type=Server&advanced=true&pageNum=1&pageSize=50"

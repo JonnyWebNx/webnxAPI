@@ -133,6 +133,7 @@ export interface UserSchema {
     last_name?: string,
     building?: number,
     password?: string,
+    enabled?: boolean,
     _v?: number,
     _id?: string | Types.ObjectId
 }

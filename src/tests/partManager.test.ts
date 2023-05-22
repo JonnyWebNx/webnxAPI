@@ -3,7 +3,7 @@ import config from "../config"
 import { PartSchema } from "../app/interfaces"
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 
-const NXID = "PNX0016477"
+const NXID = "PNX0000002"
 
 const TEST_PART = {
     nxid: "PNX0016498",
@@ -34,6 +34,26 @@ function generateIncompletePart() {
     let num = Math.floor(1000000 + Math.random() * 9000000)
     tempPart.nxid = `PNX${num}`
     return tempPart as PartSchema;
+}
+const emptySearch = (token: string, text: string) => {
+    // expect(0).toBe(1)
+    request("localhost:4001")
+        .get(`/api/part/search?searchString=${text}&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+        .set("Authorization", token)
+        .then((search) => {
+            expect(search.statusCode).toBe(200)
+            expect(search.body.length).toBe(0)
+        })
+}
+const textSearch = (token: string, query: string) => {
+    // expect(0).toBe(1)
+    request("localhost:4001")
+        .get(`/api/part/search?searchString=${query}&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+        .set("Authorization", token)
+        .then((search) => {
+            expect(search.statusCode).toBe(200)
+            expect(search.body.length).toBeGreaterThan(0)
+        })
 }
 describe("Create, get, update and delete parts", () => {
     
@@ -244,26 +264,6 @@ describe("Kiosk", () => {
     })
 })
 describe("Text search", () => {
-    const emptySearch = (token: string, text: string) => {
-        // expect(0).toBe(1)
-        request("localhost:4001")
-            .get(`/api/part/search?searchString=${text}&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
-            .set("Authorization", token)
-            .then((search) => {
-                expect(search.statusCode).toBe(200)
-                expect(search.body.length).toBe(0)
-            })
-    }
-    const textSearch = (token: string, query: string) => {
-        // expect(0).toBe(1)
-        request("localhost:4001")
-            .get(`/api/part/search?searchString=${query}&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
-            .set("Authorization", token)
-            .then((search) => {
-                expect(search.statusCode).toBe(200)
-                expect(search.body.length).toBeGreaterThan(0)
-            })
-    }
     it("Tech - no text", () => textSearch(TECH_TOKEN!, ""))
     it("Kiosk - no text", () => textSearch(KIOSK_TOKEN!, ""))
     it("Clerk - no text", () => textSearch(INVENTORY_TOKEN!, ""))
@@ -279,7 +279,21 @@ describe("Text search", () => {
     it("Admin - with invalid text", () => emptySearch(ADMIN_TOKEN!, invalidText))
 })
 // Checkout
-
+describe("Checkout", () => {
+    request("localhost:4001")
+        .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+        .set("Authorization", KIOSK_TOKEN!)
+        .then((res) =>{
+            let parts = res.body
+            let checkoutPart = {}
+            for (let part of parts) {
+                if(part.quantity>0) {
+                    checkoutPart = part
+                }
+            }
+            
+        })
+})
 // Checkin
 
 // Get distinct on part records

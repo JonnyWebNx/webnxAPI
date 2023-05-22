@@ -19,7 +19,7 @@ import { Request, Response } from "express";
 import path from 'path';
 import { PartSchema } from "./interfaces.js";
 import config from '../config.js'
-import { existsSync } from 'fs';
+import fs from 'fs';
 
 const { UPLOAD_DIRECTORY } = config
 
@@ -208,7 +208,6 @@ const partManager = {
                 part = await Part.findById(req.query.id) as PartSchema
             }
             if(part==null) {
-                console.log(req.query.id)
                 return res.status(400).send("Part not found.");
             }
             // Get the total quantity
@@ -698,6 +697,9 @@ const partManager = {
                 })
                 res.status(200).send("Successfully deleted part and records");
             })
+            const targetPath = path.join(UPLOAD_DIRECTORY, 'images/parts', `${nxid}.webp`)
+            if(fs.existsSync(targetPath))
+                fs.unlinkSync(targetPath)
             // Success
         } catch (err) {
             // Error
@@ -964,7 +966,7 @@ const partManager = {
             // Create path to image
             let imagePath = path.join(UPLOAD_DIRECTORY, 'images/parts', `${req.params.nxid}.webp`)
             // Check if it exists and edit path if it doesn't
-            if(!existsSync(imagePath))
+            if(!fs.existsSync(imagePath))
                 imagePath = path.join(UPLOAD_DIRECTORY, 'images', 'notfound.webp')
             // Send image
             res.sendFile(imagePath)

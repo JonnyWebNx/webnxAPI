@@ -228,7 +228,6 @@ const assetManager = {
             // Get asset from body
             let asset = req.body as AssetSchema
             // Log it
-            console.log(asset)
             // Set building
             asset.building = 3
             asset.migrated = true
@@ -237,7 +236,6 @@ const assetManager = {
             Asset.create(asset, (err: CallbackError, record: AssetSchema) => {
                 if(err) {
                     handleError(err)
-                    console.log(err)
                     return res.status(500).send("API could not handle your request: "+err);        
                 }
                 res.status(200).send()
@@ -408,6 +406,7 @@ const assetManager = {
             // Fulltext search
             if (fullText) {
                 Asset.find(searchString != ''? { $text: { $search: searchString } } : {})
+                    .where({next: null})
                     .skip(pageSize * (pageNum - 1))
                     .limit(Number(pageSize)+1)
                     .exec(returnAsset)
@@ -455,7 +454,6 @@ const assetManager = {
         try {
             // Get data from request body
             let { asset, parts } = req.body;
-            console.log(parts)
             // Check if asset is valid
             if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
@@ -469,13 +467,15 @@ const assetManager = {
             asset.date_updated = current_date;
             asset = cleanseAsset(asset)
             let isMigrated = false
+            let existingAsset = await Asset.findOne({asset_tag: asset.asset_tag, next: null})
+            if(existingAsset==null) {
+                return res.status(400).send("Could not find asset to update");
+            }
             if(asset.migrated) {
                 isMigrated = true
-                let existingAsset = await Asset.findOne({asset_tag: asset.asset_tag, next: null})
-                
                 if(existingAsset!=undefined) {
                     if(!existingAsset.migrated)
-                        return res.status(400).send("Asset has already been migrated");
+                    return res.status(400).send("Asset has already been migrated");
                 }
                 else {
                     return res.status(400).send("Could not find migrated asset");
@@ -587,7 +587,6 @@ const assetManager = {
                 owner: req.user.user_id,
                 next: null
             }
-            console.log(removed)
             // Update removed parts
             await updateParts(removedOptions, assetSearchOptions, removed, isMigrated)
             // Update added parts
