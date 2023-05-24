@@ -200,6 +200,7 @@ const partManager = {
         try {
             let part = {} as PartSchema
             // Check if NXID
+            console.log(req.query)
             if (/PNX([0-9]{7})+/.test((req.query.id as string).toUpperCase())) {
                 part = await Part.findOne({ nxid: { $eq: (req.query.id as string).toUpperCase() } }) as PartSchema;
             }
@@ -242,10 +243,23 @@ const partManager = {
             }
             let current_date = Date.now();
             // Find each item and check quantities before updating
-            let sufficientStock = true
+            let sufficientStock = ""
+            let serialQuantityError = ""
+            let serializedError = ""
+            let duplicateSerial = ""
+            let infoError = ""
+            // Using hash map for quick search
+            let serialMap = new Map<string, boolean>();
             await Promise.all(cart.map(async (item: CartItem) => {
                 // Check quantity before
-                if(item.serial) {
+                let info = await Part.findOne({nxid: item.nxid})
+                if(info?.serialized&&item.serial) {
+                    if(serialMap.has(item.serial)) {
+                        duplicateSerial = item.nxid + ": " + item.serial
+                        return
+                    }
+                    serialMap.set(item.serial, true)
+                    // Find serialized part
                     let serializedItem = await PartRecord.findOne({
                         nxid: item.nxid,
                         location: "Parts Room",
@@ -253,24 +267,49 @@ const partManager = {
                         next: null,
                         serial: item.serial
                     })
+                    // Check if serial number is non existent
                     if(serializedItem==undefined) {
-                        sufficientStock = false
+                        serialQuantityError = item.nxid + ": " + item.serial
+                        serialMap.delete(item.serial)
                     }
                 } else {
+                    // Check if part is serialized
+                    if(info&&info.serialized) {
+                        // Mark as error
+                        serializedError = info.nxid
+                        return
+                    }
+                    // Check if part info is non existent
+                    if(info==null) {
+                        // Mark as error
+                        infoError = item.nxid
+                        return
+                    }
+                    // Get quantity
                     let quantity = await PartRecord.count({
                         nxid: item.nxid,
                         location: "Parts Room",
                         building: req.user.building,
                         next: null
                     });
-                    // Insufficient stock
+                    // Check stock vs list
                     if (quantity < item.quantity!) {
-                        sufficientStock = false
+                        // Insufficient stock
+                        sufficientStock = item.nxid
                     }
                 }
             }))
-            if(!sufficientStock)
-                return res.status(400).send("Insufficient stock.")
+            // Check error conditions
+            if(sufficientStock!='')
+                return res.status(400).send(`Insufficient stock for ${sufficientStock}.`)
+            if(serialQuantityError!='')
+                return res.status(400).send(`${serialQuantityError} is not available in parts room.`)
+            if(serializedError!='')
+                return res.status(400).send(`${serializedError} is a serialized part, please specify serial number`)
+            if(infoError!='')
+                return res.status(400).send(`${serializedError} does not exist.`)
+            if(duplicateSerial!='')
+                return res.status(400).send(`Duplicate serial ${duplicateSerial} found in request.`)
             // Loop through each item and create new parts record and update old parts record
             await Promise.all(cart.map(async (item: CartItem) => {
                 // If part is serialized
@@ -343,20 +382,48 @@ const partManager = {
                 if(user_id==null||user_id==undefined||user==null)
                     return res.status(400).send("Invalid request")
             }
+
+            let sufficientStock = ""
+            let serialQuantityError = ""
+            let serializedError = ""
+            let duplicateSerial = ""
+            let infoError = ""
             // Check quantities before updating records
+            let serialMap = new Map<string, boolean>();
             await Promise.all(inventory.map(async(item: CartItem) => {
-                if(item.serial) {
-                    let part = await PartRecord.findOne({
+                let info = await Part.findOne({nxid: item.nxid})
+                if(info?.serialized&&item.serial) {
+                    if(serialMap.has(item.serial)) {
+                        duplicateSerial = item.nxid + ": " + item.serial
+                        return
+                    }
+                    serialMap.set(item.serial, true)
+                    // Find serialized part
+                    let serializedItem = await PartRecord.findOne({
                         nxid: item.nxid,
                         next: null,
                         owner: user_id,
                         serial: item.serial
                     })
-                    if(!part) {
-                        return res.status(400).send("Invalid request")
+                    // Check if serial number is non existent
+                    if(serializedItem==undefined) {
+                        serialQuantityError = item.nxid + ": " + item.serial
+                        serialMap.delete(item.serial)
                     }
                 }
                 else {
+                    // Check if part is serialized
+                    if(info&&info.serialized) {
+                        // Mark as error
+                        serializedError = info.nxid
+                        return
+                    }
+                    // Check if part info is non existent
+                    if(info==null) {
+                        // Mark as error
+                        infoError = item.nxid
+                        return
+                    }
                     let quantity = await PartRecord.count({
                         nxid: item.nxid,
                         next: null,
@@ -364,11 +431,23 @@ const partManager = {
                     })
                     // If check in quantity is greater than 
                     // inventory quantity
-                    if (item.quantity! > quantity) {
-                        return res.status(400).send("Invalid request")
+                    if (quantity < item.quantity!) {
+                        // Insufficient stock
+                        sufficientStock = item.nxid
                     }
                 }
             }))
+            // Check error conditions
+            if(sufficientStock!='')
+                return res.status(400).send(`Insufficient inventory quantity for ${sufficientStock}.`)
+            if(serialQuantityError!='')
+                return res.status(400).send(`${serialQuantityError} is not in user's inventory.`)
+            if(serializedError!='')
+                return res.status(400).send(`${serializedError} is a serialized part, please specify serial number`)
+            if(infoError!='')
+                return res.status(400).send(`${serializedError} does not exist.`)
+            if(duplicateSerial!='')
+                return res.status(400).send(`Duplicate serial ${duplicateSerial} found in request.`)
             // Iterate through each item and update records
             await Promise.all(inventory.map(async(item: CartItem) => {
                 // Get database quantity

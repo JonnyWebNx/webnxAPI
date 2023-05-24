@@ -1,9 +1,14 @@
 import request from 'supertest'
 import config from "../config"
-import { PartSchema } from "../app/interfaces"
+import { CartItem, PartSchema } from "../app/interfaces"
+import { jest } from '@jest/globals'
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 
 const NXID = "PNX0000002"
+const TECH_USER_ID = '6362d580f36c5c9589f579be'
+const CLERK_USER_ID = '645c048b6c466860a4de2a78'
+const ADMIN_USER_ID = '634e3e4a6c5d3490babcdc21'
+const KIOSK_USER_ID = '6359a5e18b4a852bbb37d893'
 
 const TEST_PART = {
     nxid: "PNX0016498",
@@ -34,6 +39,10 @@ function generateIncompletePart() {
     let num = Math.floor(1000000 + Math.random() * 9000000)
     tempPart.nxid = `PNX${num}`
     return tempPart as PartSchema;
+}
+function timeout(ms) {
+    jest.useRealTimers()
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 const emptySearch = (token: string, text: string) => {
     // expect(0).toBe(1)
@@ -280,20 +289,255 @@ describe("Text search", () => {
 })
 // Checkout
 describe("Checkout", () => {
-    request("localhost:4001")
-        .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
-        .set("Authorization", KIOSK_TOKEN!)
-        .then((res) =>{
-            let parts = res.body
-            let checkoutPart = {}
-            for (let part of parts) {
-                if(part.quantity>0) {
-                    checkoutPart = part
-                }
-            }
-            
+    it("Check out and check in parts", async ()=>{
+        let search = await request("localhost:4001")
+            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+        let parts = search.body as PartSchema[]
+        // Filter and map unserialized parts
+        let cart = parts
+            .filter((e)=>e.quantity&&e.quantity!>0&&e.serialized!=true)
+            .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity} as PartSchema})
+        expect(cart.length).toBeGreaterThan(0)
+        // Filter serialized parts
+        let serialized = parts.filter((e)=>e.quantity&&e.quantity!>0&&e.serialized==true)
+        // Fetch serials and map
+        serialized = await Promise.all(serialized.map(async(p)=>{
+            let res = await request('localhost:4001')
+                .get(`/api/partRecord/distinct?key=serial&where[nxid]=${p.nxid}&where[location]=Parts+Room&where[building]=3&where[next]=null`)
+                .set("Authorization", ADMIN_TOKEN!)
+            expect(res.statusCode).toBe(200)
+            let serials = res.body as string[]
+            expect(serials.length).toBe(p.quantity)
+            return { nxid: p.nxid, serial: serials[0] } as CartItem
+        }))
+        expect(serialized.length).toBeGreaterThan(0)
+        // Join serialized and unserialized
+        cart = cart.concat(serialized)
+        console.log(cart)
+        // Check out parts
+        let checkout = await request("localhost:4001")
+            .post(`/api/checkout`)
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: TECH_USER_ID,
+                cart: cart
+            })
+        expect(checkout.statusCode).toBe(200)
+        timeout(500)
+        // CHECK QUANTITY
+        cart.map((part) => {
+        request("localhost:4001")
+            .get(`/api/part/id?id=${part.nxid}&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+            .then((res)=>{
+                expect(res.statusCode).toBe(200)
+                if(!part.serial)
+                    expect(res.body.quantity).toBe(0)
+            })
         })
+        // Check in parts
+        let checkin = await request("localhost:4001")
+            .post('/api/checkin')
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: TECH_USER_ID,
+                inventory: cart
+            })
+        expect(checkin.statusCode).toBe(200)
+        timeout(500)
+        // CHECK QUANTITY
+        cart.map((part) => {
+            request("localhost:4001")
+                .get(`/api/part/id?id=${part.nxid}&building=3&location=Parts+Room`)
+                .set("Authorization", KIOSK_TOKEN!)
+                .then((res)=>{
+                    expect(res.statusCode).toBe(200)
+                    if(!part.serial)
+                        expect(res.body.quantity).toBe(part.quantity)
+                })
+        })
+
+    })
+    it("Checkout serialized part without serial number fails",async () => {
+        let search = await request("localhost:4001")
+            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+        let parts = search.body as PartSchema[]
+        let cart = parts
+            .filter((e)=>e.quantity&&e.quantity>0&&e.serialized==true)
+            .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity} as PartSchema})
+        expect(cart.length).toBeGreaterThan(0)
+        // Check out parts
+        let checkout = await request("localhost:4001")
+            .post(`/api/checkout`)
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: TECH_USER_ID,
+                cart: cart
+            })
+        expect(checkout.statusCode).toBe(400)
+    })
+    it("Checkout insufficient stock fails",async () => {
+        let search = await request("localhost:4001")
+            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+        let parts = search.body as PartSchema[]
+        let cart = parts
+            .filter((e)=>e.quantity&&e.quantity>0&&e.serialized!=true)
+            .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity!*2} as PartSchema})
+        expect(cart.length).toBeGreaterThan(0)
+        // Check out parts
+        let checkout = await request("localhost:4001")
+            .post(`/api/checkout`)
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: TECH_USER_ID,
+                cart: cart
+            })
+        expect(checkout.statusCode).toBe(400)
+    })
+    it("Check out non existent serial fails",async () => {
+        let search = await request("localhost:4001")
+            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+        let parts = search.body as PartSchema[]
+        let cart = parts
+            .filter((e)=>e.quantity&&e.quantity>0&&e.serialized==true)
+            .map((p)=>{ return { nxid: p.nxid, serial: 'fakeandbrokenserialnumber1234'} as PartSchema})
+        expect(cart.length).toBeGreaterThan(0)
+        // Check out parts
+        let checkout = await request("localhost:4001")
+            .post(`/api/checkout`)
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: TECH_USER_ID,
+                cart: cart
+            })
+        expect(checkout.statusCode).toBe(400)
+    })
+    it("Check out duplicate serial fails",async () => {
+        let search = await request("localhost:4001")
+            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+        let parts = search.body as PartSchema[]
+        let cart = parts
+            .filter((e)=>e.quantity&&e.quantity>0&&e.serialized==true)
+            .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity} as CartItem})
+        cart = await Promise.all(cart.map(async(p)=>{
+            let res = await request('localhost:4001')
+                .get(`/api/partRecord/distinct?key=serial&where[nxid]=${p.nxid}&where[location]=Parts+Room&where[building]=3&where[next]=null`)
+                .set("Authorization", ADMIN_TOKEN!)
+            expect(res.statusCode).toBe(200)
+            let serials = res.body as string[]
+            expect(serials.length).toBe(p.quantity)
+            return { nxid: p.nxid, serial: serials[0] } as CartItem
+        }))
+        cart = cart.concat(cart)
+        expect(cart.length).toBeGreaterThan(0)
+        // Check out parts
+        let checkout = await request("localhost:4001")
+            .post(`/api/checkout`)
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: TECH_USER_ID,
+                cart: cart
+            })
+        expect(checkout.statusCode).toBe(400)
+    })
 })
+
+describe("Checkin", ()=>{
+    it("Check in parts not in users inventory", async()=>{
+        let search = await request("localhost:4001")
+            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+        let parts = search.body as PartSchema[]
+        // Filter and map unserialized parts
+        let cart = parts
+            .filter((e)=>e.quantity&&e.quantity!>0&&e.serialized!=true)
+            .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity} as PartSchema})
+        expect(cart.length).toBeGreaterThan(0)
+        // Filter serialized parts
+        let serialized = parts.filter((e)=>e.quantity&&e.quantity!>0&&e.serialized==true)
+        // Fetch serials and map
+        serialized = await Promise.all(serialized.map(async(p)=>{
+            let res = await request('localhost:4001')
+                .get(`/api/partRecord/distinct?key=serial&where[nxid]=${p.nxid}&where[location]=Parts+Room&where[building]=3&where[next]=null`)
+                .set("Authorization", ADMIN_TOKEN!)
+            expect(res.statusCode).toBe(200)
+            let serials = res.body as string[]
+            expect(serials.length).toBe(p.quantity)
+            return { nxid: p.nxid, serial: serials[0] } as CartItem
+        }))
+        expect(serialized.length).toBeGreaterThan(0)
+        // Join serialized and unserialized
+        cart = cart.concat(serialized)
+        let checkin = await request("localhost:4001")
+        .post('/api/checkin')
+        .set("Authorization", KIOSK_TOKEN!)
+        .send({
+            user_id: TECH_USER_ID,
+            inventory: cart
+        })
+        expect(checkin.statusCode).toBe(200)
+    })
+    it("Check in duplicate serial fails.", async() => {
+        // Search for parts
+        let search = await request("localhost:4001")
+            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+        let parts = search.body as PartSchema[]
+        // Filter and map parts to cart items
+        let cart = parts
+            .filter((e)=>e.quantity&&e.quantity>0&&e.serialized==true)
+            .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity} as CartItem})
+        // Get serial numbers
+        cart = await Promise.all(cart.map(async(p)=>{
+            let res = await request('localhost:4001')
+                .get(`/api/partRecord/distinct?key=serial&where[nxid]=${p.nxid}&where[location]=Parts+Room&where[building]=3&where[next]=null`)
+                .set("Authorization", ADMIN_TOKEN!)
+            expect(res.statusCode).toBe(200)
+            let serials = res.body as string[]
+            expect(serials.length).toBe(p.quantity)
+            return { nxid: p.nxid, serial: serials[0] } as CartItem
+        }))
+        expect(cart.length).toBeGreaterThan(0)
+        // Check out serialized parts
+        let checkout = await request("localhost:4001")
+            .post(`/api/checkout`)
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: TECH_USER_ID,
+                cart: cart
+            })
+        expect(checkout.statusCode).toBe(200)
+        // Duplicate serials
+        let duplicateCart = cart.concat(cart)
+        // Fail check in
+        let failCheckin = await request("localhost:4001")
+        .post('/api/checkin')
+        .set("Authorization", KIOSK_TOKEN!)
+        .send({
+            user_id: TECH_USER_ID,
+            inventory: duplicateCart
+        })
+        expect(failCheckin.statusCode).toBe(400)
+        // Real check in
+        let checkin = await request("localhost:4001")
+        .post('/api/checkin')
+        .set("Authorization", KIOSK_TOKEN!)
+        .send({
+            user_id: TECH_USER_ID,
+            inventory: cart
+        })
+        expect(checkin.statusCode).toBe(200)
+    })
+    
+})
+
+// Try to checkout serialized as non serialized
+
 // Checkin
 
 // Get distinct on part records
