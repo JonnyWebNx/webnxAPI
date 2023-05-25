@@ -200,7 +200,6 @@ const partManager = {
         try {
             let part = {} as PartSchema
             // Check if NXID
-            console.log(req.query)
             if (/PNX([0-9]{7})+/.test((req.query.id as string).toUpperCase())) {
                 part = await Part.findOne({ nxid: { $eq: (req.query.id as string).toUpperCase() } }) as PartSchema;
             }

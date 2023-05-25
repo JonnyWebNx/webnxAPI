@@ -421,3 +421,7 @@ describe("Update asset", () => {
     it("Clerk can add and remove parts with correct quantities", () => addAndRemoveParts(INVENTORY_TOKEN!))
     it("Admin can add and remove parts with correct quantities", () => addAndRemoveParts(ADMIN_TOKEN!))
 })
+
+// Test serialized parts
+
+// Check for duplication
