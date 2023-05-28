@@ -16,7 +16,7 @@ const login = async (req: Request, res: Response):Promise<void> => {
             return 
         }
         // Validate if user exists in database
-        var user = await User.findOne({ email });
+        let user = await User.findOne({ email });
         // Compare password
         if (user && (await bcrypt.compare(password, user.password))) {
             if(!user.enabled) {

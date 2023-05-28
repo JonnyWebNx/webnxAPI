@@ -29,6 +29,7 @@ import assetManager from './app/assetManager.js'
 import path from 'node:path';
 import adminPermission from './middleware/adminPermission.js';
 import kioskPermission from './middleware/kioskPermission.js';
+import techPermission from './middleware/techPermission.js';
 import { updatePartImage, uploadImage, updateUserImage } from './config/uploadFile.js';
 
 const { ROOT_DIRECTORY } = config;
@@ -80,7 +81,7 @@ app.post("/api/part", auth, clerkAdminPermission, sanitize, partManager.createPa
 app.post("/api/part/add", auth, clerkAdminPermission, sanitize, partManager.addToInventory);
 app.post("/api/checkout", auth, kioskPermission, sanitize, partManager.checkout);
 app.post("/api/checkin", auth, kioskPermission, sanitize, partManager.checkin)
-app.post("/api/part/move", auth, sanitize, partManager.movePartRecords);
+app.post("/api/part/move", auth, techPermission, sanitize, partManager.movePartRecords);
 // Read    throw new TypeError('path must be absolute or specify root to res.sendFile');
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
@@ -115,13 +116,13 @@ app.delete("/api/user", auth, adminPermission, sanitize, userManager.deleteUser)
 
 // ***    Assets    ****
 //Create
-app.post("/api/asset", auth, sanitize, assetManager.addUntrackedAsset);
+app.post("/api/asset", auth, techPermission, sanitize, assetManager.addUntrackedAsset);
 /**
  * 
  * NO AUTHENTICATION
  * 
  */
-app.post("/api/asset/migrate", sanitize, assetManager.addMigratedAsset);
+app.post("/api/asset/migrate", techPermission, sanitize, assetManager.addMigratedAsset);
 // Read
 app.get("/api/asset", auth, sanitize, assetManager.getAssets);
 app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
@@ -129,9 +130,9 @@ app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
 app.get('/api/asset/search', auth, sanitize, assetManager.searchAssets);
 app.get('/api/asset/history', sanitize, assetManager.getAssetHistory);
 // Update
-app.put("/api/asset", auth, sanitize, assetManager.updateAsset);
+app.put("/api/asset", auth, techPermission, sanitize, assetManager.updateAsset);
 // Delete
-app.delete("/api/asset", auth, sanitize, assetManager.deleteAsset);
+app.delete("/api/asset", auth, techPermission, sanitize, assetManager.deleteAsset);
 
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {
