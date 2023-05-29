@@ -580,6 +580,7 @@ const partManager = {
                     searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
                     searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
                     searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
+                    searchOptions.push({ "socket": { $regex: key, $options: "is" } })
                 }))
                 Part.aggregate([{ $match: { $or: searchOptions } }])
                     .skip(parseInt(pageSize as string) * (parseInt(pageNum as string) - 1))
