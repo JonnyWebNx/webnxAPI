@@ -754,7 +754,7 @@ describe("Checkin", ()=>{
         cart.map((part) => {
             request("localhost:4001")
                 .get(`/api/part/id?id=${part.nxid}&building=3&location=Parts+Room`)
-                .set("Authorizatioimage.pngn", KIOSK_TOKEN!)
+                .set("Authorization", KIOSK_TOKEN!)
                 .then((res)=>{
                     expect(res.statusCode).toBe(200)
                     if(!part.serial)

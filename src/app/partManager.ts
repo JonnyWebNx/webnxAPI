@@ -480,7 +480,7 @@ const partManager = {
                     // change records
                     for (let i = 0; i < item.quantity!; i++) {
                         // Create new part record - set prev to old record
-                        await PartRecord.create({
+                        PartRecord.create({
                             nxid: item.nxid,
                             next: null,
                             prev: records[i]._id,
