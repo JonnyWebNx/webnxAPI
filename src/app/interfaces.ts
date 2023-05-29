@@ -33,8 +33,8 @@ export interface PartSchema {
     rack_num?: number,
     frequency?: number,
     chipset?: string,
-    socket?: string,
-    size?: string,
+    socket?: string | string[],
+    size?: string;
     active?: boolean;
     memory_type?: string,
     memory_gen?: string,
