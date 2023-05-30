@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { PartRecordSchema } from "../app/interfaces.js";
 
 const partRecord = new mongoose.Schema({
     // NXID of the associated part
@@ -26,4 +27,4 @@ const partRecord = new mongoose.Schema({
     date_replaced: { type: Date, default: null},
 });
 // Add index here
-export default mongoose.model("partRecord", partRecord);
+export default mongoose.model<PartRecordSchema>("partRecord", partRecord);

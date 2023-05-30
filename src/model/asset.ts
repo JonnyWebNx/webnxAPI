@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { AssetSchema } from "../app/interfaces.js";
 
 const asset = new mongoose.Schema({
     // NXID of the associated part
@@ -74,4 +75,4 @@ asset.index({
     'ipmi_port': 'text'
 });
 // Add index here
-export default mongoose.model("asset", asset);
+export default mongoose.model<AssetSchema>("asset", asset);

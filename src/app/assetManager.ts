@@ -494,28 +494,37 @@ const assetManager = {
             let unserializedPartsOnRequest = new Map<string, number>();
             let serializedPartsOnRequest = [] as CartItem[];
             // Map part records to new format
-            
+            let nxidError = false
             existingParts.map((p)=>{
-                if(p.serial) {
-                    // Push to array
-                    serializedPartsOnAsset.push({ nxid: p.nxid, serial: p.serial });
-                }
-                else {
-                    // Create variable
-                    let newQuantity = 0;
-                    // If part already exists
-                    if(unserializedPartsOnAsset.has(p.nxid)) {
-                        // Increment quantity
-                        newQuantity = unserializedPartsOnAsset.get(p.nxid)!+1;
+                if(p.nxid) {
+                    if(p.serial) {
+                        // Push to array
+                        serializedPartsOnAsset.push({ nxid: p.nxid, serial: p.serial });
                     }
                     else {
-                        // Part is not in map, set quantity to one
-                        newQuantity = 1;
-                    }
-                    // Update map
-                    unserializedPartsOnAsset.set(p.nxid, newQuantity);
-                }    
+                        // Create variable
+                        let newQuantity = 0;
+                        // If part already exists
+                        if(unserializedPartsOnAsset.has(p.nxid)) {
+                            // Increment quantity
+                            newQuantity = unserializedPartsOnAsset.get(p.nxid)!+1;
+                        }
+                        else {
+                            // Part is not in map, set quantity to one
+                            newQuantity = 1;
+                        }
+                        // Update map
+                        unserializedPartsOnAsset.set(p.nxid, newQuantity);
+                    }    
+                }
+                else {
+                    // This error will likely never be raised since nxid is required for database records
+                    // but the TS compiler was throwing a fit about nxid so I'll add this for shits n giggles
+                    nxidError = true
+                }
             })
+            if(nxidError)
+                return res.status(500).send("API could not handle your request: NXID missing from part records");
             parts.map((p: CartItem)=>{
                 if(p.serial) {
                     // Push to array
@@ -780,11 +789,11 @@ const assetManager = {
                     let by = ''
                     let dateObject = new Date(updateDate)
                     // Check for asset updates
-                    let assetUpdate = allAssets.find(ass => ass.date_created! <= dateObject && dateObject < ass.date_replaced)
+                    let assetUpdate = allAssets.find(ass => ass.date_created! <= dateObject && ass.date_replaced && dateObject < ass.date_replaced)
                     if(!assetUpdate) {
                         assetUpdate = allAssets.find(ass => ass.date_created! <= dateObject && ass.date_replaced == null)
                     }
-                    let assetUpdated = assetUpdate?.date_created!.toISOString() == dateObject.toISOString()
+                    let assetUpdated = (assetUpdate?.date_created as Date).toISOString() == dateObject.toISOString()
                     // Check for parts that are already present
                     let tempExistingParts = await PartRecord.find({
                         asset_tag: asset.asset_tag, 
@@ -815,29 +824,29 @@ const assetManager = {
                     // Loop over every part already on asset
                     tempExistingParts.map((record) => {
                         // Check if part is already in array
-                        if(record.serial) {
+                        if(record.serial&&record.nxid) {
                             existingParts.push({nxid: record.nxid, serial: record.serial})
                         }
                         else {
                             let existingRecord = existingParts.find((rec => rec.nxid == record.nxid))
                             // If it exists, increment the quantity
                             if(existingRecord)
-                            existingRecord.quantity! += 1
+                                existingRecord.quantity! += 1
                             // If not, push a new object
                             else
-                            existingParts.push({nxid: record.nxid, quantity: 1})
+                                existingParts.push({nxid: record.nxid!, quantity: 1})
                         }
                     })
                     // Check if parts were added on this time
                     let addedParts = [] as CartItem[]
                     // Filter for added parts, and loop over all of them
-                    allPartRecords.filter(record => record.date_created.toISOString() == updateDate).map((record) => {
+                    allPartRecords.filter(record => (record.date_created as Date).toISOString() == updateDate).map((record) => {
                         if(by=='') {
-                            by = record.by
+                            by = record.by as string
                         }
                         // Check if part is already in array
                         if (record.serial) {
-                            addedParts.push({nxid: record.nxid, serial: record.serial})
+                            addedParts.push({nxid: record.nxid!, serial: record.serial})
                         }
                         else {
                             let existingRecord = addedParts.find((rec => rec.nxid == record.nxid))
@@ -846,19 +855,19 @@ const assetManager = {
                             existingRecord.quantity! += 1
                             // If not, push a new object
                             else
-                            addedParts.push({nxid: record.nxid, quantity: 1})
+                            addedParts.push({nxid: record.nxid!, quantity: 1})
                         }
                     })
                     // Check if parts were removed
                     let removedParts = [] as CartItem[]
                     let tempRecordID = ''
                     // Filter for removed parts, and loop over all of them
-                    allPartRecords.filter(record => (record.date_replaced!=undefined)&&(record.date_replaced.toISOString() == updateDate)).map((record) => {
+                    allPartRecords.filter(record => (record.date_replaced!=undefined)&&((record.date_replaced as Date).toISOString() == updateDate)).map((record) => {
                         if(by=='') {
-                            tempRecordID = record.next
+                            tempRecordID = record.next as string
                         }
                         if(record.serial) {
-                            removedParts.push({nxid: record.nxid, serial: record.serial})
+                            removedParts.push({nxid: record.nxid!, serial: record.serial})
                         }
                         else {
                             // Check if part is already in array
@@ -868,7 +877,7 @@ const assetManager = {
                             existingRecord.quantity! += 1
                             // If not, push a new object
                             else
-                            removedParts.push({nxid: record.nxid, quantity: 1})
+                            removedParts.push({nxid: record.nxid!, quantity: 1})
                         }
                     })
                     // Get current date (will be returned if asset is most recent)
@@ -876,10 +885,10 @@ const assetManager = {
                     if(by==''&&tempRecordID!='') {
                         let test = await PartRecord.findById(tempRecordID)
                         if(test&&test.by)
-                            by = test.by
+                            by = test.by as string
                     }
                     if(by=='')
-                        by = assetUpdate?.by!
+                        by = assetUpdate?.by! as string
                     // Get end date for current iteration
                     if (index < arr.length - 1)
                         nextDate = new Date(arr[index+1])

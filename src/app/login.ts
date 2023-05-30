@@ -4,7 +4,12 @@ import User from "../model/user.js";
 import handleError from "../config/mailer.js";
 import { Request, Response } from "express";
 import config from '../config.js'
+import { UserSchema } from './interfaces.js';
 const { JWT_SECRET, JWT_EXPIRES_IN} = config
+
+interface TokenUser extends UserSchema {
+    token?: string
+}
 
 const login = async (req: Request, res: Response):Promise<void> => {
     try {
@@ -16,9 +21,9 @@ const login = async (req: Request, res: Response):Promise<void> => {
             return 
         }
         // Validate if user exists in database
-        let user = await User.findOne({ email });
+        let user = await User.findOne({ email }) as TokenUser;
         // Compare password
-        if (user && (await bcrypt.compare(password, user.password))) {
+        if (user&& user.password && (await bcrypt.compare(password, user.password))) {
             if(!user.enabled) {
                 res.status(400).send("Your account is disabled.");
                 return

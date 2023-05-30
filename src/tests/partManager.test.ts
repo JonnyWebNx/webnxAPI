@@ -764,6 +764,37 @@ describe("Checkin", ()=>{
     })
 })
 
+describe("Move parts", ()=>{
+    let allTechs = {
+
+    }
+    let techInventory = {
+
+    }
+    let adminInventory = {
+
+    }
+    let clerkInventory = {
+
+    }
+    let kioskInventory = {
+
+    }
+    let salesInventory = {
+
+    }
+    it('Move from tech to all techs', async () => {
+        let move = await request("localhost:4001")
+            .post("/api/part/move")
+            .set("Authorization", TECH_TOKEN!)
+            .send({
+                to: techInventory,
+                from: allTechs,
+                quantity: 0
+            })
+        // expect(move.statusCode).toBe(200)
+    })
+})
 // Get distinct on part records
 
 // Get distinct on part info

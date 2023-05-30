@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { PartSchema } from "../app/interfaces.js";
 
 const partSchema = new mongoose.Schema({
     nxid: { type: String, required: true, unique: true },
@@ -42,4 +43,4 @@ partSchema.index({
     'cable_end1': 'text',
     'cable_end2': 'text',
 });
-export default mongoose.model("part", partSchema);
+export default mongoose.model<PartSchema>("part", partSchema);

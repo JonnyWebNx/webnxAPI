@@ -273,7 +273,7 @@ const partManager = {
                     }
                 } else {
                     // Check if part is serialized
-                    if(info&&info.serialized) {
+                    if(info&&info.serialized&&info.nxid) {
                         // Mark as error
                         serializedError = info.nxid
                         return
@@ -412,7 +412,7 @@ const partManager = {
                 }
                 else {
                     // Check if part is serialized
-                    if(info&&info.serialized) {
+                    if(info&&info.serialized&&info.nxid) {
                         // Mark as error
                         serializedError = info.nxid
                         return
