@@ -17,7 +17,7 @@ import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
 import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
-import { PartSchema } from "./interfaces.js";
+import { PartSchema, PartQuery } from "./interfaces.js";
 import config from '../config.js'
 import fs from 'fs';
 
@@ -160,9 +160,28 @@ const partManager = {
             delete req.query.pageSize
             delete req.query.location
             delete req.query.building
-            let req_part = req.query as PartSchema
-            // Find parts that match request
-            Part.find(req_part)
+            // Typecast part
+            let req_part = req.query
+            // Create query part
+            let search_part = {} as PartQuery
+            // Copy fields from typecasted part, convert array into $all query
+            Object.keys(req_part).forEach((k)=>{
+                // ALlow array partial matches
+                if(Array.isArray(req_part[k])) {
+                    // Generate regex for each array field
+                    let arr = (req_part[k] as string[]).map((v)=>{
+                        return new RegExp(v, "i") 
+                    })
+                    // Use $all with array of case insensitive regexes
+                    return search_part[k] = { $all: arr }
+                }
+                // Check if string
+                if(typeof(req_part[k])=='string')
+                    // Create case insensitive regex
+                    return search_part[k] = { $regex: req_part[k], $options: 'i' } 
+                search_part[k] = req_part[k]
+            })
+            Part.find(search_part)
                 .skip(pageSize * (pageNum - 1))
                 .limit(pageSize + 1)
                 .exec(async (err: CallbackError | null, parts: PartSchema[]) => {

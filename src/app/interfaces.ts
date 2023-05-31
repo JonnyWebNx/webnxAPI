@@ -49,7 +49,9 @@ export interface PartSchema {
     cable_end2?: string,
     serialized?: boolean
 }
-
+export interface PartQuery {
+    [index: string]: any,
+}
 export interface AssetSchema {
     [index: string]: any,
     _id?: string | Types.ObjectId,

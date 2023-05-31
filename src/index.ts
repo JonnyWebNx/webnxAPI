@@ -29,7 +29,6 @@ server.listen(port, () => {
     console.log("\x1b[32m", "\x1b[1m",`\nWebNX API by Cameron McKay`,"\u001b[35m",`\nVersion ${LIB_VERSION}`,
     "\x1b[0m",`\nServer running on port ${config.PORT}`);
 });
-
 PartRecord.find({}, async (err: MongooseError, records: PartRecordSchema[]) => {
   let handleCallbackError = (err: MongooseError, records: PartRecordSchema) => {
     if(err) {

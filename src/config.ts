@@ -25,23 +25,6 @@ interface ENV {
     INVENTORY_TOKEN?: string
 }
 
-interface Config {
-  PORT: number,
-  MONGO_URI: string,
-  JWT_SECRET: string,
-  JWT_EXPIRES_IN: string,
-  ROOT_DIRECTORY: string,
-  UPLOAD_DIRECTORY: string,
-  DEV_EMAIL: string,
-  EMAIL: string,
-  EMAIL_PASS: string,
-  DEBUG: boolean,
-  ADMIN_TOKEN?: string,
-  TECH_TOKEN?: string,
-  KIOSK_TOKEN?: string,
-  INVENTORY_TOKEN?: string
-}
-
 // Loading process.env as ENV interface
 
 const getConfig = (): ENV => {
@@ -56,10 +39,10 @@ const getConfig = (): ENV => {
     EMAIL: process.env.EMAIL,
     EMAIL_PASS: process.env.EMAIL_PASS,
     DEBUG: eval(process.env.DEBUG),
-    ADMIN_TOKEN: process.env.ADMIN_TOKEN,
-    TECH_TOKEN: process.env.TECH_TOKEN,
-    KIOSK_TOKEN: process.env.KIOSK_TOKEN,
-    INVENTORY_TOKEN: process.env.INVENTORY_TOKEN
+    ADMIN_TOKEN: process.env.ADMIN_TOKEN ? process.env.ADMIN_TOKEN : "",
+    TECH_TOKEN: process.env.TECH_TOKEN ? process.env.TECH_TOKEN : "",
+    KIOSK_TOKEN: process.env.KIOSK_TOKEN ? process.env.KIOSK_TOKEN : "",
+    INVENTORY_TOKEN: process.env.INVENTORY_TOKEN ? process.env.INVENTORY_TOKEN : "",
   };
 };
 
@@ -69,13 +52,13 @@ const getConfig = (): ENV => {
 // it as Config which just removes the undefined from our type 
 // definition.
 
-const getSanitizedConfig = (config: ENV): Config => {
+const getSanitizedConfig = (config: ENV): ENV => {
   for (const [key, value] of Object.entries(config)) {
     if (value === undefined) {
       throw new Error(`Missing key ${key} in config.env`);
     }
   }
-  return config as Config;
+  return config as ENV;
 };
 
 const config = getConfig();
