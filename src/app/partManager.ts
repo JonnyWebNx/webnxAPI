@@ -167,7 +167,7 @@ const partManager = {
             // Copy fields from typecasted part, convert array into $all query
             Object.keys(req_part).forEach((k)=>{
                 // ALlow array partial matches
-                if(Array.isArray(req_part[k])) {
+                if(Array.isArray(req_part[k])&&!(req_part[k]!.length==0)) {
                     // Generate regex for each array field
                     let arr = (req_part[k] as string[]).map((v)=>{
                         return new RegExp(v, "i") 
@@ -176,7 +176,7 @@ const partManager = {
                     return search_part[k] = { $all: arr }
                 }
                 // Check if string
-                if(typeof(req_part[k])=='string')
+                if(typeof(req_part[k])=='string'&&!(req_part[k]==''))
                     // Create case insensitive regex
                     return search_part[k] = { $regex: req_part[k], $options: 'i' } 
                 search_part[k] = req_part[k]
