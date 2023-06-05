@@ -113,7 +113,7 @@ const partManager = {
                 // Shared create options
                 let createOptions = {
                     nxid: part.nxid,
-                    building: req.body.building ? req.body.building : req.user.building,/*req.user.building,*/
+                    building: req.body.building ? req.body.building : req.user.building,
                     location: req.body.location ? req.body.location : "Parts Room",
                     by: req.user.user_id
                 }
@@ -166,6 +166,9 @@ const partManager = {
             let search_part = {} as PartQuery
             // Copy fields from typecasted part, convert array into $all query
             Object.keys(req_part).forEach((k)=>{
+                // early return for empty strings
+                if(req_part[k]=='')
+                    return
                 // ALlow array partial matches
                 if(Array.isArray(req_part[k])&&!(req_part[k]!.length==0)) {
                     // Generate regex for each array field
@@ -175,10 +178,16 @@ const partManager = {
                     // Use $all with array of case insensitive regexes
                     return search_part[k] = { $all: arr }
                 }
-                // Check if string
-                if(typeof(req_part[k])=='string'&&!(req_part[k]==''))
+                // Check if value is integer
+                if(typeof(req_part[k])=='string'&&!isNaN(req_part[k] as any)) {
+                    // Parse integer
+                    return search_part[k] = parseInt(req_part[k] as string)
+                }
+                // Check if not boolean 
+                if(!(req_part[k]=='true')&&!(req_part[k]=='false'))
                     // Create case insensitive regex
                     return search_part[k] = { $regex: req_part[k], $options: 'i' } 
+                // Any value here is likely a boolean
                 search_part[k] = req_part[k]
             })
             Part.find(search_part)
