@@ -1,6 +1,6 @@
 import request from 'supertest'
 import config from "../config"
-import { CartItem, PartRecordSchema, PartSchema } from "../app/interfaces"
+import { CartItem, PartQuery, PartRecordSchema, PartSchema } from "../app/interfaces"
 import { jest } from '@jest/globals'
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 
@@ -17,7 +17,7 @@ const TEST_PART = {
     name: "RTX 2080",
     type: "GPU",
     quantity: 3,
-    serialized: true,
+    serialized: false,
     shelf_location: "J10"
 } as PartSchema
 
@@ -43,10 +43,10 @@ function generateIncompletePart() {
     return tempPart as PartSchema;
 }
 // Alternative to settimeout 
-function timeout(ms: number) {
-    jest.useRealTimers()
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
+// function timeout(ms: number) {
+//     jest.useRealTimers()
+//     return new Promise(resolve => setTimeout(resolve, ms));
+// }
 // Check if items in cart have been checked out
 async function checkIfCheckedOut(cart: CartItem[]){
     return Promise.all(
@@ -142,6 +142,39 @@ async function makeSerializedCheckoutList() {
             // Join serialized and unserialized
             resolve(serialized as CartItem[])
     })
+}
+// Move parts and return requests as array
+async function movePart(parts: CartItem[], to, from) {
+    return Promise.all(parts.map((item) => {
+        let req = {} as PartQuery
+        //
+        req.to = structuredClone(to)
+        req.to.nxid = item.nxid
+        //
+        req.from = structuredClone(from)
+        req.from.nxid = item.nxid
+        //
+        if(item.serial) {
+            req.to.serial = item.serial
+            req.from.serial = item.serial
+            req.quantity = 1
+        }
+        if(item.quantity)
+            req.quantity = item.quantity
+        //
+        console.log(req)
+        return request("localhost:4001")
+            .post("/api/part/move")
+            .set("Authorization", TECH_TOKEN!)
+            .send(req)
+    }))
+}
+
+// Return request for user inventory with token
+async function getUserInventory(token: string) {
+    return request("localhost:4001")
+        .get("/api/user/inventory")
+        .set("Authorization", token)
 }
 
 // Search function with 0 results expected
@@ -572,25 +605,7 @@ describe("Checkin", ()=>{
         expect(checkin.statusCode).toBe(200)
     })
     it("Check in serialized without serial fails", async() => {
-        // Search for parts
-        let search = await request("localhost:4001")
-            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
-            .set("Authorization", KIOSK_TOKEN!)
-        let parts = search.body as PartSchema[]
-        // Filter and map parts to cart items
-        let cart = parts
-            .filter((e)=>e.quantity&&e.quantity>0&&e.serialized==true)
-            .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity} as CartItem})
-        // Get serial numbers
-        cart = await Promise.all(cart.map(async(p)=>{
-            let res = await request('localhost:4001')
-                .get(`/api/partRecord/distinct?key=serial&where[nxid]=${p.nxid}&where[location]=Parts+Room&where[building]=3&where[next]=null`)
-                .set("Authorization", ADMIN_TOKEN!)
-            expect(res.statusCode).toBe(200)
-            let serials = res.body as string[]
-            expect(serials.length).toBe(p.quantity)
-            return { nxid: p.nxid, serial: serials[0] } as CartItem
-        }))
+        let cart = await makeSerializedCheckoutList() 
         expect(cart.length).toBeGreaterThan(0)
         // Check out serialized parts
         let checkout = await request("localhost:4001")
@@ -602,8 +617,7 @@ describe("Checkin", ()=>{
             })
         expect(checkout.statusCode).toBe(200)
         
-        let badCart = parts
-            .filter((e)=>e.quantity&&e.quantity>0&&e.serialized==true)
+        let badCart = cart 
             .map((p)=>{ return { nxid: p.nxid, quantity: 1} as CartItem})
         let failCheckin = await request("localhost:4001")
         .post('/api/checkin')
@@ -671,7 +685,7 @@ describe("Move parts", ()=>{
     }
     let techInventory = {
         owner: TECH_USER_ID,
-        buiding: 3,
+        building: 3,
     } as PartRecordSchema
     let adminInventory = {
         owner: ADMIN_USER_ID,
@@ -689,6 +703,7 @@ describe("Move parts", ()=>{
         owner: SALES_USER_ID,
         building: 3,
     } as PartRecordSchema
+
     it('Move from tech to all techs', async () => {
         // Search parts
         let search = await request("localhost:4001")
@@ -725,23 +740,22 @@ describe("Move parts", ()=>{
             })
         expect(checkout.statusCode).toBe(200)
         // CHECK QUANTITY
-        // Attempt to move parts
-
-        let move = await request("localhost:4001")
-            .post("/api/part/move")
-            .set("Authorization", TECH_TOKEN!)
-            .send({
-                to: techInventory,
-                from: allTechs,
-                quantity: 0
-            })
-
+        // Move parts to all techs 
+        let moves = await movePart(cart, allTechs, techInventory)
+        // Check moves
+        moves.map((m)=>{
+            console.log(m.text)
+            // expect(m.statusCode).toBe(200)
+        })
         // Check quantities
-        
+        let techInv = await getUserInventory(TECH_TOKEN!)
+        expect(techInv.statusCode).toBe(200)
         // Move back
-        
+        let moveBack = await movePart(cart, techInventory, allTechs)
+        // Check moves
+        moveBack.map((m)=>expect(m.statusCode).toBe(200))
         // Check quantities
-
+        
         // Check in parts
         let checkin = await request("localhost:4001")
             .post('/api/checkin')
@@ -753,16 +767,6 @@ describe("Move parts", ()=>{
         expect(checkin.statusCode).toBe(200)
         // CHECK QUANTITY
         await checkIfCheckedIn(cart)
-        // cart.map((part) => {
-        //     request("localhost:4001")
-        //         .get(`/api/part/id?id=${part.nxid}&building=3&location=Parts+Room`)
-        //         .set("Authorization", KIOSK_TOKEN!)
-        //         .then((res)=>{
-        //             expect(res.statusCode).toBe(200)
-        //             if(!part.serial)
-        //                 expect(res.body.quantity).toBe(part.quantity)
-        //         })
-        // })
     })
 })
 // Get distinct on part records
@@ -777,4 +781,4 @@ describe("Move parts", ()=>{
 
 // Tech cannot move parts out of testing
 
-//
+// Integer and booleans breaking advanced search

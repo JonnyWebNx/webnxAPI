@@ -1,6 +1,5 @@
 import type { Request } from 'express'
-import mongoose, { Types } from 'mongoose'
-import { BooleanLiteral } from 'typescript'
+import { Types } from 'mongoose'
 
 export interface NXRequest extends Request {
     user: ReqUser
@@ -41,6 +40,7 @@ export interface PartSchema {
     mem_rank?: string,
     peripheral_type?: string,
     storage_interface?: string,
+    storage_type?: string|string[],
     capacity?: number,
     capacity_unit?: string,
     num_ports?: number,

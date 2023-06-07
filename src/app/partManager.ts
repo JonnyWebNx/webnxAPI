@@ -59,11 +59,14 @@ function cleansePart(part: PartSchema) {
             newPart.port_type = part.port_type
             break
         case "Storage":
+            newPart.storage_type = part.storage_type
+            newPart.size = part.size
             newPart.capacity = part.capacity
             newPart.capacity_unit = part.capacity_unit
         case "Backplane":
             newPart.storage_interface = part.storage_interface
             newPart.port_type = part.port_type
+            newPart.num_ports = part.num_ports
             break;
         case "GPU":
             break
@@ -127,7 +130,7 @@ const partManager = {
                     }))
                 }
                 // If parts do not have serial numbers, create generic records
-                else {
+                else if(!part.serialized){
                     if(quantity==undefined)
                         quantity = 0
                     for (let i = 0; i < quantity; i++) {
@@ -1052,6 +1055,7 @@ const partManager = {
                 delete to.ebay
             // Get records
             let fromRecords = await PartRecord.find(from)
+            console.log(fromRecords)
             // Check quantities
             if (fromRecords.length >= quantity) {
                 // Create and update records
