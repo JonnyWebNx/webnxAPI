@@ -39,6 +39,7 @@ export interface PartSchema {
     memory_gen?: string,
     mem_rank?: string,
     peripheral_type?: string,
+    mainboard_con?: string,
     storage_interface?: string,
     storage_type?: string|string[],
     capacity?: number,

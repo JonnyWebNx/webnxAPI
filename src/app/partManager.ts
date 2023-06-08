@@ -54,9 +54,11 @@ function cleansePart(part: PartSchema) {
             newPart.socket = part.socket
             break
         case "Peripheral Card":
+	    newPart.mainboard_con = part.mainboard_con
             newPart.peripheral_type = part.peripheral_type
             newPart.num_ports = part.num_ports
-            newPart.port_type = part.port_type
+	    if(part.port_type)
+            	newPart.port_type = part.port_type
             break
         case "Storage":
             newPart.storage_type = part.storage_type
@@ -64,12 +66,9 @@ function cleansePart(part: PartSchema) {
             newPart.capacity = part.capacity
             newPart.capacity_unit = part.capacity_unit
         case "Backplane":
-            newPart.storage_interface = part.storage_interface
             newPart.port_type = part.port_type
             newPart.num_ports = part.num_ports
             break;
-        case "GPU":
-            break
         case "Cable":
             newPart.cable_end1 = part.cable_end1
             newPart.cable_end2 = part.cable_end2

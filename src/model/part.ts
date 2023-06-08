@@ -19,6 +19,7 @@ const partSchema = new mongoose.Schema({
     rack_num: { type: Number },
     shelf_location: { type: String },
     peripheral_type: { type: String },
+    mainboard_con: { type: String },
     storage_interface: { type: String },
     storage_type: { type: String },
     capacity: { type: Number },
