@@ -252,7 +252,7 @@ const assetManager = {
             let asset = req.body.asset as AssetSchema
             let parts = req.body.parts as CartItem[]
             // Return if user is kiosk
-            if(req.user.role=="kiosk") {
+            if(req.user.roles.includes("kiosk")) {
 
                 return res.status(401).send("Kiosk cannot create assets")
             }
@@ -499,7 +499,7 @@ const assetManager = {
                 if(p.nxid) {
                     if(p.serial) {
                         // Push to array
-                        serializedPartsOnAsset.push({ nxid: p.nxid, serial: p.serial });
+                        serializedPartsOnAsset.push({ nxid: p.nxid, serial: p.serial } as CartItem);
                     }
                     else {
                         // Create variable
@@ -700,7 +700,7 @@ const assetManager = {
     },
     deleteAsset: async (req: Request, res: Response) => {
         try {
-            if(req.user.role != "admin")
+            if(!req.user.roles.includes("admin"))
                 return res.status(403).send("Only admin can delete assets.")
             const { asset_tag } = req.query
             // Find all parts records associated with asset tag

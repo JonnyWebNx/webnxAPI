@@ -12,25 +12,20 @@ import config from './config.js';
 import database from './config/database.js'
 import express, { NextFunction, Request, Response } from 'express'
 import cors, { CorsOptions } from 'cors'
+import path from 'node:path';
 
 // authorization modules
 import login from './app/login.js'
 import register from './app/register.js'
 import auth from './middleware/auth.js'
 import isAuth from './app/isAuth.js'
-import clerkAdminPermission from './middleware/clerkAdminPermission.js';
-import kioskClerkAdminPermission from './middleware/kioskClerkAdminPermission.js';
-
+import checkRoles from './middleware/checkRoles.js'
+import sanitize from './middleware/sanitizeInput.js';
+import { updatePartImage, uploadImage, updateUserImage } from './config/uploadFile.js';
 // Database modules
 import partManager from './app/partManager.js'
 import userManager from './app/userManager.js';
-import sanitize from './middleware/sanitizeInput.js';
 import assetManager from './app/assetManager.js'
-import path from 'node:path';
-import adminPermission from './middleware/adminPermission.js';
-import kioskPermission from './middleware/kioskPermission.js';
-import techPermission from './middleware/techPermission.js';
-import { updatePartImage, uploadImage, updateUserImage } from './config/uploadFile.js';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance
@@ -77,11 +72,11 @@ app.post("/api/register", sanitize, register);
 // ***   Parts   ***
 //
 // Create
-app.post("/api/part", auth, clerkAdminPermission, sanitize, partManager.createPart);
-app.post("/api/part/add", auth, clerkAdminPermission, sanitize, partManager.addToInventory);
-app.post("/api/checkout", auth, kioskPermission, sanitize, partManager.checkout);
-app.post("/api/checkin", auth, kioskPermission, sanitize, partManager.checkin)
-app.post("/api/part/move", auth, techPermission, sanitize, partManager.movePartRecords);
+app.post("/api/part", auth, checkRoles(["clerk","admin"]), sanitize, partManager.createPart);
+app.post("/api/part/add", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.addToInventory);
+app.post("/api/checkout", auth, checkRoles(["kiosk"]), sanitize, partManager.checkout);
+app.post("/api/checkin", auth, checkRoles(["kiosk"]), sanitize, partManager.checkin)
+app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, partManager.movePartRecords);
 // Read    throw new TypeError('path must be absolute or specify root to res.sendFile');
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
@@ -94,10 +89,10 @@ app.get("/api/part/records/id", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 // Update
-app.put("/api/part", auth, clerkAdminPermission, sanitize, partManager.updatePartInfo);
-app.put("/images/parts", auth, sanitize, clerkAdminPermission, uploadImage, updatePartImage);
+app.put("/api/part", auth, checkRoles(["clerk", "admin"]), partManager.updatePartInfo);
+app.put("/images/parts", auth, sanitize, checkRoles(["clerk", "admin"]), uploadImage, updatePartImage);
 // Delete
-app.delete("/api/part", auth, clerkAdminPermission, sanitize, partManager.deletePart);
+app.delete("/api/part", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deletePart);
 
 
 // ***   Users   ***
@@ -106,23 +101,24 @@ app.delete("/api/part", auth, clerkAdminPermission, sanitize, partManager.delete
 // app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
 // Read
 app.get("/api/user", auth, sanitize, userManager.getUser);
-app.get("/api/user/all", auth, kioskClerkAdminPermission, userManager.getAllUsers)
+app.get("/api/user/all", auth, checkRoles(["tech", "kiosk", "clerk", "admin"]), userManager.getAllUsers)
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
+app.get('/api/user/roles', auth, sanitize, userManager.checkRoles)
 // Update
-app.put("/api/user", auth, adminPermission, sanitize, userManager.updateUser);
+app.put("/api/user", auth, checkRoles(["admin"]), sanitize, userManager.updateUser);
 app.put("/images/users", auth, sanitize, uploadImage, updateUserImage);
 // Delete
-app.delete("/api/user", auth, adminPermission, sanitize, userManager.deleteUser);
+app.delete("/api/user", auth, checkRoles(["admin"]), sanitize, userManager.deleteUser);
 
 // ***    Assets    ****
 //Create
-app.post("/api/asset", auth, techPermission, sanitize, assetManager.addUntrackedAsset);
+app.post("/api/asset", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, assetManager.addUntrackedAsset);
+// app.post("/api/asset/migrate",sanitize, assetManager.addMigratedAsset);
 /**
  * 
  * NO AUTHENTICATION
  * 
  */
-app.post("/api/asset/migrate", techPermission, sanitize, assetManager.addMigratedAsset);
 // Read
 app.get("/api/asset", auth, sanitize, assetManager.getAssets);
 app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
@@ -130,9 +126,9 @@ app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
 app.get('/api/asset/search', auth, sanitize, assetManager.searchAssets);
 app.get('/api/asset/history', sanitize, assetManager.getAssetHistory);
 // Update
-app.put("/api/asset", auth, techPermission, sanitize, assetManager.updateAsset);
+app.put("/api/asset", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, assetManager.updateAsset);
 // Delete
-app.delete("/api/asset", auth, techPermission, sanitize, assetManager.deleteAsset);
+app.delete("/api/asset", auth, checkRoles(["admin"]), sanitize, assetManager.deleteAsset);
 
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {

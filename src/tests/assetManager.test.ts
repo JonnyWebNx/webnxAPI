@@ -214,7 +214,7 @@ describe("Asset creation and deletion", () => {
                 expect(res.status).toBe(401)
             })
     })
-    it("Returns 401 status when user is Kiosk ", () => {
+    it("Returns 403 status when user is Kiosk ", () => {
         request("localhost:4001")
             .post("/api/asset")
             .send({ asset: generateAsset(), parts: []})
@@ -222,7 +222,7 @@ describe("Asset creation and deletion", () => {
             .set('Accept', 'application/json')
             .set("Authorization", KIOSK_TOKEN!)
             .then((res)=>{
-                expect(res.status).toBe(401)
+                expect(res.status).toBe(403)
             })
     })
     const check400 = (token: string) => {

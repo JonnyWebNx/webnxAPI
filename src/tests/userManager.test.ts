@@ -129,11 +129,11 @@ describe("Get user", () => {
 })
 
 describe("Get user inventory", () => {
-    it("Tech cannot get another users inventory", async () => {
+    it("Tech can get another users inventory", async () => {
         let res = await request("localhost:4001")
             .get(`/api/user/inventory?user_id=${USER_ID}`)
             .set("Authorization", TECH_TOKEN!)
-        expect(res.statusCode).toBe(403)
+        expect(res.statusCode).toBe(200)
     })
     it("Clerk can get other users inventory", async () => {
         let res = await request("localhost:4001")
@@ -180,11 +180,11 @@ describe("Get user inventory", () => {
 })
 
 describe("Get all users", () => {
-    it("Tech cannot get all users",async () => {
+    it("Tech can get all users",async () => {
         let res = await request("localhost:4001")
             .get("/api/user/all")
             .set("Authorization", TECH_TOKEN!)
-        expect(res.statusCode).toBe(403)
+        expect(res.statusCode).toBe(200)
     })
     it("Clerk can get all users", async () => {
         let res = await request("localhost:4001")

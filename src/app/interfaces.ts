@@ -8,7 +8,7 @@ export interface NXRequest extends Request {
 export interface ReqUser {
     user_id: string | Types.ObjectId,
     email: string,
-    role: string,
+    roles: string[],
     building: number
 }
 
@@ -128,7 +128,7 @@ export interface LoadedCartItem {
 
 // User schema
 export interface UserSchema {
-    role?: string,
+    roles?: string[],
     date_created?: Date,
     email?: string,
     first_name?: string,

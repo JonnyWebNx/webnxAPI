@@ -13,7 +13,7 @@ const verifyToken = (req: Request, res: Response, next: NextFunction) => {
     }
     try {
         // Decode user token
-        const decoded = jwt.verify(token, JWT_SECRET)
+        const decoded = jwt.verify(token, JWT_SECRET!)
         req.user = decoded as unknown as ReqUser;
     } catch (err) {
         // If token is invalid

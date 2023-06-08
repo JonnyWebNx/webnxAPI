@@ -4,7 +4,7 @@ import User from "../model/user.js";
 import handleError from "../config/mailer.js";
 import { Request, Response } from "express";
 import config from '../config.js'
-import { UserSchema } from './interfaces.js';
+import { PartQuery, UserSchema } from './interfaces.js';
 const { JWT_SECRET, JWT_EXPIRES_IN} = config
 
 interface TokenUser extends UserSchema {
@@ -21,7 +21,7 @@ const login = async (req: Request, res: Response):Promise<void> => {
             return 
         }
         // Validate if user exists in database
-        let user = await User.findOne({ email }) as TokenUser;
+        let user = await User.findOne({ email });
         // Compare password
         if (user&& user.password && (await bcrypt.compare(password, user.password))) {
             if(!user.enabled) {
@@ -30,16 +30,17 @@ const login = async (req: Request, res: Response):Promise<void> => {
             }
             // Create token if password correct
             let token = ""
+            let tokenData = { user_id: user._id, email, roles: user.roles, building: user.building }
             // No expiry time for kiosk
-            if (user.role=="kiosk") {
+            if (user.roles?.includes("kiosk")) {
                 token = jwt.sign(
-                    { user_id: user._id, email, role: user.role, building: user.building },
+                    tokenData,
                     JWT_SECRET!
                 );
             }
             else {
                 token = jwt.sign(
-                    { user_id: user._id, email, role: user.role, building: user.building },
+                    tokenData,
                     JWT_SECRET!,
                     {
                         expiresIn: JWT_EXPIRES_IN,
@@ -48,7 +49,7 @@ const login = async (req: Request, res: Response):Promise<void> => {
             }
             // console.log(user.role+": "+token)
             // Turn user into JSON object
-            let { password: pass, ...returnUser } = user
+            let { password: pass, ...returnUser } = user as TokenUser
             // save token
             returnUser.token = token;
             // Send client user data

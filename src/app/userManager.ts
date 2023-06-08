@@ -13,7 +13,7 @@ import bcrypt from 'bcryptjs'
 import User from '../model/user.js'
 import { MongooseError } from 'mongoose';
 import type { Request, Response } from 'express'
-import { UserSchema } from './interfaces.js';
+import { PartQuery, UserSchema } from './interfaces.js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import handleError from '../config/mailer.js'
@@ -76,11 +76,11 @@ const userManager = {
     getAllUsers: async (req: Request, res: Response) => {
         try{
             // Get all users
-            let users = await User.find();
+            let users = await User.find() as UserSchema[];
             let returnUsers = [] as UserSchema[]
             // Remove password from data
             for (let user of users){
-                let { password, ...temp } = JSON.parse(JSON.stringify(user))
+                let { password, role, ...temp } = JSON.parse(JSON.stringify(user))
                 returnUsers.push(temp)
             }
             // Success
@@ -93,7 +93,7 @@ const userManager = {
     // Update - id required in query string
     updateUser: async (req: Request, res: Response) => {
         try{
-            if(req.user.role!="admin")
+            if(!req.user.roles.includes("admin"))
                 return res.status(403).send("Invalid permissions")
             // Check database to see if email already exists
             const submittedUser = req.body.user
@@ -140,7 +140,7 @@ const userManager = {
     // Delete - id required in query string
     deleteUser: async (req: Request, res: Response) => {
         // Get user id from query string
-        if(req.user.role != "admin")
+        if(!req.user.roles.includes("admin"))
             return res.status(403).send("Invalid permissions")
         var userToDelete = req.query.id;
         // Send id to database for deletion
@@ -165,6 +165,20 @@ const userManager = {
                 imagePath = path.join(UPLOAD_DIRECTORY, 'images', 'defaultUserImage.webp')
             // Send image
             res.sendFile(imagePath)
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    checkRoles: async (req: Request, res: Response) => {
+        try {
+            let user = User.findById(req.user.user_id) as UserSchema
+            let user_roles = user.roles as string[]
+            let allowed_roles = req.query.roles as string[]
+            // Check for overlap
+            if(allowed_roles.filter((r)=>user_roles.includes(r)).length>0)
+                return res.status(200).send()
+            return res.status(401).send()
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);

@@ -864,9 +864,6 @@ const partManager = {
     getUserInventory: async (req: Request, res: Response) => {
         try {
             const { user_id } = req.query.user_id ? req.query : req.user
-            // Check role
-            if((user_id!=req.user.user_id)&&(req.user.role=="tech"))
-                return res.status(403).send("You cannot view another user's inventory");
             // Fetch part records
             PartRecord.find({ next: null, owner: user_id ? user_id : req.user.user_id }, async (err: MongooseError, records: PartRecordSchema[]) => {
                 if (err) {
@@ -1021,19 +1018,19 @@ const partManager = {
                     to.location = 'sold'
                     break;
                 case 'lost':
-                    if(req.user.role!='admin'&&req.user.role!='inventory')
+                    if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
                         return res.status(400).send("You do not have permissions to mark parts as lost");
                     to.next = 'lost'
                     to.location = 'lost'
                     break;
                 case 'broken':
-                    if(req.user.role!='admin'&&req.user.role!='inventory')
+                    if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
                         return res.status(400).send("You do not have permissions to mark parts as broken");
                     to.next = 'broken'
                     to.location = 'broken'
                     break;
                 case 'deleted':
-                    if(req.user.role!='admin'&&req.user.role!='inventory')
+                    if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
                         return res.status(400).send("You do not have permissions to mark parts as deleted");
                     to.next = 'deleted'
                     to.location = 'deleted'
@@ -1055,7 +1052,6 @@ const partManager = {
                 delete to.ebay
             // Get records
             let fromRecords = await PartRecord.find(from)
-            console.log(fromRecords)
             // Check quantities
             if (fromRecords.length >= quantity) {
                 // Create and update records
