@@ -1266,6 +1266,50 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+    deleteFromPartsRoom: async (req: Request, res: Response) => {
+        try{
+            // Get request params
+            console.log(req.query)
+            let nxid = req.query.nxid as string
+            // Parse integers
+            let new_quantity = parseInt(req.query.new_quantity as string)
+            let building = req.query.building?parseInt(req.query.building as string):req.user.building
+            // Check request
+            if(!nxid||!/PNX([0-9]{7})+/.test(nxid)||new_quantity<0)
+                return res.status(400).send("Invalid request");
+            let partInfo = await Part.findOne({nxid})
+            if(partInfo?.serialized)
+                return res.status(400).send("Cannot delete serialized records");
+            // Find parts room records
+            PartRecord.find({nxid: nxid, building: building, location: "Parts Room", next: null}, async (err: MongooseError, oldRecords: PartRecordSchema[])=>{
+                if(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                // Check if current quantity is less than new quantity
+                if(new_quantity>oldRecords.length)
+                    return res.status(400).send("New quantity is greater than current quantity");
+                // Get date for updates
+                let current_date = Date.now()
+                // Filter records to quantity and update
+                await Promise.all(oldRecords.filter((p,i)=>new_quantity>i).map(async(rec)=>{
+                    // Create new record
+                    let new_record = JSON.parse(JSON.stringify(rec))
+                    new_record.prev = new_record._id
+                    new_record.date_created = current_date
+                    new_record.next = 'deleted'
+                    new_record.location = 'deleted'
+                    new_record.by = req.user.user_id
+                    new_record.building = building
+                    delete new_record._id
+                    PartRecord.create(new_record, callbackHandler.updateRecord)
+                }))
+                // Done
+                return res.status(200).send("Success");
+            })
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     // moveParts: async (req: Request, res: Response) => {
     //     try {
     //         // Get params from request
