@@ -74,6 +74,7 @@ function cleanseAsset(asset: AssetSchema) {
             delete copy.psu_model;
             delete copy.rails;
             delete copy.in_rack;
+            delete copy.parent;
             if(copy.live) {
                 delete copy.pallet
             }
@@ -99,6 +100,8 @@ function cleanseAsset(asset: AssetSchema) {
             if(copy.live) {
                 delete copy.avail
             }
+            if(copy.chassis_type!='Node')
+                delete copy.parent;
             if(!copy.num_bays||copy.num_bays < 1)
                 delete copy.bay_type
             if(!copy.num_psu||copy.num_psu<1)
@@ -119,6 +122,7 @@ function cleanseAsset(asset: AssetSchema) {
             delete copy.num_psu;
             delete copy.psu_model;
             delete copy.cheat;
+            delete copy.parent;
             delete copy.avail;
             break;
     }
@@ -277,6 +281,12 @@ const assetManager = {
             delete asset.migrated;
 
             asset = cleanseAsset(asset)
+
+            if(asset.parent&&asset.parent!='') {
+                let parentChassis = await Asset.findOne({nxid: asset.parent, next: null})
+                if(parentChassis==null)
+                    return res.status(400).send(`Node chassis not found`);
+            }
 
             // Set sentinel value
             let existingSerial = await findExistingSerial(parts)
@@ -466,6 +476,12 @@ const assetManager = {
             asset.by = req.user.user_id;
             asset.date_updated = current_date;
             asset = cleanseAsset(asset)
+            if(asset.parent&&asset.parent!='') {
+                let parentChassis = await Asset.findOne({nxid: asset.parent, next: null})
+                if(parentChassis==null)
+                    return res.status(400).send(`Node chassis not found`);
+            }
+
             let isMigrated = false
             let existingAsset = await Asset.findOne({asset_tag: asset.asset_tag, next: null})
             if(existingAsset==null) {

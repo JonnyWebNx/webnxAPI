@@ -13,7 +13,7 @@ import Asset from '../model/asset.js'
 import User from "../model/user.js";
 import handleError from "../config/mailer.js";
 import callbackHandler from '../middleware/callbackHandlers.js'
-import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
+import { AssetSchema, CartItem, InventoryEntry, PartRecordSchema } from "./interfaces.js";
 import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
@@ -80,6 +80,9 @@ function cleansePart(part: PartSchema) {
             break;
         case "Optic":
             newPart.cable_end1 = part.cable_end1;
+            break;
+        default:
+            newPart.consumable = part.consumable ? true : false
             break;
     }
     
@@ -367,6 +370,7 @@ const partManager = {
                     }
                 }
                 else {
+                    let partInfo = await Part.findOne({nxid: item.nxid})
                     // Find all matching part records to minimize requests and ensure updates don't conflict when using async part updating
                     let records = await PartRecord.find({
                         nxid: item.nxid,
@@ -376,17 +380,22 @@ const partManager = {
                     });
                     // Loop for quanity of part item
                     for (let j = 0; j < item.quantity!; j++) {
-                        // Create new iteration
-                        PartRecord.create({
-                            nxid: item.nxid,
-                            owner: user_id,
-                            location: "Tech Inventory",
-                            building: req.user.building,
-                            by: req.user.user_id,
-                            prev: records[j]._id,
-                            next: null,
-                            date_created: current_date,
-                        }, callbackHandler.updateRecord);
+                        // Check if consumable
+                        if(partInfo&&partInfo.consumable)
+                            // Mark as consumed
+                            PartRecord.findByIdAndUpdate(records[j]._id, {next: 'consumed', by: req.user.user_id, date_replaced: current_date}, callbackHandler.callbackHandleError)
+                        else
+                            // Create new iteration
+                            PartRecord.create({
+                                nxid: item.nxid,
+                                owner: user_id,
+                                location: "Tech Inventory",
+                                building: req.user.building,
+                                by: req.user.user_id,
+                                prev: records[j]._id,
+                                next: null,
+                                date_created: current_date,
+                            }, callbackHandler.updateRecord);
                     }
                 }
             }))
@@ -686,9 +695,16 @@ const partManager = {
                 .filter((sn: string, i: number, arr: string[]) => i == arr.indexOf(sn))
                 .map((sn: string) => sn.replace(/[, ]+/g, " ").trim());
             }
-            // If any part info is missing, return invalid request
+                        // If any part info is missing, return invalid request
             if (!(nxid && location && building)||(quantity < 1&&serials.length<1))
                 return res.status(400).send("Invalid request");
+            
+            let partInfo = await Part.findOne({nxid: nxid}) as PartSchema
+            if(partInfo==null)
+                return res.status(400).send("Part not found");
+            if(partInfo.consumable&&location!="Parts Room")
+                return res.status(400).send("Unable to add consumables outside parts room");
+
             let createOptions = {
                 nxid,
                 location: location,
@@ -938,7 +954,7 @@ const partManager = {
             PartRecord.find({
                 nxid,
                 next: null
-            }, (err: Mongoose, record: PartRecordSchema[]) => {
+            }, (err: MongooseError, record: PartRecordSchema[]) => {
                 if (err)
                     res.status(500).send("API could not handle your request: " + err);
                 else
@@ -955,7 +971,7 @@ const partManager = {
             let params = req.query as PartRecordSchema;
             params.next = null
             // Find all current parts records associated with nxid
-            PartRecord.find(params, (err: Mongoose, record: PartRecordSchema[]) => {
+            PartRecord.find(params, (err: MongooseError, record: PartRecordSchema[]) => {
                 if (err)
                     res.status(500).send("API could not handle your request: " + err);
                 else
@@ -991,17 +1007,140 @@ const partManager = {
     },
     movePartRecords: async (req: Request, res: Response) => {
         try {
-            // Get params from request
-            let { from, to, quantity } = req.body
-            from.next = null
+            // Get data from request
+            let { old_owner, new_owner } = req.body
+            let parts = req.body.parts as InventoryEntry[]
+
+            // Inventory check
+            let inventoryCheck = await PartRecord.find({owner: old_owner, next: null})
+            let inventoryHash = new Map<string, InventoryEntry>()
+
+            // Store whether or not part is serialized in map
+            let partSerialized = new Map<string, boolean>();
+
+            // Error arrays
+            let notEnough = [] as string[]
+            let missingSerial = [] as string[]
+            let partNotFound = [] as string[]
+            let serialNotInInv = [] as string[]
+            let duplicateEntry = [] as string[]
+            let serialNotNeeded = [] as string[]
+            let duplicateSerial = [] as string[]
+            let nxidMissing = false
+            
+            // Check for duplicates
+            parts.map((p: InventoryEntry, i)=>{
+                // If search index does not equal current index
+                if(parts.findIndex((k)=>k.nxid==p.nxid)!=i) {
+                    duplicateEntry.push(p.nxid?p.nxid:"Undefined NXID")
+                    return false
+                }
+                return true
+            })
+            if(duplicateEntry.length>0)
+                return res.status(400).send("Duplicate NXIDs in request: "+duplicateEntry.join(', '));
+            // Turn array into hashmap
+            inventoryCheck.map((record)=>{
+                // Create boilerplate
+                let invEntry = { unserialized: 0, serials: [""]}
+                // Check if hashtable already has entries
+                if(inventoryHash.has(record.nxid!))
+                    // Load existing entries
+                    invEntry = inventoryHash.get(record.nxid!)!
+                // If record has serial number
+                if(record.serial)
+                    // Push to serials
+                    invEntry.serials.push(record.serial)
+                else
+                    // Increment number of unserialized
+                    invEntry.unserialized++
+                inventoryHash.set(record.nxid!, invEntry)
+            })
+
+            // Check all parts in list for inventory
+            await Promise.all(parts.map(async (entry: InventoryEntry, i) =>{
+                // Chech if entry is a duplicate
+                if(parts.findIndex((k)=>k.nxid==entry.nxid)!=i)
+                    duplicateEntry.push(entry.nxid?entry.nxid:"Undefined NXID")
+                // Check if NXID is in request
+                if(!entry.nxid)
+                    return nxidMissing = true
+                // Check if part info has been fetched
+                if(!partSerialized.has(entry.nxid)) {
+                    // Fetch part info
+                    let partInfo = await Part.findOne({nxid: entry.nxid})
+                    // If not found, push to errors
+                    if(partInfo==null)
+                        return partNotFound.push(entry.nxid)
+                    // Part found, add to map
+                    partSerialized.set(entry.nxid, partInfo.serialized ? true : false)
+                }
+                // Check if part is serialized
+                let serialized = partSerialized.get(entry.nxid)
+                // Check if inventory has part
+                if(!inventoryHash.has(entry.nxid))
+                    // Push error
+                    return notEnough.push(entry.nxid)
+                // Get existing inventory entry
+                const existingInv = inventoryHash.get(entry.nxid)!
+                // If serialized
+                if(serialized) {
+                    // Check if all parts have serials
+                    if(entry.unserialized&&entry.unserialized>0&&(entry.newSerials?.length!=entry.unserialized))
+                        // Push error
+                        missingSerial.push(entry.nxid)
+                    // Make sure all serials on request are in inventory
+                    await Promise.all(entry.serials.map(async (s)=>{
+                        if(!existingInv.serials.includes(s))
+                            // Push error
+                            serialNotInInv.push(entry.nxid+": "+s)
+                    }))
+                    // If there are new serial numbers
+                    if(entry.newSerials)
+                        // Check if they are unique
+                        await Promise.all(entry.newSerials.map(async(s)=>{
+                            let existingSerial = await PartRecord.findOne({nxid: entry.nxid, serial: s, next: null})
+                            // Check if already exists
+                            if(existingSerial)
+                                // Push error
+                                duplicateSerial.push(entry.nxid+": "+s)
+                        }))
+                    return
+                }
+                // Check for unserialized records
+                let unserializedRecordsCount = await PartRecord.count({nxid: entry.nxid, owner: old_owner, next: null, serial: undefined})
+                // Check quantities
+                if(unserializedRecordsCount<entry.unserialized)
+                    notEnough.push(entry.nxid)
+                // Check if serials are present but not required
+                if((entry.serials.length>0||(entry.newSerials&&entry.newSerials.length>0))&&new_owner!='sold')
+                   serialNotNeeded.push(entry.nxid) 
+                // Not serialized
+                // Check quantities
+                if(existingInv.unserialized<entry.unserialized)
+                    // Push error
+                    notEnough.push(entry.nxid)
+            }))
+            // Return to client with errors if present
+            if(duplicateEntry.length>0)
+                return res.status(400).send("Duplicate NXIDs in request: "+duplicateEntry.join(', '));
+            if(partNotFound.length>0)
+                return res.status(400).send("Part info not found for: "+partNotFound.join(', '));
+            if(notEnough.length>0)
+                return res.status(400).send("Not enough in inventory: "+notEnough.join(', '));
+            if(missingSerial.length>0)
+                return res.status(400).send("Serial numbers missing for: "+missingSerial.join(', '))
+            if(serialNotInInv.length>0)
+                return res.status(400).send("Serial not present in inventory: "+serialNotInInv.join(', '))
+            if(duplicateSerial.length>0)
+                return res.status(400).send("Serial number already exists for: "+duplicateSerial.join(', '))
+            if(serialNotNeeded.length>0)
+                return res.status(400).send("Serials not necessary for: "+serialNotNeeded.join(', '))
+            // Check if location is valid
+            let to = {} as PartRecordSchema
+            to.owner = new_owner ? new_owner as string : "";
             to.next = null
-            to.by = req.user.user_id
-            // Check NXIDs
-            if(from.nxid != to.nxid) {
-                return res.status(400).send("Mismatched nxids");
-            }
-            // Switch for setting location
-            switch (to.owner) {
+            switch (new_owner) {
                 case 'all':
                     // All techs
                     to.location = 'All Techs'
@@ -1011,8 +1150,9 @@ const partManager = {
                     to.location = 'Testing Center'
                     break;
                 case 'sold':
-                    if(!to.ebay)
+                    if(!req.body.orderID)
                         return res.status(400).send("Ebay order ID not present");
+                    to.ebay = req.body.orderID
                     to.next = 'sold'
                     to.location = 'sold'
                     break;
@@ -1047,29 +1187,166 @@ const partManager = {
                     to.location = 'Tech Inventory'
                     to.building = findUser.building
             }
-            if(to.owner!='sold')
-                delete to.ebay
-            // Get records
-            let fromRecords = await PartRecord.find(from)
-            // Check quantities
-            if (fromRecords.length >= quantity) {
-                // Create and update records
-                for (let i = 0; i < quantity; i++) {
-                    to.prev = fromRecords[i]._id
-                    PartRecord.create(to, callbackHandler.updateRecord)
+            to.date_created = Date.now()
+            to.building = to.building ? to.building : req.user.building
+            to.by = req.user.user_id
+            // Update records
+            await Promise.all(parts.map(async (entry)=>{
+                // If ebay order
+                if(to.ebay) {
+                    // Get unserialized
+                    let serialized = partSerialized.get(entry.nxid!)
+                    let unserializedRecords = [] as PartRecordSchema[]
+                    // If unserialized, fetch unserialized records for updating
+                    if(!serialized)
+                        unserializedRecords = await PartRecord.find({nxid: entry.nxid, serial: undefined, owner: old_owner, next: null})
+                    // Check quantities
+                    if(!serialized&&unserializedRecords.length<entry.serials.length)
+                        return
+                    entry.serials.map(async (s, index)=>{
+                                                // Clone to object
+                        let newRecord = structuredClone(to)
+                        // Set serial
+                        newRecord.nxid = entry.nxid
+                        newRecord.serial = s
+                        if(serialized) {
+                            // Find sepcific serial
+                            PartRecord.findOne({nxid: entry.nxid, serial: s, owner: old_owner, next: null}, (err: MongooseError, oldRecord: PartRecordSchema)=>{
+                                if(err)
+                                    return handleError(err)
+                                newRecord.prev = oldRecord._id
+                                // Create and upate
+                                PartRecord.create(newRecord, callbackHandler.updateRecord)
+                            })
+                        }
+                        else {
+                            // Previous record unserialized
+                            newRecord.prev = unserializedRecords[index]._id
+                            // Create new part record and update old one
+                            PartRecord.create(newRecord, callbackHandler.updateRecord)
+                        }
+                    })
                 }
-                // Return
-                return res.status(200).send("Success");
-            } else {
-                // Invalid quantities
-                return res.status(400).send("Invalid quantities");
-            }
-
-        } catch (err) {
+                else {
+                    entry.serials.map(async (s)=>{
+                        // Clone to object
+                        let newRecord = structuredClone(to)
+                        // Set serial
+                        newRecord.nxid = entry.nxid
+                        newRecord.serial = s
+                        PartRecord.findOne({nxid: entry.nxid, serial: s, owner: old_owner, next: null}, (err: MongooseError, oldRecord: PartRecordSchema)=>{
+                            if(err)
+                                return handleError(err)
+                            newRecord.prev = oldRecord._id
+                            PartRecord.create(newRecord, callbackHandler.updateRecord)
+                        })
+                    })
+                    // Update unserialized records
+                    let unserializedRecords = [] as PartRecordSchema[]
+                    if(entry.unserialized>0)
+                        unserializedRecords = await PartRecord.find({nxid: entry.nxid, serial: undefined, owner: old_owner, next: null})
+                    if(entry.unserialized>unserializedRecords.length)
+                        return
+                    for (let i = 0; i < entry.unserialized; i++) {
+                        // Clone to object
+                        let newRecord = structuredClone(to)
+                        newRecord.nxid = entry.nxid
+                        // If newSerials, add serial to object
+                        if(entry.newSerials)
+                            newRecord.serial = entry.newSerials[i]
+                        // Find objects with undefined serials
+                        newRecord.prev = unserializedRecords[i]._id
+                        PartRecord.create(newRecord, callbackHandler.updateRecord)
+                    }
+                }
+            }))
+            return res.status(200).send("Success");
+        } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+    // moveParts: async (req: Request, res: Response) => {
+    //     try {
+    //         // Get params from request
+    //         let { from, to, quantity } = req.body
+    //         from.next = null
+    //         to.next = null
+    //         to.by = req.user.user_id
+    //         // Check NXIDs
+    //         if(from.nxid != to.nxid) {
+    //             return res.status(400).send("Mismatched nxids");
+    //         }
+    //         // Switch for setting location
+    //         switch (to.owner) {
+    //             case 'all':
+    //                 // All techs
+    //                 to.location = 'All Techs'
+    //                 break;
+    //             case 'testing':
+    //                 // Testing center
+    //                 to.location = 'Testing Center'
+    //                 break;
+    //             case 'sold':
+    //                 if(!to.ebay)
+    //                     return res.status(400).send("Ebay order ID not present");
+    //                 to.next = 'sold'
+    //                 to.location = 'sold'
+    //                 break;
+    //             case 'lost':
+    //                 if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
+    //                     return res.status(400).send("You do not have permissions to mark parts as lost");
+    //                 to.next = 'lost'
+    //                 to.location = 'lost'
+    //                 break;
+    //             case 'broken':
+    //                 if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
+    //                     return res.status(400).send("You do not have permissions to mark parts as broken");
+    //                 to.next = 'broken'
+    //                 to.location = 'broken'
+    //                 break;
+    //             case 'deleted':
+    //                 if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
+    //                     return res.status(400).send("You do not have permissions to mark parts as deleted");
+    //                 to.next = 'deleted'
+    //                 to.location = 'deleted'
+    //                 break;
+    //             // Add more cases here if necessary...
+    //             default:
+    //                 if (!mongoose.Types.ObjectId.isValid(to.owner))
+    //                     return res.status(400).send("Invalid id")
+    //                 // Check if user exists
+    //                 let findUser = await User.findOne({ _id: to.owner })
+    //                 // Return if user not found
+    //                 if (findUser==null)
+    //                     return res.status(400).send("User not found")
+    //                 
+    //                 to.location = 'Tech Inventory'
+    //                 to.building = findUser.building
+    //         }
+    //         if(to.owner!='sold')
+    //             delete to.ebay
+    //         // Get records
+    //         let fromRecords = await PartRecord.find(from)
+    //         // Check quantities
+    //         if (fromRecords.length >= quantity) {
+    //             // Create and update records
+    //             for (let i = 0; i < quantity; i++) {
+    //                 to.prev = fromRecords[i]._id
+    //                 PartRecord.create(to, callbackHandler.updateRecord)
+    //             }
+    //             // Return
+    //             return res.status(200).send("Success");
+    //         } else {
+    //             // Invalid quantities
+    //             return res.status(400).send("Invalid quantities");
+    //         }
+
+    //     } catch (err) {
+    //         handleError(err)
+    //         return res.status(500).send("API could not handle your request: " + err);
+    //     }
+    // },
     getPartImage: async (req: Request, res: Response) => {
         try {
             // Create path to image

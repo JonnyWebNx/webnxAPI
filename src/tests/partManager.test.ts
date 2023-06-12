@@ -1,6 +1,6 @@
 import request from 'supertest'
 import config from "../config"
-import { CartItem, PartQuery, PartRecordSchema, PartSchema } from "../app/interfaces"
+import { CartItem, PartQuery, PartRecordSchema, PartSchema, InventoryEntry } from "../app/interfaces"
 import { jest } from '@jest/globals'
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 
@@ -144,30 +144,43 @@ async function makeSerializedCheckoutList() {
     })
 }
 // Move parts and return requests as array
-async function movePart(parts: CartItem[], to, from) {
-    return Promise.all(parts.map((item) => {
-        let req = {} as PartQuery
-        //
-        req.to = structuredClone(to)
-        req.to.nxid = item.nxid
-        //
-        req.from = structuredClone(from)
-        req.from.nxid = item.nxid
-        //
-        if(item.serial) {
-            req.to.serial = item.serial
-            req.from.serial = item.serial
-            req.quantity = 1
-        }
-        if(item.quantity)
-            req.quantity = item.quantity
-        //
-        console.log(req)
-        return request("localhost:4001")
-            .post("/api/part/move")
-            .set("Authorization", TECH_TOKEN!)
-            .send(req)
-    }))
+async function movePart(parts: CartItem[], to: string, from: string, orderID?: string) {
+    
+    let transferListHash = new Map<string, InventoryEntry>()
+    // Process transfer list
+    parts.map((item)=> {
+      // Create boilerplate
+      let invEntry = { serials: [], unserialized: 0} as InventoryEntry
+      // Check if it already exists in map
+      if(transferListHash.has(item.nxid!))
+        invEntry = transferListHash.get(item.nxid!)!
+      // Update values
+      if(item.serial)
+        // Push serial to array
+        invEntry.serials.push(item.serial)
+      else
+        // Increment unserialized
+        invEntry.unserialized+= item.quantity!
+      // Update hash
+      transferListHash.set(item.nxid!, invEntry)
+    })
+    // Turn hash map back into array
+    let partList = [] as InventoryEntry[]
+    transferListHash.forEach((v, k)=>{
+      v.nxid = k
+      partList.push(v)
+    })
+
+
+    return request("localhost:4001")
+        .post("/api/part/move")
+        .set("Authorization", TECH_TOKEN!)
+        .send({
+            old_owner: from,
+            new_owner: to,
+            parts: partList,
+            orderID
+        })
 }
 
 // Return request for user inventory with token
@@ -675,35 +688,13 @@ describe("Checkin", ()=>{
 })
 
 describe("Move parts", ()=>{
-    let allTechs = {
-        owner: 'all',
-        building: 3,
-    } as PartRecordSchema
-    let testing = {
-        owner: 'testing',
-        building: 3,
-    }
-    let techInventory = {
-        owner: TECH_USER_ID,
-        building: 3,
-    } as PartRecordSchema
-    let adminInventory = {
-        owner: ADMIN_USER_ID,
-        building: 3,
-    } as PartRecordSchema
-    let clerkInventory = {
-        owner: CLERK_USER_ID,
-        building: 3,
-    } as PartRecordSchema
-    let kioskInventory = {
-        owner: KIOSK_USER_ID,
-        building: 3,
-    } as PartRecordSchema
-    let salesInventory = {
-        owner: SALES_USER_ID,
-        building: 3,
-    } as PartRecordSchema
-
+    let allTechs = 'all'
+    let testing = 'testing'
+    let techInventory = TECH_USER_ID
+    let adminInventory = ADMIN_USER_ID
+    let clerkInventory = CLERK_USER_ID
+    let kioskInventory = KIOSK_USER_ID
+    let salesInventory = SALES_USER_ID
     it('Move from tech to all techs', async () => {
         // Search parts
         let search = await request("localhost:4001")
@@ -741,19 +732,17 @@ describe("Move parts", ()=>{
         expect(checkout.statusCode).toBe(200)
         // CHECK QUANTITY
         // Move parts to all techs 
-        let moves = await movePart(cart, allTechs, techInventory)
+        let move = await movePart(cart, allTechs, techInventory)
         // Check moves
-        moves.map((m)=>{
-            console.log(m.text)
-            // expect(m.statusCode).toBe(200)
-        })
+        expect(move.statusCode).toBe(200)
+        // expect(m.statusCode).toBe(200)
         // Check quantities
         let techInv = await getUserInventory(TECH_TOKEN!)
         expect(techInv.statusCode).toBe(200)
         // Move back
         let moveBack = await movePart(cart, techInventory, allTechs)
         // Check moves
-        moveBack.map((m)=>expect(m.statusCode).toBe(200))
+        expect(moveBack.statusCode).toBe(200)
         // Check quantities
         
         // Check in parts

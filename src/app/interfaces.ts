@@ -48,7 +48,8 @@ export interface PartSchema {
     port_type?: string,
     cable_end1?: string,
     cable_end2?: string,
-    serialized?: boolean
+    serialized?: boolean,
+    consumable?: boolean
 }
 export interface PartQuery {
     [index: string]: any,
@@ -81,6 +82,7 @@ export interface AssetSchema {
     units?: number,
     num_psu?: number,
     psu_model?: string,
+    parent?: string,
     cable_type?: string,
     num_bays?: number,
     bay_type?: string,
@@ -125,6 +127,13 @@ export interface LoadedCartItem {
     quantity?: number,
     serials?: string[],
     serial?: string
+}
+
+export interface InventoryEntry {
+    nxid?: string,
+    unserialized: number,
+    serials: string[],
+    newSerials?: string[]
 }
 
 // User schema

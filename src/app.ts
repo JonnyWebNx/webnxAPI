@@ -72,11 +72,11 @@ app.post("/api/register", sanitize, register);
 // ***   Parts   ***
 //
 // Create
-app.post("/api/part", auth, checkRoles(["clerk","admin"]), sanitize, partManager.createPart);
-app.post("/api/part/add", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.addToInventory);
+app.post("/api/part", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.createPart);
+app.post("/api/part/add", auth, checkRoles(["lead", "clerk", "admin"]), sanitize, partManager.addToInventory);
 app.post("/api/checkout", auth, checkRoles(["kiosk"]), sanitize, partManager.checkout);
 app.post("/api/checkin", auth, checkRoles(["kiosk"]), sanitize, partManager.checkin)
-app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, partManager.movePartRecords);
+app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "admin"]), sanitize, partManager.movePartRecords);
 // Read    throw new TypeError('path must be absolute or specify root to res.sendFile');
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)

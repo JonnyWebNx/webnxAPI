@@ -30,6 +30,8 @@ const asset = new mongoose.Schema({
     // POWER SUPPLY
     num_psu: { type: Number },
     psu_model: { type: String },
+    // Node
+    parent: { type: String },
     // Cable length
     cable_type: { type: String },
     num_bays: { type: Number },
