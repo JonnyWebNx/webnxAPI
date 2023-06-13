@@ -1205,7 +1205,7 @@ const partManager = {
                         return
                     entry.serials.map(async (s, index)=>{
                                                 // Clone to object
-                        let newRecord = structuredClone(to)
+                        let newRecord = JSON.parse(JSON.stringify(to))
                         // Set serial
                         newRecord.nxid = entry.nxid
                         newRecord.serial = s
@@ -1230,7 +1230,7 @@ const partManager = {
                 else {
                     entry.serials.map(async (s)=>{
                         // Clone to object
-                        let newRecord = structuredClone(to)
+                        let newRecord = JSON.parse(JSON.stringify(to))
                         // Set serial
                         newRecord.nxid = entry.nxid
                         newRecord.serial = s
@@ -1249,7 +1249,7 @@ const partManager = {
                         return
                     for (let i = 0; i < entry.unserialized; i++) {
                         // Clone to object
-                        let newRecord = structuredClone(to)
+                        let newRecord = JSON.parse(JSON.stringify(to))
                         newRecord.nxid = entry.nxid
                         // If newSerials, add serial to object
                         if(entry.newSerials)

@@ -227,33 +227,33 @@ function assetsAreSimilar(asset1: AssetSchema, asset2: AssetSchema) {
 }
 
 const assetManager = {
-    addMigratedAsset:async (req: Request, res: Response) => {
-        try {
-            // Get asset from body
-            let asset = req.body as AssetSchema
-            if(await Asset.exists({asset_tag: { $eq: (asset.asset_tag as string).toUpperCase() }, next: null})) {
-                console.log("exists")
-                return res.status(200).send()
-            }
-            // Log it
-            // Set building
-            asset.building = 3
-            asset.migrated = true
-            asset.date_created = asset.date_updated
-            asset.by = '645ac3e9043ae1ccffd84858'
-            Asset.create(asset, (err: CallbackError, record: AssetSchema) => {
-                if(err) {
-                    handleError(err)
-                    return res.status(500).send("API could not handle your request: "+err);        
-                }
-                res.status(200).send()
-            })
-        }
-        catch(err) {
-            handleError(err)
-            return res.status(500).send("API could not handle your request: "+err);
-        }
-    },
+    // addMigratedAsset:async (req: Request, res: Response) => {
+    //     try {
+    //         // Get asset from body
+    //         let asset = req.body as AssetSchema
+    //         if(await Asset.exists({asset_tag: { $eq: (asset.asset_tag as string).toUpperCase() }, next: null})) {
+    //             console.log("exists")
+    //             return res.status(200).send()
+    //         }
+    //         // Log it
+    //         // Set building
+    //         asset.building = 3
+    //         asset.migrated = true
+    //         asset.date_created = asset.date_updated
+    //         asset.by = '645ac3e9043ae1ccffd84858'
+    //         Asset.create(asset, (err: CallbackError, record: AssetSchema) => {
+    //             if(err) {
+    //                 handleError(err)
+    //                 return res.status(500).send("API could not handle your request: "+err);        
+    //             }
+    //             res.status(200).send()
+    //         })
+    //     }
+    //     catch(err) {
+    //         handleError(err)
+    //         return res.status(500).send("API could not handle your request: "+err);
+    //     }
+    // },
     addUntrackedAsset: async (req: Request, res: Response) => {
         try {
             // Get asset from request

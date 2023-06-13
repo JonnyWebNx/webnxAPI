@@ -114,7 +114,7 @@ app.delete("/api/user", auth, checkRoles(["admin"]), sanitize, userManager.delet
 // ***    Assets    ****
 //Create
 app.post("/api/asset", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, assetManager.addUntrackedAsset);
-app.post("/api/asset/migrate", sanitize, assetManager.addMigratedAsset);
+// app.post("/api/asset/migrate", sanitize, assetManager.addMigratedAsset);
 /**
  * 
  * NO AUTHENTICATION
