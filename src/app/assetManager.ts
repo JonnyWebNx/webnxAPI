@@ -231,6 +231,11 @@ const assetManager = {
         try {
             // Get asset from body
             let asset = req.body as AssetSchema
+            console.log("checking")
+            if(await Asset.exists({asset_tag: { $eq: (asset.asset_tag as string).toUpperCase() }, next: null})) {
+                console.log("exists")
+                return res.status(200).send()
+            }
             // Log it
             // Set building
             asset.building = 3
