@@ -240,7 +240,7 @@ const assetManager = {
             asset.building = 3
             asset.migrated = true
             asset.date_created = asset.date_updated
-            asset.by = '634e3e4a6c5d3490babcdc21'
+            asset.by = '645ac3e9043ae1ccffd84858'
             Asset.create(asset, (err: CallbackError, record: AssetSchema) => {
                 if(err) {
                     handleError(err)
