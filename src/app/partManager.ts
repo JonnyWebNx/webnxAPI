@@ -1152,7 +1152,7 @@ const partManager = {
                 case 'sold':
                     if(!req.body.orderID)
                         return res.status(400).send("Ebay order ID not present");
-                    if(!req.user.roles.includes("ebay")||!req.user.roles.includes("admin"))
+                    if(!(req.user.roles.includes("ebay")||req.user.roles.includes("admin")))
                         return res.status(400).send("You do not have eBay permissions");
                     to.ebay = req.body.orderID
                     to.next = 'sold'
