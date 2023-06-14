@@ -467,7 +467,7 @@ const assetManager = {
     updateAsset: async (req: Request, res: Response) => {
         try {
             // Get data from request body
-            let { asset, parts } = req.body;
+            let { asset, parts, correction } = req.body;
             // Check if asset is valid
             if (!/WNX([0-9]{7})+/.test(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
@@ -616,8 +616,17 @@ const assetManager = {
                 owner: req.user.user_id,
                 next: null
             }
+            // Mark removed parts as deleted
+            if(correction) {
+                delete removedOptions.owner
+                removedOptions.location = 'deleted'
+                removedOptions.next = 'deleted'
+            }
             // Update removed parts
             await updateParts(removedOptions, assetSearchOptions, removed, isMigrated)
+            // Create new part records for added parts
+            if(correction)
+                isMigrated = true
             // Update added parts
             await updateParts(addedOptions, userSearchOptions, added, isMigrated)
     
