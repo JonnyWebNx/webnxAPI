@@ -72,6 +72,7 @@ function cleansePart(part: PartSchema) {
         case "Cable":
             newPart.cable_end1 = part.cable_end1
             newPart.cable_end2 = part.cable_end2
+            newPart.consumable = part.consumable
             break                
         case "Heatsink":
             newPart.socket = part.socket
