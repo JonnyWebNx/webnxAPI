@@ -17,8 +17,7 @@
             "@types/express/index.d.ts",
             "./node_modules/@types",
             "./global.d.ts"
-        ],
-        
+        ]
     },
     "exclude": [ "src/tests"]
 }
