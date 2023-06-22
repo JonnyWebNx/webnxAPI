@@ -199,31 +199,31 @@ const partManager = {
             Part.find(search_part)
                 .skip(pageSize * (pageNum - 1))
                 .limit(pageSize + 1)
-                .exec(async (err: CallbackError | null, parts: PartSchema[]) => {
-                if (err) {
-                    // Database err
-                    handleError(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                let returnParts = await Promise.all(parts.map(async(part)=>{
-                    let count = await PartRecord.count({
-                        nxid: part.nxid,
-                        next: null,
-                        location: location ? location : "Parts Room",
-                        building: building ? building : req.user.building
-                    });
-                    let total_count = await PartRecord.count({
-                        nxid: part.nxid,
-                        next: null
-                    });
-                    let tempPart = JSON.parse(JSON.stringify(part))
-                    
-                    tempPart.quantity = count;
-                    tempPart.total_quantity = total_count;
-                    return tempPart
-                }))
-                return res.status(200).json(returnParts);
-            })
+                .exec(async (err: CallbackError | null, parts) => {
+                    if (err) {
+                        // Database err
+                        handleError(err)
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    let returnParts = await Promise.all(parts.map(async(part)=>{
+                        let count = await PartRecord.count({
+                            nxid: part.nxid,
+                            next: null,
+                            location: location ? location : "Parts Room",
+                            building: building ? building : req.user.building
+                        });
+                        let total_count = await PartRecord.count({
+                            nxid: part.nxid,
+                            next: null
+                        });
+                        let tempPart = JSON.parse(JSON.stringify(part))
+                        
+                        tempPart.quantity = count;
+                        tempPart.total_quantity = total_count;
+                        return tempPart
+                    }))
+                    return res.status(200).json(returnParts);
+                })
         } catch (err) {
             // Database error
             handleError(err)
@@ -550,7 +550,7 @@ const partManager = {
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 // Map for all parts
-                let returnParts = await Promise.all(parts.map(async (part)=>{
+                let returnParts = await Promise.all(parts.map(async (part: PartSchema)=>{
                     // Check parts room quantity
                     let count = await PartRecord.count({
                         nxid: part.nxid,

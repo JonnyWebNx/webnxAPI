@@ -21,7 +21,7 @@ export interface LoadedPartRecord {
 // Database part schema
 export interface PartSchema {
     [index: string]: any,
-    _id?: string | Types.ObjectId,
+    _id?: any,
     nxid?: string,
     manufacturer?: string,
     name?: string,
@@ -56,7 +56,7 @@ export interface PartQuery {
 }
 export interface AssetSchema {
     [index: string]: any,
-    _id?: string | Types.ObjectId,
+    _id?: any,
     asset_tag?: string,
     prev?: string|null | Types.ObjectId,
     next?: string|null | Types.ObjectId,
@@ -97,7 +97,7 @@ export interface AssetSchema {
 }
 
 export interface PartRecordSchema {
-    _id?: string | Types.ObjectId,
+    _id?: any,
     nxid?: string,
     prev?: string|null | Types.ObjectId,
     next?: string|null | Types.ObjectId,
@@ -147,7 +147,7 @@ export interface UserSchema {
     password?: string,
     enabled?: boolean,
     _v?: number,
-    _id?: string | Types.ObjectId
+    _id?: any 
 }
 
 export type AssetHistory = AssetEvent[]
