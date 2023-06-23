@@ -1141,11 +1141,33 @@ const partManager = {
             let to = {} as PartRecordSchema
             to.owner = new_owner ? new_owner as string : "";
             to.next = null
+            let buildingSwitchPerms = req.user.roles.includes("clerk")||req.user.roles.includes("admin")
+            let ebayPerms = req.user.roles.includes("ebay")||req.user.roles.includes("admin")
             switch (new_owner) {
                 case 'all':
                     // All techs
                     to.location = 'All Techs'
                     break;
+                // LA parts transfer
+                case 'la':
+                    if(!buildingSwitchPerms)
+                        return res.status(400).send("Invalid permissions");
+                    to.location = 'LA Transfers'
+                    to.building = 1
+                    break;
+                // Ogden parts transfer
+                case 'og':
+                    if(!buildingSwitchPerms)
+                        return res.status(400).send("Invalid permissions");
+                    to.location = 'Ogden Transfers'
+                    to.building = 3
+                    break
+                case 'ny':
+                    if(!buildingSwitchPerms)
+                        return res.status(400).send("Invalid permissions");
+                    to.location = 'NY Transfers'
+                    to.building = 4
+                    break
                 case 'testing':
                     // Testing center
                     to.location = 'Testing Center'
@@ -1153,7 +1175,7 @@ const partManager = {
                 case 'sold':
                     if(!req.body.orderID)
                         return res.status(400).send("Ebay order ID not present");
-                    if(!(req.user.roles.includes("ebay")||req.user.roles.includes("admin")))
+                    if(!ebayPerms)
                         return res.status(400).send("You do not have eBay permissions");
                     to.ebay = req.body.orderID
                     to.next = 'sold'
