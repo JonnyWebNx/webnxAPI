@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import User from "../model/user.js";
-import handleError from "../config/mailer.js";
+import handleError from "../config/handleError.js";
 import { Request, Response } from "express";
 import config from '../config.js'
 import { PartQuery, UserSchema } from './interfaces.js';

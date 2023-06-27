@@ -1,5 +1,5 @@
 import { CallbackError, MongooseError } from 'mongoose'
-import handleError from '../config/mailer.js'
+import handleError from '../config/handleError.js'
 import PartRecord from '../model/partRecord.js'
 import { PartRecordSchema } from '../app/interfaces.js'
 

@@ -68,6 +68,8 @@ app.post("/api/auth", auth, isAuth);
 app.post("/api/login", sanitize, login);
 // Register
 app.post("/api/register", sanitize, register);
+app.get("/api/password/reset", sanitize, userManager.sendPasswordResetEmail)
+app.post("/api/password/reset", sanitize, userManager.updatePassword)
 
 // ***   Parts   ***
 //
@@ -77,7 +79,7 @@ app.post("/api/part/add", auth, checkRoles(["lead", "clerk", "admin"]), sanitize
 app.post("/api/checkout", auth, checkRoles(["kiosk"]), sanitize, partManager.checkout);
 app.post("/api/checkin", auth, checkRoles(["kiosk"]), sanitize, partManager.checkin)
 app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "admin"]), sanitize, partManager.movePartRecords);
-// Read    throw new TypeError('path must be absolute or specify root to res.sendFile');
+// Read 
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
@@ -88,12 +90,12 @@ app.get("/api/part/records", auth, sanitize, partManager.getPartRecords);
 app.get("/api/part/records/id", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
-app.delete("/api/partRecord", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deleteFromPartsRoom);
 // Update
 app.put("/api/part", auth, checkRoles(["clerk", "admin"]), partManager.updatePartInfo);
 app.put("/images/parts", auth, sanitize, checkRoles(["clerk", "admin"]), uploadImage, updatePartImage);
 // Delete
 app.delete("/api/part", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deletePart);
+app.delete("/api/partRecord", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deleteFromPartsRoom);
 
 
 // ***   Users   ***

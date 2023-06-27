@@ -31,6 +31,7 @@ const handleError = (error: Error | MongooseError | string) => {
           console.log('Email sent: ' + info.response);
         }
       }); 
+      transporter.close()
     }
   }
 

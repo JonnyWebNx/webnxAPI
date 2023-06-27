@@ -1,7 +1,7 @@
 import User from '../model/user.js'
 import bcrypt from 'bcryptjs'
 import jwt from "jsonwebtoken";
-import handleError from "../config/mailer.js";
+import handleError from "../config/handleError.js";
 import { Request, Response } from "express";
 import config from '../config.js'
 const { JWT_EXPIRES_IN, JWT_SECRET} = config

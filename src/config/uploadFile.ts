@@ -1,7 +1,7 @@
 import multer from "multer";
 import config from "../config.js";
 import { Request, Response } from "express";
-import handleError from "../config/mailer.js";
+import handleError from "../config/handleError.js";
 import sharp from "sharp";
 import path from "path";
 import * as fs from 'fs';

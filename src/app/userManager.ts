@@ -16,36 +16,17 @@ import type { Request, Response } from 'express'
 import { PartQuery, UserSchema } from './interfaces.js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import handleError from '../config/mailer.js'
+import handleError from '../config/handleError.js'
+import nodemailer from 'nodemailer'
+import { Options } from 'nodemailer/lib/mailer/index.js'
 import config from '../config.js'
-const {UPLOAD_DIRECTORY} = config
+import crypto from 'crypto'
+import resetToken from '../model/resetToken.js';
+
+const {UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS, JWT_SECRET} = config
 
 // Main object containing functions
 const userManager = {
-    // Create
-    // createUser: async (req: Request, res: Response) => {
-    //     // Get required fields from request body
-    //     let { first_name, last_name, email, password } = req.body;
-    //     // Check if all required fields are filled
-    //     if (!(first_name && last_name && email && password)){
-    //         return res.status(400).send("Invalid request.")
-    //     }
-    //     // Check if email is already in use
-    //     if (await User.findOne({ email })){
-    //         return res.status(400).send("User already exists.");
-    //     }
-    //     // Encrypt user password
-    //     let encryptedPassword  = await bcrypt.hash(password, 10);
-    //     // Send user data to database
-    //     User.create({first_name, last_name, email, password: encryptedPassword}, (err, user) => {
-    //         // If database insertion fails
-    //         if(err){
-    //             return res.status(500).send("API could not handle your request: "+err);
-    //         }
-    //         // If user creation is successful
-    //         return res.status(200).send(`Created user: ${user.first_name} ${user.last_name}`);
-    //     })
-    // },
     // Read
     getUser: async (req: Request, res: Response) => {
         try{
@@ -117,26 +98,74 @@ const userManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
-    // updatePassword: async (req: Request, res: Response) => {
-    //     const { user_id } = req.user;
-    //     // get password
-    //     const { password } = req.body;
-    //     try {
-    //         if(!password){
-    //             return res.status(400).send("Invalid request.");
-    //         }
-    //         const encryptedPassword = await bcrypt.hash(password, 10);
-    //         let user = await User.findByIdAndUpdate(user_id, { password: encryptedPassword });
-    //         if(user!=null){
-    //             // remove password from response
-    //             let { password, ...returnUser } = JSON.parse(JSON.stringify(user))
-    //             return res.status(200).send(returnUser);
-    //         }
-    //         return res.status(400).send("User not found");
-    //     } catch(err) {
-    //         return res.status(500).send("API could not handle your request: "+err);
-    //     }
-    // },
+    sendPasswordResetEmail: async (req: Request, res: Response) => {
+        let email = req.query.email
+        let user = await User.findOne({email})
+        if(!user)
+            return res.status(400).send("User not found")
+        // Check for existing token
+        let existingToken = await resetToken.findOne({ userId: user._id })
+        // Delete if one already exists
+        if (existingToken)
+            await resetToken.deleteOne(existingToken._id)
+        // Create new token
+        let newResetToken = crypto.randomBytes(32).toString("hex");
+        // Create hash of token
+        const hash = await bcrypt.hash(newResetToken, 10);
+        // Create new token
+        await resetToken.create({ userId: user._id, token: hash })
+        
+        let link = `https://inventory.webnx.com/passwordReset?token=${newResetToken}&userId=${user._id}`
+        console.log(link)
+        let transporter = nodemailer.createTransport({
+            service: 'Gmail',
+            auth: {
+                user: EMAIL,
+                pass: EMAIL_PASS
+            }
+        });
+        let mailOptions = {
+            from: EMAIL,
+            to: email,
+            subject: `Password Reset`,
+            text: `Here is a password reset link, it will expire in 1 hour.\n${link}`
+        };
+        transporter.sendMail(mailOptions as Options, function(err, info){
+            transporter.close()
+            if (err) {
+                console.log(err)
+                return res.status(500).send("Email failed to send.");
+            }
+            return res.status(200).send("Email sent.");
+        }); 
+    },
+    updatePassword: async (req: Request, res: Response) => {
+        // get password
+        const { user_id, token, password } = req.body;
+        try {
+            if(!user_id||!password||!token)
+                return res.status(400).send("Invalid request.");
+            let user = await User.findById(user_id)
+            let databaseToken = await resetToken.findOne({userId: user_id})
+            // Check request
+            if(!databaseToken)
+                return res.status(400).send("Token expired or invalid.");
+            if(!user)
+                return res.status(400).send("User not found")
+            // Check if token is valid
+            let tokenValid = bcrypt.compare(token, databaseToken.token!)
+            // Return if token invalid
+            if(!tokenValid){
+                return res.status(400).send("Invalid token.");
+            }
+            const encryptedPassword = await bcrypt.hash(password, 10);
+            await User.findByIdAndUpdate(user_id, { password: encryptedPassword });
+            await resetToken.findByIdAndDelete(databaseToken._id)
+            return res.status(200).send("Success");
+        } catch(err) {
+            return res.status(500).send("API could not handle your request: "+err);
+        }
+    },
     // Delete - id required in query string
     deleteUser: async (req: Request, res: Response) => {
         // Get user id from query string

@@ -11,7 +11,7 @@ import Part from '../model/part.js'
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
 import User from "../model/user.js";
-import handleError from "../config/mailer.js";
+import handleError from "../config/handleError.js";
 import callbackHandler from '../middleware/callbackHandlers.js'
 import { AssetSchema, CartItem, InventoryEntry, PartRecordSchema } from "./interfaces.js";
 import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
@@ -1335,87 +1335,6 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    // moveParts: async (req: Request, res: Response) => {
-    //     try {
-    //         // Get params from request
-    //         let { from, to, quantity } = req.body
-    //         from.next = null
-    //         to.next = null
-    //         to.by = req.user.user_id
-    //         // Check NXIDs
-    //         if(from.nxid != to.nxid) {
-    //             return res.status(400).send("Mismatched nxids");
-    //         }
-    //         // Switch for setting location
-    //         switch (to.owner) {
-    //             case 'all':
-    //                 // All techs
-    //                 to.location = 'All Techs'
-    //                 break;
-    //             case 'testing':
-    //                 // Testing center
-    //                 to.location = 'Testing Center'
-    //                 break;
-    //             case 'sold':
-    //                 if(!to.ebay)
-    //                     return res.status(400).send("Ebay order ID not present");
-    //                 to.next = 'sold'
-    //                 to.location = 'sold'
-    //                 break;
-    //             case 'lost':
-    //                 if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
-    //                     return res.status(400).send("You do not have permissions to mark parts as lost");
-    //                 to.next = 'lost'
-    //                 to.location = 'lost'
-    //                 break;
-    //             case 'broken':
-    //                 if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
-    //                     return res.status(400).send("You do not have permissions to mark parts as broken");
-    //                 to.next = 'broken'
-    //                 to.location = 'broken'
-    //                 break;
-    //             case 'deleted':
-    //                 if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
-    //                     return res.status(400).send("You do not have permissions to mark parts as deleted");
-    //                 to.next = 'deleted'
-    //                 to.location = 'deleted'
-    //                 break;
-    //             // Add more cases here if necessary...
-    //             default:
-    //                 if (!mongoose.Types.ObjectId.isValid(to.owner))
-    //                     return res.status(400).send("Invalid id")
-    //                 // Check if user exists
-    //                 let findUser = await User.findOne({ _id: to.owner })
-    //                 // Return if user not found
-    //                 if (findUser==null)
-    //                     return res.status(400).send("User not found")
-    //                 
-    //                 to.location = 'Tech Inventory'
-    //                 to.building = findUser.building
-    //         }
-    //         if(to.owner!='sold')
-    //             delete to.ebay
-    //         // Get records
-    //         let fromRecords = await PartRecord.find(from)
-    //         // Check quantities
-    //         if (fromRecords.length >= quantity) {
-    //             // Create and update records
-    //             for (let i = 0; i < quantity; i++) {
-    //                 to.prev = fromRecords[i]._id
-    //                 PartRecord.create(to, callbackHandler.updateRecord)
-    //             }
-    //             // Return
-    //             return res.status(200).send("Success");
-    //         } else {
-    //             // Invalid quantities
-    //             return res.status(400).send("Invalid quantities");
-    //         }
-
-    //     } catch (err) {
-    //         handleError(err)
-    //         return res.status(500).send("API could not handle your request: " + err);
-    //     }
-    // },
     getPartImage: async (req: Request, res: Response) => {
         try {
             // Create path to image

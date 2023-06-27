@@ -7,7 +7,7 @@
  * 
  */
 import mongoose, { MongooseError } from 'mongoose'
-import handleError from '../config/mailer.js'
+import handleError from '../config/handleError.js'
 import config from '../config.js'
 
 // Connects when imported

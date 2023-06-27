@@ -5,6 +5,12 @@ export interface NXRequest extends Request {
     user: ReqUser
 }
 
+export interface ResetToken {
+    userId: string | Types.ObjectId,
+    token: string,
+    createdAt: Date
+}
+
 export interface ReqUser {
     user_id: string | Types.ObjectId,
     email: string,
