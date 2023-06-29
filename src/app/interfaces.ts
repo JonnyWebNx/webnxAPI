@@ -56,6 +56,7 @@ export interface PartSchema {
     cable_end2?: string,
     serialized?: boolean,
     consumable?: boolean
+    audited?: string | number | Date,
 }
 export interface PartQuery {
     [index: string]: any,

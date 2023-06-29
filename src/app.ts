@@ -90,6 +90,7 @@ app.get("/api/part/records", auth, sanitize, partManager.getPartRecords);
 app.get("/api/part/records/id", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
+app.get("/api/part/audit", auth, sanitize, checkRoles(["clerk", "admin"]), partManager.auditPart)
 // Update
 app.put("/api/part", auth, checkRoles(["clerk", "admin"]), partManager.updatePartInfo);
 app.put("/images/parts", auth, sanitize, checkRoles(["clerk", "admin"]), uploadImage, updatePartImage);

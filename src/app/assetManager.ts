@@ -54,6 +54,17 @@ function createPartRecords(parts: CartItem[], asset_tag: string, user_id: any, b
     }))
 }
 
+function returnSearch(res: Response, numPages: number, numAssets: number) {
+    return async (err: CallbackError | null, assets: AssetSchema[])  => {
+        if (err) {
+            // Database err
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+        // Map for all parts
+        return res.status(200).json({numPages, numAssets, assets});
+    }
+}
 /**
  * 
  * @param asset 
@@ -317,11 +328,13 @@ const assetManager = {
             // get object from request
             let asset = req.query as AssetSchema;
             asset.next = null;
+            let numAssets = await Asset.count(asset)
+            let numPages = numAssets%pageSize>0 ? Math.trunc(numAssets/pageSize) + 1 : Math.trunc(numAssets/pageSize)
             // Send request to database
             Asset.find(asset)
                 .skip(pageSize * (pageNum - 1))
                 .limit(Number(pageSize)+1)
-                .exec(returnAssets(res))
+                .exec(returnSearch(res, numPages, numAssets))
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);
@@ -364,9 +377,16 @@ const assetManager = {
             // Search data
             // Limit
             // Page number
-            const searchString = req.query.searchString? stringSanitize(req.query.searchString as string, true) : ""
-            const pageSize = req.query.pageSize? parseInt(req.query.pageSize as string) : 25
-            const pageNum = req.query.pageNum? parseInt(req.query.pageNum as string) : 1
+            let { searchString, pageSize, pageNum } = req.query;
+            let pageSizeInt = parseInt(pageSize as string)
+            let pageNumInt = parseInt(pageNum as string)
+            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
+                return res.status(400).send("Invalid page number or page size");
+            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            if(typeof(searchString)!="string") {
+                return res.status(400).send("Search string undefined");
+            }
+            console.log("Page Skip: "+pageSkip)
             // Find parts
             // Skip - gets requested page number
             // Limit - returns only enough elements to fill page
@@ -380,11 +400,17 @@ const assetManager = {
                 fullText = true
             // Fulltext search
             if (fullText) {
+                let numAssets = await Asset.count(searchString != ''? { $text: { $search: searchString } } : {}).where({next: null})
+                // Ternary that hurts my eyes
+                let numPages = numAssets%pageSizeInt>0 ? Math.trunc(numAssets/pageSizeInt) + 1 : Math.trunc(numAssets/pageSizeInt)
+
+                console.log("Num Assets:"+numAssets)
+                console.log("Num Pages:"+numPages)
                 Asset.find(searchString != ''? { $text: { $search: searchString } } : {})
                     .where({next: null})
-                    .skip(pageSize * (pageNum - 1))
-                    .limit(Number(pageSize)+1)
-                    .exec(returnAssets(res))
+                    .skip(pageSkip)
+                    .limit(pageSizeInt+1)
+                    .exec(returnSearch(res, numPages, numAssets))
             }
             else {
                 // Keyword search
@@ -408,6 +434,23 @@ const assetManager = {
                     searchOptions.push({ "private_port": { $regex: key, $options: "is" } })
                     searchOptions.push({ "ipmi_port": { $regex: key, $options: "is" } })
                 })
+
+                // Aggregate count
+                let countQuery = await Asset.aggregate([{ $match: {
+                    $and: [
+                        { $or: searchOptions },
+                        { next: null }
+                    ]
+                    
+                        } 
+                    }]).count("numAssets")
+                // This is stupid but it works
+                let numAssets = countQuery.length > 0&&countQuery[0].numAssets ? countQuery[0].numAssets : 0
+                // Ternary that hurts my eyes
+                let numPages = numAssets%pageSizeInt>0 ? Math.trunc(numAssets/pageSizeInt) + 1 : Math.trunc(numAssets/pageSizeInt)
+
+                console.log("Num Assets:"+numAssets)
+                console.log("Num Pages:"+numPages)
                 Asset.aggregate([{ $match: {
                     $and: [
                         { $or: searchOptions },
@@ -416,9 +459,9 @@ const assetManager = {
                     
                         } 
                     }])
-                    .skip(pageSize * (pageNum - 1))
-                    .limit(Number(pageSize)+1)
-                    .exec(returnAssets(res))
+                    .skip(pageSkip)
+                    .limit(pageSizeInt+1)
+                    .exec(returnSearch(res, numPages, numAssets))
             }
         } catch (err) {
             handleError(err)
@@ -595,7 +638,7 @@ const assetManager = {
                         return res.status(500).send("API could not handle your request: " + err);
                     }
                     // Update old asset
-                    Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id, date_replaced: current_date }, returnAsset)
+                    Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id, date_replaced: current_date }, returnAsset(res))
                 })
             }
             else {

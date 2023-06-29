@@ -196,6 +196,8 @@ const partManager = {
                 // Any value here is likely a boolean
                 search_part[k] = req_part[k]
             })
+            let numParts = await Part.count(search_part)
+            let numPages = numParts%pageSize>0 ? Math.trunc(numParts/pageSize) + 1 : Math.trunc(numParts/pageSize)
             Part.find(search_part)
                 .skip(pageSize * (pageNum - 1))
                 .limit(pageSize + 1)
@@ -222,7 +224,7 @@ const partManager = {
                         tempPart.total_quantity = total_count;
                         return tempPart
                     }))
-                    return res.status(200).json(returnParts);
+                    return res.status(200).json({numParts, numPages, parts: returnParts});
                 })
         } catch (err) {
             // Database error
@@ -543,35 +545,38 @@ const partManager = {
     },
     searchParts: async (req: Request, res: Response) => {
         try {
-            async function returnSearch(err: CallbackError | null, parts: PartSchema[]) {
-                if (err) {
-                    // Database err
-                    handleError(err)
-                    return res.status(500).send("API could not handle your request: " + err);
+            function returnSearch(numPages: number, numParts: number) {
+                // Return mongoose callback
+                return async (err: CallbackError | null, parts: PartSchema[])  => {
+                    if (err) {
+                        // Database err
+                        handleError(err)
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    // Map for all parts
+                    let returnParts = await Promise.all(parts.map(async (part: PartSchema)=>{
+                        // Check parts room quantity
+                        let count = await PartRecord.count({
+                            nxid: part.nxid,
+                            next: null,
+                            location: location ? location : "Parts Room",
+                            building: building ? building : req.user.building
+                        });
+                        // Get total quantity
+                        let total_count = await PartRecord.count({
+                            nxid: part.nxid,
+                            next: null
+                        });
+                        // Copy part
+                        let tempPart = JSON.parse(JSON.stringify(part))
+                        // Add quantities
+                        tempPart.quantity = count;
+                        tempPart.total_quantity = total_count;
+                        // Return
+                        return tempPart
+                    }))
+                    return res.status(200).json({ numPages, numParts, parts: returnParts});
                 }
-                // Map for all parts
-                let returnParts = await Promise.all(parts.map(async (part: PartSchema)=>{
-                    // Check parts room quantity
-                    let count = await PartRecord.count({
-                        nxid: part.nxid,
-                        next: null,
-                        location: location ? location : "Parts Room",
-                        building: building ? building : req.user.building
-                    });
-                    // Get total quantity
-                    let total_count = await PartRecord.count({
-                        nxid: part.nxid,
-                        next: null
-                    });
-                    // Copy part
-                    let tempPart = JSON.parse(JSON.stringify(part))
-                    // Add quantities
-                    tempPart.quantity = count;
-                    tempPart.total_quantity = total_count;
-                    // Return
-                    return tempPart
-                }))
-                return res.status(200).json(returnParts);
             }
             // Search data
             // Limit
@@ -580,27 +585,36 @@ const partManager = {
             // Find parts
             // Skip - gets requested page number
             // Limit - returns only enough elements to fill page
-
+            let pageSizeInt = parseInt(pageSize as string)
+            let pageNumInt = parseInt(pageNum as string)
+            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
+                return res.status(400).send("Invalid page number or page size");
+            let pageSkip = pageSizeInt * (pageNumInt - 1)
             // Splice keywords from search string
             if(typeof(searchString)!="string") {
                 return res.status(400).send("Search string undefined");
             }
+            // Strict sanitize
             searchString = stringSanitize(searchString, true)
             
             let fullText = false
+            // Check if find works
             let pp = await Part.findOne(searchString != ''? { $text: { $search: searchString } } : {})
             if(pp!=undefined)
                 fullText = true
 
             if (fullText) {
                 // Search data
+                let numParts = await Part.count(searchString != ''? { $text: { $search: searchString } } : {})
+                let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
                 Part.find(searchString != ''? { $text: { $search: searchString } } : {})
                 // Skip - gets requested page number
-                .skip(parseInt(pageSize as string) * (parseInt(pageNum as string) - 1))
+                .skip(pageSkip)
                 // Limit - returns only enough elements to fill page
-                .limit(parseInt(pageSize as string) + 1)
-                .exec(returnSearch)
+                .limit(pageSizeInt + 1)
+                .exec(returnSearch(numPages, numParts))
             }
+            // Find doesn't work, use aggregation pipeline
             else {
                 let keywords = [searchString]
                 keywords = keywords.concat(searchString.split(" "))
@@ -625,10 +639,17 @@ const partManager = {
                     searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
                     searchOptions.push({ "socket": { $regex: key, $options: "is" } })
                 }))
+                // Aggregate count
+                let countQuery = await Part.aggregate([{ $match: { $or: searchOptions } }]).count("numParts")
+                // This is stupid but it works
+                let numParts = countQuery.length > 0&&countQuery[0].numParts ? countQuery[0].numParts : 0
+                // Ternary that hurts my eyes
+                let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
+                // Search
                 Part.aggregate([{ $match: { $or: searchOptions } }])
-                    .skip(parseInt(pageSize as string) * (parseInt(pageNum as string) - 1))
-                    .limit(parseInt(pageSize as string) + 1)
-                    .exec(returnSearch)
+                    .skip(pageSkip)
+                    .limit(pageSizeInt + 1)
+                    .exec(returnSearch(numPages, numParts))
             }
         } catch (err) {
             handleError(err)
@@ -1344,6 +1365,28 @@ const partManager = {
                 imagePath = path.join(UPLOAD_DIRECTORY, 'images', 'notfound.webp')
             // Send image
             res.sendFile(imagePath)
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    auditPart: async (req: Request, res: Response) => {
+        try {
+            // Create path to image
+            let nxid = req.query.nxid as string
+            // Check if NXID valid
+            if(!nxid||!/PNX([0-9]{7})+/.test(nxid))
+                return res.status(400).send("NXID invalid");
+            let date = Date.now()
+            // Find and update part
+            Part.findOneAndUpdate({nxid}, { audited: date }, (err: MongooseError, part: PartSchema) => {
+                if(err) {
+                    handleError(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                // Success
+                return res.status(200).send(part);
+            })
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
