@@ -287,7 +287,7 @@ const assetManager = {
             asset = cleanseAsset(asset)
 
             if(asset.parent&&asset.parent!='') {
-                let parentChassis = await Asset.findOne({nxid: asset.parent, next: null})
+                let parentChassis = await Asset.findOne({asset_tag: asset.parent, next: null})
                 if(parentChassis==null)
                     return res.status(400).send(`Node chassis not found`);
             }
@@ -486,7 +486,7 @@ const assetManager = {
             asset = cleanseAsset(asset)
             // Check if node parent chassis exists
             if(asset.parent&&asset.parent!='') {
-                let parentChassis = await Asset.findOne({nxid: asset.parent, next: null})
+                let parentChassis = await Asset.findOne({asset_tag: asset.parent, next: null})
                 if(parentChassis==null)
                     return res.status(400).send(`Node chassis not found`);
             }
