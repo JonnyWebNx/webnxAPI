@@ -62,6 +62,7 @@ function cleansePart(part: PartSchema) {
             break
         case "Storage":
             newPart.storage_type = part.storage_type
+            newPart.storage_interface = part.storage_interface
             newPart.size = part.size
             newPart.capacity = part.capacity
             newPart.capacity_unit = part.capacity_unit
