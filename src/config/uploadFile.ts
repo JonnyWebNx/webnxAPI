@@ -23,8 +23,6 @@ export async function updatePartImage (req: Request, res: Response) {
         const tempPath = req.file?.path
         // Get original name
         const originalName = req.file?.originalname
-        console.log(`Original name: ${originalName}`)
-        console.log(`Original name: ${req.file?.filename}`)
         // Check if part exists or name is invalid
         if(!part.exists({nxid: originalName })||!/PNX([0-9]{7})+/.test(originalName!))
             return res.status(400).send("Invalid request")

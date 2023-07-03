@@ -116,7 +116,6 @@ const userManager = {
         await resetToken.create({ userId: user._id, token: hash })
         
         let link = `https://inventory.webnx.com/passwordReset?token=${newResetToken}&userId=${user._id}`
-        console.log(link)
         let transporter = nodemailer.createTransport({
             service: 'Gmail',
             auth: {

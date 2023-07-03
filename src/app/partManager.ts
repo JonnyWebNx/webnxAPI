@@ -677,7 +677,7 @@ const partManager = {
                 // Change every part record
                 parts.map((p)=>{  
                     PartRecord.findByIdAndUpdate(p._id, {
-                        nxid: updatedPart!.nxid
+                        nxid: newPart!.nxid
                     }, callbackHandler.callbackHandleError);
                 })
             }
@@ -686,12 +686,11 @@ const partManager = {
                 return res.status(400).send("Invalid part ID");
             }
 
-
             let updatedPart = await Part.findByIdAndUpdate(part._id, newPart);
             if (updatedPart == null) {
                 return res.status(400).send("Part not found.");
             }
-            if (part.nxid != updatedPart.nxid) {
+            if (newPart.nxid != updatedPart.nxid) {
                 // Update old NXID to new NXID
                 PartRecord.find({ nxid: updatedPart.nxid }, updatePartRecords)
             }
@@ -1316,7 +1315,6 @@ const partManager = {
     deleteFromPartsRoom: async (req: Request, res: Response) => {
         try{
             // Get request params
-            console.log(req.query)
             let nxid = req.query.nxid as string
             // Parse integers
             let new_quantity = parseInt(req.query.new_quantity as string)
@@ -1387,6 +1385,55 @@ const partManager = {
                 }
                 // Success
                 return res.status(200).send(part);
+            })
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    nextSequentialNXID: async (req: Request, res: Response) => {
+        // Basic binary search
+        function findMissingNumber(arr: number[]) {
+            // Initialize boundaries
+            let left = 0;
+            let right = arr.length - 1;
+            // Left will be equal to right when number is found
+            while (left < right) {
+                // Find the middle
+                const mid = Math.floor(left + (right - left) / 2);
+                // Check if number is in left side
+                if (arr[mid] - arr[0] - mid !== 0) {
+                    // Move right boundary to middle
+                    right = mid - 1;
+                } else {
+                    // Number is in right side, move left to middle
+                    left = mid + 1;
+                }
+            }
+            // Check whether missing number is on right or left
+            if (arr[left] === arr[left - 1] + 1) {
+                return arr[left] + 1;
+            } else {
+                return arr[left-1] + 1;
+            }
+        }
+        try {
+            Part.find({}, (err: MongooseError, parts: PartSchema[]) => {
+                if(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                // Parse and sort numbers
+                let numbers = parts.map((n)=>parseInt(n.nxid!.slice(3))).sort((a,b)=>a-b)
+                // Set next sequential to last NXID + 1
+                let nextSequential = numbers[numbers.length-1] + 1
+                // Check if there are numbers missing from the array
+                if((numbers[numbers.length-1]-numbers[0])>numbers.length) {
+                    // Find missing number
+                    nextSequential = findMissingNumber(numbers) 
+                }
+                // Pad and convert to string
+                let nxid = "PNX"+nextSequential.toString().padStart(7, '0')
+                // Send response
+                return res.status(200).send(nxid);
             })
         } catch(err) {
             handleError(err)

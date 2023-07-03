@@ -83,6 +83,7 @@ app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "admin"]),
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
+app.get("/api/part/nextNXID", auth, sanitize, partManager.nextSequentialNXID)
 app.get("/api/part/search", auth, sanitize, partManager.searchParts);
 app.get("/api/part/inventory", auth, sanitize, partManager.getUserInventory);
 app.get("/api/part/distinct", auth, sanitize, partManager.getDistinctOnPartInfo);

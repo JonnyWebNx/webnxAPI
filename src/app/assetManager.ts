@@ -386,7 +386,6 @@ const assetManager = {
             if(typeof(searchString)!="string") {
                 return res.status(400).send("Search string undefined");
             }
-            console.log("Page Skip: "+pageSkip)
             // Find parts
             // Skip - gets requested page number
             // Limit - returns only enough elements to fill page
@@ -404,8 +403,6 @@ const assetManager = {
                 // Ternary that hurts my eyes
                 let numPages = numAssets%pageSizeInt>0 ? Math.trunc(numAssets/pageSizeInt) + 1 : Math.trunc(numAssets/pageSizeInt)
 
-                console.log("Num Assets:"+numAssets)
-                console.log("Num Pages:"+numPages)
                 Asset.find(searchString != ''? { $text: { $search: searchString } } : {})
                     .where({next: null})
                     .skip(pageSkip)
@@ -449,8 +446,6 @@ const assetManager = {
                 // Ternary that hurts my eyes
                 let numPages = numAssets%pageSizeInt>0 ? Math.trunc(numAssets/pageSizeInt) + 1 : Math.trunc(numAssets/pageSizeInt)
 
-                console.log("Num Assets:"+numAssets)
-                console.log("Num Pages:"+numPages)
                 Asset.aggregate([{ $match: {
                     $and: [
                         { $or: searchOptions },
