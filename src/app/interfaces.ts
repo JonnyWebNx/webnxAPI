@@ -169,3 +169,16 @@ export interface AssetEvent {
     added: CartItem[],
     removed: CartItem[]
 }
+
+
+export interface CheckInQueuePart extends CartItem {
+  approved?: boolean,
+  approvedCount?: number,
+  newLocation?: string
+}
+
+export interface CheckInRequest {
+  date: Date,
+  by: string,
+  parts: CheckInQueuePart[]
+}

@@ -13,7 +13,7 @@ import Asset from '../model/asset.js'
 import User from "../model/user.js";
 import handleError from "../config/handleError.js";
 import callbackHandler from '../middleware/callbackHandlers.js'
-import { AssetSchema, CartItem, InventoryEntry, PartRecordSchema } from "./interfaces.js";
+import { AssetSchema, CartItem, CheckInQueuePart, InventoryEntry, PartRecordSchema, UserSchema } from "./interfaces.js";
 import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
@@ -91,6 +91,35 @@ function cleansePart(part: PartSchema) {
     return objectSanitize(newPart, false) as PartSchema
 }
 
+function getKiosks(building: number) {
+    return new Promise<UserSchema[]>(async (res)=>{
+        let kioskUsers = await User.find({roles: ['kiosk'], building: building})
+        res(kioskUsers)
+    })
+}
+
+function getKioskNames(building: number) {
+    return new Promise<string[]>(async (res)=>{
+        let kioskUsers = await getKiosks(building)
+        let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
+        res(kioskNames)
+    })
+}
+
+function getAllKiosks() {
+    return new Promise<UserSchema[]>(async (res)=>{
+        let kioskUsers = await User.find({roles: ['kiosk']})
+        res(kioskUsers)
+    })
+}
+
+function getAllKioskNames() {
+    return new Promise<string[]>(async (res)=>{
+        let kioskUsers = await getAllKiosks()
+        let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
+        res(kioskNames)
+    })
+}
 const partManager = {
     // Create
     createPart: async (req: Request, res: Response) => {
@@ -156,6 +185,7 @@ const partManager = {
         try {
             // Destructure request
             const { location, building } = req.query;
+            let kiosks = await getKioskNames(req.user.building)
             if (req.query.advanced) {
                 delete req.query.advanced;
             }
@@ -212,7 +242,7 @@ const partManager = {
                         let count = await PartRecord.count({
                             nxid: part.nxid,
                             next: null,
-                            location: location ? location : "Parts Room",
+                            location: location ? location : {$in: kiosks},
                             building: building ? building : req.user.building
                         });
                         let total_count = await PartRecord.count({
@@ -236,6 +266,7 @@ const partManager = {
     getPartByID: async (req: Request, res: Response) => {
         try {
             let part = {} as PartSchema
+            let kiosks = await getKioskNames(req.user.building)
             // Check if NXID
             if (/PNX([0-9]{7})+/.test((req.query.id as string).toUpperCase())) {
                 part = await Part.findOne({ nxid: { $eq: (req.query.id as string).toUpperCase() } }) as PartSchema;
@@ -256,7 +287,7 @@ const partManager = {
             let quantity = await PartRecord.count({
                 nxid: part.nxid,
                 building: req.query.building ? req.query.building : req.user.building,
-                location: req.query.location ? req.query.location : "Parts Room",
+                location: req.query.location ? req.query.location : {$in: kiosks},
                 next: null
             });
             part = part._doc;
@@ -284,6 +315,8 @@ const partManager = {
             let serializedError = ""
             let duplicateSerial = ""
             let infoError = ""
+            let kiosk = await User.findById(req.user.user_id)
+            let kioskName = kiosk?.first_name + " " + kiosk?.last_name
             // Using hash map for quick search
             let serialMap = new Map<string, boolean>();
             await Promise.all(cart.map(async (item: CartItem) => {
@@ -298,7 +331,7 @@ const partManager = {
                     // Find serialized part
                     let serializedItem = await PartRecord.findOne({
                         nxid: item.nxid,
-                        location: "Parts Room",
+                        location: kioskName,
                         building: req.user.building,
                         next: null,
                         serial: item.serial
@@ -324,7 +357,7 @@ const partManager = {
                     // Get quantity
                     let quantity = await PartRecord.count({
                         nxid: item.nxid,
-                        location: "Parts Room",
+                        location: kioskName,
                         building: req.user.building,
                         next: null
                     });
@@ -354,7 +387,7 @@ const partManager = {
                     let prevPart = await PartRecord.findOne({
                         nxid: item.nxid, 
                         serial: item.serial,
-                        location: "Parts Room",
+                        location: kioskName,
                         building: req.user.building,
                         next: null
                     })
@@ -378,7 +411,7 @@ const partManager = {
                     // Find all matching part records to minimize requests and ensure updates don't conflict when using async part updating
                     let records = await PartRecord.find({
                         nxid: item.nxid,
-                        location: "Parts Room",
+                        location: kioskName,
                         building: req.user.building,
                         next: null
                     });
@@ -505,10 +538,10 @@ const partManager = {
                             nxid: item.nxid,
                             next: null,
                             prev: part._id,
-                            location: "Parts Room",
+                            location: "Check In Queue",
                             serial: item.serial,
                             building: req.user.building,
-                            by: req.user.user_id,
+                            by: user_id,
                             date_created: current_date,
                         }, callbackHandler.updateRecord)
                     }
@@ -527,9 +560,9 @@ const partManager = {
                             nxid: item.nxid,
                             next: null,
                             prev: records[i]._id,
-                            location: "Parts Room",
+                            location: "Check In Queue",
                             building: req.user.building,
-                            by: req.user.user_id,
+                            by: user_id,
                             date_created: current_date,
                         }, callbackHandler.updateRecord);
                     }
@@ -539,6 +572,197 @@ const partManager = {
             res.status(200).send("Successfully checked in.")
         }
         catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getCheckinQueue: async (req: Request, res: Response) => {
+        try {
+            PartRecord.aggregate([
+                {
+                    // Get checkin queue
+                    $match: { next: null, location: "Check In Queue", building: req.user.building } 
+                },
+                {
+                    // GROUP BY DATE, USER, NXID, AND SERIAL
+                    $group: {
+                        _id: { date: "$date_created", by: "$by", nxid: "$nxid", serial: "$serial" },
+                        // GET QUANTITY
+                        quantity: { $sum: 1 } 
+                    }
+                },
+                {
+                    // GROUP BY DATA AND USER
+                    $group: {
+                        _id: { date: "$_id.date", by: "$_id.by" },
+                        // PUSH NXID, SERIAL, AND QUANTITY to array
+                        parts: { $push: { nxid: "$_id.nxid", serial: "$_id.serial", quantity: "$quantity" } }
+                    }
+                },
+                {
+                    $sort: {
+                        "_id.date": -1
+                    }
+                },
+            ]).exec((err, result)=>{
+                if(err) {
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                // Restructure aggregate response 
+                let requestQueue = result.map((r)=>{
+                    // Remove quantity from serialized
+                    let mappedParts = r.parts.map((p: CartItem)=>{
+                        if(p.serial)
+                            return { nxid: p.nxid, serial: p.serial}
+                        return p
+                    })
+                    // Remove _id layer
+                    return {
+                        date: r._id.date,
+                        by: r._id.by,
+                        parts: mappedParts
+                    }
+                })
+                // Return to client
+                res.status(200).json(requestQueue);
+            })
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+
+    /***
+    *
+    * @TODO location for each part ID
+    *
+    * */
+    processCheckinRequest: async (req: Request, res: Response) => {
+        try {
+            // Check info from checkin request
+            let { date, by } = req.body
+            let parts = req.body.parts as CheckInQueuePart[]
+            // Check if anything is missing
+            if(!date||!by||!parts)
+                return res.status(400).send("Invalid request")
+            // Get kiosks
+            let kioskReq = await User.find({roles: ['kiosk'], building: req.user.building})
+            // Create hash map
+            let kiosks = new Map<string, UserSchema>()
+            // Convert to hash
+            for (let k of kioskReq) {
+                kiosks.set(k.first_name + " " + k.last_name, k)
+            }
+            // Validate all parts
+            for (let p of parts) {
+                // Check if approved or denied
+                if(p.approved==undefined&&p.approvedCount==undefined)
+                    return res.status(400).send(p.nxid + " has not been approved or denied")
+                // Check if approved part has location
+                if((p.approved||(p.approvedCount&&p.approvedCount>0))&&(!p.newLocation||!kiosks.has(p.newLocation)))
+                    return res.status(400).send(p.nxid + " does not have a valid location")
+                // Count parts in queue
+                let partCounts = await PartRecord.count({
+                    nxid: p.nxid, 
+                    next: null, 
+                    location: "Check In Queue", 
+                    date_created: date,
+                    building: req.user.building,
+                    by: by,
+                    serial: p.serial
+                })
+                // Check quanitites
+                if((p.serial&&partCounts!=1)||(p.quantity&&p.quantity!=partCounts)||(p.approvedCount&&p.approvedCount>partCounts))
+                    return res.status(400).send(p.nxid + " does not have a valid quantity or serial")
+            }
+            // Get current date for updates
+            let current_date = Date.now()
+            // Find part records in request
+            await Promise.all(parts.map((p)=>{
+                return new Promise(async (res)=>{
+                    // Check if serialized
+                    if(p.serial) {
+                        // Find one
+                        let partToUpdate = await PartRecord.findOne({
+                            nxid: p.nxid, 
+                            next: null, 
+                            location: "Check In Queue", 
+                            date_created: date,
+                            building: req.user.building,
+                            by: by,
+                            serial: p.serial
+                        })
+                        // Create new iteration
+                        let createOptions = {
+                            nxid: p.nxid,
+                            next: null,
+                            prev: partToUpdate!._id,
+                            location: p.newLocation,
+                            serial: p.serial,
+                            building: req.user.building,
+                            by: req.user.user_id,
+                            date_created: current_date,
+                        } as PartRecordSchema
+                        // If not approved
+                        if(!p.approved)
+                            createOptions = {
+                                nxid: p.nxid,
+                                owner: by,
+                                location: "Tech Inventory",
+                                building: req.user.building,
+                                by: req.user.user_id,
+                                prev: partToUpdate!._id,
+                                next: null,
+                                date_created: current_date,
+                            }
+                        PartRecord.create(createOptions, callbackHandler.updateRecord)
+                        return res("")
+                    }
+                    // Find all matching records
+                    let partsToUpdate = await PartRecord.find({
+                        nxid: p.nxid, 
+                        next: null, 
+                        location: "Check In Queue", 
+                        date_created: date,
+                        building: req.user.building,
+                        by: by,
+                        serial: p.serial
+                    })
+                    // Update all approved records
+                    for (let i = 0; i < p.approvedCount!; i++) {
+                        let createOptions = {
+                            nxid: p.nxid,
+                            next: null,
+                            prev: partsToUpdate[i]._id,
+                            location: p.newLocation,
+                            serial: p.serial,
+                            building: req.user.building,
+                            by: req.user.user_id,
+                            date_created: current_date,
+                        } as PartRecordSchema
+                        PartRecord.create(createOptions, callbackHandler.updateRecord)
+                    }
+                    // Update unapproved records
+                    for (let i = p.approvedCount!; i < p.quantity!; i++) {
+                        let createOptions = {
+                            nxid: p.nxid,
+                            owner: by,
+                            location: "Tech Inventory",
+                            building: req.user.building,
+                            by: req.user.user_id,
+                            prev: partsToUpdate[i]._id,
+                            next: null,
+                            date_created: current_date,
+                        }
+                        PartRecord.create(createOptions, callbackHandler.updateRecord)
+                    }
+                    return res("")
+                })
+            }))
+            res.status(200).send("Success.");
+        } catch (err) {
             // Error
             handleError(err)
             res.status(500).send("API could not handle your request: " + err);
@@ -555,12 +779,13 @@ const partManager = {
                         return res.status(500).send("API could not handle your request: " + err);
                     }
                     // Map for all parts
+                    let kioskNames = await getKioskNames(req.user.building)
                     let returnParts = await Promise.all(parts.map(async (part: PartSchema)=>{
                         // Check parts room quantity
                         let count = await PartRecord.count({
                             nxid: part.nxid,
                             next: null,
-                            location: location ? location : "Parts Room",
+                            location: location ? location : {$in: kioskNames},
                             building: building ? building : req.user.building
                         });
                         // Get total quantity
@@ -600,15 +825,16 @@ const partManager = {
             
             let fullText = false
             // Check if find works
-            let pp = await Part.findOne(searchString != ''? { $text: { $search: searchString } } : {})
+            let pp = await Part.findOne(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {})
             if(pp!=undefined)
                 fullText = true
 
             if (fullText) {
                 // Search data
-                let numParts = await Part.count(searchString != ''? { $text: { $search: searchString } } : {})
+                let numParts = await Part.count(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {})
                 let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
-                Part.find(searchString != ''? { $text: { $search: searchString } } : {})
+                Part.find(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {}, searchString != ''?{ score: { $meta: "textScore" } }:{})
+                .sort(searchString != ''?{ score: { $meta: "textScore" } }:{})
                 // Skip - gets requested page number
                 .skip(pageSkip)
                 // Limit - returns only enough elements to fill page
@@ -618,36 +844,77 @@ const partManager = {
             // Find doesn't work, use aggregation pipeline
             else {
                 let keywords = [searchString]
-                keywords = keywords.concat(searchString.split(" "))
+                keywords = keywords.concat(searchString.split(" ")).filter((s)=>s!='')
                 // Use keywords to build search options
                 let searchOptions = [] as any
+                let relevanceConditions = [] as any
                 // Add regex of keywords to all search options
                 await Promise.all(keywords.map(async (key) => {
-                    searchOptions.push({ "nxid": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "name": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "manufacturer": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "type": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "shelf_location": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "storage_interface": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "port_type": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "peripheral_type": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "memory_type": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "memory_gen": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "frequency": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "size": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "cable_end1": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "cable_end2": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "chipset": { $regex: key, $options: "is" } })
-                    searchOptions.push({ "socket": { $regex: key, $options: "is" } })
+                    // Why was this even here to begin with?
+                    // searchOptions.push({ "nxid": { $regex: key, $options: "i" } })
+                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$nxid", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "name": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$name", regex: new RegExp(key, "i") } }, 5, -1] })
+                    searchOptions.push({ "manufacturer": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$manufacturer", regex: new RegExp(key, "i") } }, 5, -1] })
+                    searchOptions.push({ "type": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$type", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "shelf_location": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$shelf_location", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "storage_interface": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$storage_interface", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "port_type": { $regex: key, $options: "i" } })
+                    // REGEX doesn't allow arrays
+                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$port_type", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "peripheral_type": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$peripheral_type", regex: new RegExp(key, "i") } }, 2, 0] })
+                    searchOptions.push({ "memory_type": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_type", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "memory_gen": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_gen", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "frequency": { $regex: key, $options: "i" } })
+                    // REGEX doesn't allow numbers
+                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$frequency", regex: new RegExp(key, "i") } }, 2, 0] })
+                    searchOptions.push({ "size": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$size", regex: new RegExp(key, "i") } }, 2, 0] })
+                    searchOptions.push({ "cable_end1": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end1", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "cable_end2": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end2", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "chipset": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$chipset", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "socket": { $regex: key, $options: "i" } })
+                    // REGEX doesn't allow arrays
+                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$socket", regex: new RegExp(key, "i") } }, 1, 0] })
                 }))
+                let aggregateQuery = [
+                    {
+                        $match: {
+                            $or: searchOptions
+                        }
+                    },
+                    {
+                        $addFields: {
+                            relevance: {
+                                $sum: relevanceConditions
+                            }
+                        }
+                    },
+                    {
+                        $sort: { relevance: -1 }
+                    },
+                    {
+                        $project: { relevance: 0 }
+                    }
+                ] as any
                 // Aggregate count
-                let countQuery = await Part.aggregate([{ $match: { $or: searchOptions } }]).count("numParts")
+                let countQuery = await Part.aggregate(aggregateQuery).count("numParts")
                 // This is stupid but it works
                 let numParts = countQuery.length > 0&&countQuery[0].numParts ? countQuery[0].numParts : 0
                 // Ternary that hurts my eyes
                 let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
                 // Search
-                Part.aggregate([{ $match: { $or: searchOptions } }])
+                Part.aggregate(aggregateQuery)
                     .skip(pageSkip)
                     .limit(pageSizeInt + 1)
                     .exec(returnSearch(numPages, numParts))
@@ -707,6 +974,7 @@ const partManager = {
             let { part, owner } = req.body
             const { nxid, quantity, location, building } = part;
             let serials = [] as string[]
+            let kioskNames = await getKioskNames(req.user.building)
             if(part.serial) {
                 serials = part.serial
                 // Splits string at newline
@@ -724,7 +992,7 @@ const partManager = {
             let partInfo = await Part.findOne({nxid: nxid}) as PartSchema
             if(partInfo==null)
                 return res.status(400).send("Part not found");
-            if(partInfo.consumable&&location!="Parts Room")
+            if(partInfo.consumable&&!kioskNames.includes)
                 return res.status(400).send("Unable to add consumables outside parts room");
 
             let createOptions = {
@@ -736,7 +1004,6 @@ const partManager = {
                 by: req.user.user_id,
             } as PartRecordSchema
 
-            // If asset, make sure asset exists
             switch(location) {
                 case "Asset":
                     // Make sure asset exists
@@ -1010,13 +1277,14 @@ const partManager = {
             const { id } = req.query
             // Find first part record
             let record = await PartRecord.findById(id) as PartRecordSchema
+            let kiosks = await getAllKioskNames()
             if(record == null) {
                 return res.status(400).send("Record not found");
             }
             // Create array of part history
             let history = [record]
             // Loop until previous record is false
-            while (record.prev != null) {
+            while (record.prev != null&&!(record.location&&kiosks.includes(record.location))) {
                 record = await PartRecord.findById(record!.prev) as PartRecordSchema
                 history.push(record)
             }

@@ -12,8 +12,7 @@ import config from './config.js';
 import database from './config/database.js'
 import express, { NextFunction, Request, Response } from 'express'
 import cors, { CorsOptions } from 'cors'
-import path from 'node:path';
-
+import path from 'node:path'
 // authorization modules
 import login from './app/login.js'
 import register from './app/register.js'
@@ -78,8 +77,10 @@ app.post("/api/part", auth, checkRoles(["clerk", "admin"]), sanitize, partManage
 app.post("/api/part/add", auth, checkRoles(["lead", "clerk", "admin"]), sanitize, partManager.addToInventory);
 app.post("/api/checkout", auth, checkRoles(["kiosk"]), sanitize, partManager.checkout);
 app.post("/api/checkin", auth, checkRoles(["kiosk"]), sanitize, partManager.checkin)
+app.post("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.processCheckinRequest)
 app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "admin"]), sanitize, partManager.movePartRecords);
 // Read 
+app.get("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.getCheckinQueue)
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
@@ -129,7 +130,7 @@ app.get("/api/asset", auth, sanitize, assetManager.getAssets);
 app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
 app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
 app.get('/api/asset/search', auth, sanitize, assetManager.searchAssets);
-app.get('/api/asset/history', sanitize, assetManager.getAssetHistory);
+app.get('/api/asset/history', auth, sanitize, assetManager.getAssetHistory);
 // Update
 app.put("/api/asset", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, assetManager.updateAsset);
 // Delete
