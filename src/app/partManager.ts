@@ -1587,14 +1587,16 @@ const partManager = {
             // Parse integers
             let new_quantity = parseInt(req.query.new_quantity as string)
             let building = req.query.building?parseInt(req.query.building as string):req.user.building
+            let location = req.query.location as string
+            let kiosks = await getKioskNames(building)
             // Check request
-            if(!nxid||!/PNX([0-9]{7})+/.test(nxid)||new_quantity<0)
+            if(!nxid||!/PNX([0-9]{7})+/.test(nxid)||new_quantity<0||!kiosks.includes(location))
                 return res.status(400).send("Invalid request");
             let partInfo = await Part.findOne({nxid})
             if(partInfo?.serialized)
                 return res.status(400).send("Cannot delete serialized records");
             // Find parts room records
-            PartRecord.find({nxid: nxid, building: building, location: "Parts Room", next: null}, async (err: MongooseError, oldRecords: PartRecordSchema[])=>{
+            PartRecord.find({nxid: nxid, building: building, location: location, next: null}, async (err: MongooseError, oldRecords: PartRecordSchema[])=>{
                 if(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 // Check if current quantity is less than new quantity
