@@ -17,7 +17,7 @@ import { AssetSchema, CartItem, CheckInQueuePart, InventoryEntry, PartRecordSche
 import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
-import { PartSchema, PartQuery } from "./interfaces.js";
+import { PartSchema, PartQuery, CheckInRequest } from "./interfaces.js";
 import config from '../config.js'
 import fs from 'fs';
 
@@ -417,22 +417,22 @@ const partManager = {
                     });
                     // Loop for quanity of part item
                     for (let j = 0; j < item.quantity!; j++) {
+                        let createOptions = {
+                            nxid: item.nxid,
+                            owner: user_id,
+                            location: "Tech Inventory",
+                            building: req.user.building,
+                            by: req.user.user_id,
+                            prev: records[j]._id,
+                            next: null,
+                            date_created: current_date,
+                        } as PartRecordSchema
                         // Check if consumable
                         if(partInfo&&partInfo.consumable)
                             // Mark as consumed
-                            PartRecord.findByIdAndUpdate(records[j]._id, {next: 'consumed', by: req.user.user_id, date_replaced: current_date}, callbackHandler.callbackHandleError)
-                        else
-                            // Create new iteration
-                            PartRecord.create({
-                                nxid: item.nxid,
-                                owner: user_id,
-                                location: "Tech Inventory",
-                                building: req.user.building,
-                                by: req.user.user_id,
-                                prev: records[j]._id,
-                                next: null,
-                                date_created: current_date,
-                            }, callbackHandler.updateRecord);
+                            createOptions.next = "consumed"
+                        // Create new iteration
+                        PartRecord.create(createOptions, callbackHandler.updateRecord);
                     }
                 }
             }))
@@ -634,11 +634,167 @@ const partManager = {
         }
     },
 
-    /***
-    *
-    * @TODO location for each part ID
-    *
-    * */
+    getCheckoutHistory: async (req: Request, res: Response) => {
+        try {
+            let { startDate, endDate, pageSize, pageNum, location } = req.query;
+
+            let kiosks = await getAllKioskNames()
+            // Parse page size and page num
+            let pageSizeInt = parseInt(pageSize as string)
+            let pageNumInt = parseInt(pageNum as string)
+            // Turn date into usable objects
+            let startDateParsed = new Date(parseInt(startDate as string))
+            let endDateParsed = new Date(parseInt(endDate as string))
+            endDateParsed.setDate(endDateParsed.getDate()+1)
+            // Check for bad conversions
+            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
+                return res.status(400).send("Invalid page number or page size");
+            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
+                return res.status(400).send("Invalid start or end date");
+            // Calculate page skip
+            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            // Flexing the MongoDB aggregation pipeline
+            PartRecord.aggregate([
+                {
+                    // Get checkin queue
+                    $match: { next: { $ne: null }, location: location ? location : { $in: kiosks }, 
+                        // Check if next is valid ID
+                        $expr: {
+                            $ne: [
+                                {
+                                    $convert: {
+                                        input: "$next",
+                                        to: "objectId",
+                                        onError: "bad"
+                                    }
+                                },
+                                "bad"
+                            ]
+                        },
+                        date_replaced: { $gte: startDateParsed, $lte: endDateParsed } 
+                    } 
+                },
+                {
+                    $project: {
+                        nxid: 1,
+                        date_replaced: 1,
+                        serial: 1,
+                        location: 1,
+                        next: {
+                            $convert: {
+                                input: "$next",
+                                to: "objectId"
+                            }
+                        }
+                    }
+                },
+                // Get next part record for owner
+                {
+                    $lookup: {
+                        from: "partrecords",
+                        localField: "next",
+                        foreignField: "_id",
+                        as: "next_record"
+                    }
+                },
+                // Unwind lookup array
+                {
+                    $unwind: "$next_record"
+                },
+                // Restructure document
+                {
+                    $project: {
+                        nxid: 1,
+                        date_replaced: 1,
+                        serial: 1,
+                        location: 1,
+                        owner: "$next_record.owner"
+                    }
+                },
+                // Get rid of invalid owners
+                {
+                    $match:
+                    {   owner: { $ne: undefined },
+                        $expr: {
+                            $ne: [
+                                {
+                                    $convert: {
+                                        input: "$owner",
+                                        to: "objectId",
+                                        onError: "bad"
+                                    }
+                                },
+                                "bad"
+                            ]
+                        },
+                    } 
+                },
+                // Combine part IDs together with quantity
+                {
+                    // GROUP BY DATE, USER, NXID, AND SERIAL
+                    $group: {
+                        _id: { date: "$date_replaced", nxid: "$nxid", serial: "$serial", location: "$location", owner: "$owner" },
+                        next: {$push: "$next"},
+                        // GET QUANTITY
+                        quantity: { $sum: 1 } 
+                    }
+                },
+                // Group parts on same checkout together
+                {
+                    // GROUP BY DATA AND USER
+                    $group: {
+                        _id: { date: "$_id.date", location: "$_id.location", owner: "$_id.owner" },
+                        next: { $push: "$next" },
+                        // PUSH NXID, SERIAL, AND QUANTITY to array
+                        // Comparing to undefined or null always returned false, so $arbitraryNonExistentField is used to check if serial exists or not
+                        parts: { $push: { nxid: "$_id.nxid", serial: "$_id.serial", quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]} } },
+                    }
+                },
+                // Restructure object
+                {
+                    $project: {
+                        _id: 0,
+                        date: "$_id.date",
+                        by:  "$_id.owner",
+                        location: "$_id.location",
+                        parts: "$parts"
+                    }
+                },
+                // Sort by date in descending order
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                },
+                // Get total count
+                {
+                    $group: {
+                        _id: null,
+                        total: {$sum: 1},
+                        checkouts: {$push: "$$ROOT"}
+                    }
+                },
+                // Skip to page
+                {
+                    $project: {
+                        _id: 0,
+                        total: 1,
+                        checkouts: {$slice: ["$checkouts", pageSkip, pageSizeInt]}
+                    }
+                }
+            ]).exec((err, result: any)=>{
+                if(err) {
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                // Return to client
+                res.status(200).json(result.length&&result.length>0?result[0]:{total: 0, checkouts: []});
+            })
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     processCheckinRequest: async (req: Request, res: Response) => {
         try {
             // Check info from checkin request

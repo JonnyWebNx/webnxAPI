@@ -81,6 +81,7 @@ app.post("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), p
 app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "admin"]), sanitize, partManager.movePartRecords);
 // Read 
 app.get("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.getCheckinQueue)
+app.get("/api/checkout/history", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.getCheckoutHistory)
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
