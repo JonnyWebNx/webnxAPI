@@ -13,7 +13,7 @@ import bcrypt from 'bcryptjs'
 import User from '../model/user.js'
 import { MongooseError } from 'mongoose';
 import type { Request, Response } from 'express'
-import { PartQuery, UserSchema } from './interfaces.js';
+import { UserSchema, AssetUpdate } from './interfaces.js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import handleError from '../config/handleError.js'
@@ -22,8 +22,10 @@ import { Options } from 'nodemailer/lib/mailer/index.js'
 import config from '../config.js'
 import crypto from 'crypto'
 import resetToken from '../model/resetToken.js';
-
-const {UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS, JWT_SECRET} = config
+import PartRecord from '../model/partRecord.js'
+import Asset from '../model/asset.js'
+import { getAssetEvent } from './assetManager.js';
+const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
 
 // Main object containing functions
 const userManager = {
@@ -54,6 +56,7 @@ const userManager = {
             return 
         }
     },
+
     getAllUsers: async (req: Request, res: Response) => {
         try{
             // Get all users
@@ -71,6 +74,7 @@ const userManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+
     // Update - id required in query string
     updateUser: async (req: Request, res: Response) => {
         try{
@@ -98,6 +102,7 @@ const userManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+
     sendPasswordResetEmail: async (req: Request, res: Response) => {
         let email = req.query.email
         let user = await User.findOne({email})
@@ -138,6 +143,7 @@ const userManager = {
             return res.status(200).send("Email sent.");
         }); 
     },
+
     updatePassword: async (req: Request, res: Response) => {
         // get password
         const { user_id, token, password } = req.body;
@@ -165,6 +171,7 @@ const userManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+
     // Delete - id required in query string
     deleteUser: async (req: Request, res: Response) => {
         // Get user id from query string
@@ -184,6 +191,7 @@ const userManager = {
             return res.status(200).send(`Deleted: ${user.first_name} ${user.last_name}`);
         });
     },
+
     getUserImage: async (req: Request, res: Response) => {
         try {
             // Create path to image
@@ -198,6 +206,7 @@ const userManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+    
     checkRoles: async (req: Request, res: Response) => {
         try {
             let user = User.findById(req.user.user_id) as UserSchema
@@ -211,6 +220,291 @@ const userManager = {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
+    },
+
+    getUserCheckins: async (req: Request, res: Response) => {
+        try {
+            let { startDate, endDate, pageSize, pageNum, user } = req.query;
+            // Parse page size and page num
+            let pageSizeInt = parseInt(pageSize as string)
+            let pageNumInt = parseInt(pageNum as string)
+            // Turn date into usable objects
+            let startDateParsed = new Date(parseInt(startDate as string))
+            let endDateParsed = new Date(parseInt(endDate as string))
+            endDateParsed.setDate(endDateParsed.getDate()+1)
+            // Check for bad conversions
+            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
+                return res.status(400).send("Invalid page number or page size");
+            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
+                return res.status(400).send("Invalid start or end date");
+            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            PartRecord.aggregate([
+                {
+                    // Get checkin queue
+                    $match: { next: { $ne: null }, location: "Check In Queue", by: user, date_created: { $lte: endDateParsed, $gte: startDateParsed } } 
+                },
+                {
+                    // GROUP BY DATE, USER, NXID, AND SERIAL
+                    $group: {
+                        _id: { date: "$date_created", by: "$by", nxid: "$nxid", serial: "$serial", next_owner: "$next_owner" },
+                        // GET QUANTITY
+                        quantity: { $sum: 1 } 
+                    }
+                },
+                {
+                    // GROUP BY DATA AND USER
+                    $group: {
+                        _id: { date: "$_id.date", by: "$_id.by" },
+                        // PUSH NXID, SERIAL, AND QUANTITY to array
+                        parts: { 
+                            $push: { 
+                                nxid: "$_id.nxid", 
+                                serial: "$_id.serial", 
+                                // Remove quantity for serialized
+                                quantity: {
+                                    $cond: [
+                                        {$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"
+                                    ]
+                                },  
+                                // IF next owner exists, part was denied
+                                approved: {
+                                    $cond: [ 
+                                        {$eq: ["$_id.next_owner", "$arbitraryNonExistentField"]}, true, false
+                                    ]
+                                }
+                            } 
+                        }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        date: "$_id.date",
+                        by: "$_id.by",
+                        parts: "$parts"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        total: {$sum: 1},
+                        checkins: {$push: "$$ROOT"}
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        total: 1,
+                        checkins: {$slice: ["$checkins", pageSkip, pageSizeInt]}
+                    }
+                }
+            ]).exec((err, result)=>{
+                if(err) {
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                // Return to client
+                res.status(200).json(result.length&&result.length>0?result[0]:{total: 0, checkins: []});
+            })
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+
+    getUserAssetUpdates: async (req: Request, res: Response) => {
+        try {
+            let { startDate, endDate, pageSize, pageNum, user } = req.query;
+            // Parse page size and page num
+            let pageSizeInt = parseInt(pageSize as string)
+            let pageNumInt = parseInt(pageNum as string)
+            // Turn date into usable objects
+            let startDateParsed = new Date(parseInt(startDate as string))
+            let endDateParsed = new Date(parseInt(endDate as string))
+            endDateParsed.setDate(endDateParsed.getDate()+1)
+            // Check for bad conversions
+            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
+                return res.status(400).send("Invalid page number or page size");
+            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
+                return res.status(400).send("Invalid start or end date");
+            // Calculate page skip
+            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            // Find added parts
+            let assetUpdates = await PartRecord.aggregate([
+                {
+                    $match: {
+                        by: user, 
+                        date_created: {$gte: startDateParsed, $lte: endDateParsed},
+                        asset_tag: { $ne: null },
+                        prev: {$ne: null}
+                    }
+                },
+                {
+                    $group: {
+                        _id: { asset_tag: "$asset_tag", date: "$date_created" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        asset_tag: "$_id.asset_tag",
+                        date: "$_id.date"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ])  as AssetUpdate[]
+            // Find removed parts
+            assetUpdates = assetUpdates.concat(await PartRecord.aggregate([
+                {
+                    $match: {
+                        next_owner: user, 
+                        asset_tag: { $ne: null },
+                        date_replaced: {$gte: startDateParsed, $lte: endDateParsed},
+                    }
+                },
+                {
+                    $group: {
+                        _id: { asset_tag: "$asset_tag", date: "$date_replaced" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        asset_tag: "$_id.asset_tag",
+                        date: "$_id.date"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ])  as AssetUpdate[])
+            // Find updated assets
+            assetUpdates = assetUpdates.concat(await Asset.aggregate([
+                {
+                    $match: {
+                        by: user, 
+                        date_created: {$gte: startDateParsed, $lte: endDateParsed},
+                        prev: {$ne: null}
+                    }
+                },
+                {
+                    $group: {
+                        _id: { asset_tag: "$asset_tag", date: "$date_created" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        asset_tag: "$_id.asset_tag",
+                        date: "$_id.date"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ])  as AssetUpdate[])
+            // Get all the dates of asset related events
+            assetUpdates = assetUpdates
+            .sort((a, b)=>{
+                if (a.date < b.date)
+                    return 1
+                return -1
+            })
+            .filter((a, i, arr)=>{return i===arr.findIndex((b)=>{
+                return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag
+            })})
+            
+            let totalUpdates = assetUpdates.length
+            let returnValue = await Promise.all(assetUpdates.splice(pageSkip, pageSizeInt).map((a)=>{
+                return getAssetEvent(a.asset_tag, a.date)
+            }))
+            res.status(200).json({total: totalUpdates, pages: Math.ceil(totalUpdates/pageSizeInt),events: returnValue});
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+
+    getUserNewAssets: async (req: Request, res: Response) => {
+        try {
+            let { startDate, endDate, pageSize, pageNum, user } = req.query;
+
+            // Parse page size and page num
+            let pageSizeInt = parseInt(pageSize as string)
+            let pageNumInt = parseInt(pageNum as string)
+            // Turn date into usable objects
+            let startDateParsed = new Date(parseInt(startDate as string))
+            let endDateParsed = new Date(parseInt(endDate as string))
+            endDateParsed.setDate(endDateParsed.getDate()+1)
+            // Check for bad conversions
+            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
+                return res.status(400).send("Invalid page number or page size");
+            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
+                return res.status(400).send("Invalid start or end date");
+            // Calculate page skip
+            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            Asset.aggregate([
+                {
+                    $match: {
+                        $or: [{ prev: null}, {prev: {$exists: false}}],
+                        by: user,
+                        date_created: { $lte: endDateParsed, $gte: startDateParsed }
+                    }
+                },
+                {
+                    $sort: {
+                        "date_created": -1
+                    }
+                },
+                // Get total count
+                {
+                    $group: {
+                        _id: null,
+                        total: {$sum: 1},
+                        updates: {$push: { asset_tag: "$asset_tag", date: "$date_created"}}
+                    }
+                },
+                // Skip to page
+                {
+                    $project: {
+                        _id: 0,
+                        total: 1,
+                        updates: {$slice: ["$updates", pageSkip, pageSizeInt]}
+                    }
+                }
+            ]).exec(async (err, result: { total: number, updates: AssetUpdate[]}[])=>{
+                if(err) {
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                if(result.length&&result.length>0) {
+                    let returnValue = await Promise.all(result[0].updates!.map((a: AssetUpdate)=>{
+                        return getAssetEvent(a.asset_tag, a.date)
+                    }))
+                    return res.status(200).json({total: result[0].total, pages: Math.ceil(result[0].total/pageSizeInt),events: returnValue});
+                }
+                // Return to client
+                res.status(200).json({total: 0, updates: []});
+            })
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
     }
 }
+
 export default userManager

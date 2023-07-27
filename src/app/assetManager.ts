@@ -13,7 +13,7 @@ import handleError from "../config/handleError.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { Request, Response } from "express";
 import { AssetEvent, AssetHistory, AssetSchema, CartItem, PartRecordSchema, PartSchema } from "./interfaces.js";
-import mongoose, { CallbackError } from "mongoose";
+import mongoose, { CallbackError, MongooseError } from "mongoose";
 import partRecord from "../model/partRecord.js";
 import { stringSanitize, objectSanitize } from "../config/sanitize.js";
 
@@ -253,6 +253,120 @@ function returnAsset(res: Response) {
             res.status(200).json(record);
     }
 }
+
+export function getAssetEvent(asset_tag: string, d: Date) {
+    return new Promise<AssetEvent>(async (res)=>{
+        // Get parts removed from asset
+        let added = await PartRecord.aggregate([
+            {
+                $match: { asset_tag: asset_tag, date_created: d }
+            },
+            {
+                $group: { 
+                    _id: { nxid: "$nxid", serial: "$serial", by: "$by" },
+                    quantity: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    nxid: "$_id.nxid",
+                    serial: "$_id.serial",
+                    by: "$_id.by",
+                    quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+                }
+            }
+        ])
+        // Get parts added to asset
+        let removed = await PartRecord.aggregate([
+            {
+                $match: { asset_tag: asset_tag, date_replaced: d }
+            },
+            {
+                $group: { 
+                    _id: { nxid: "$nxid", serial: "$serial", next_owner: "$next_owner" },
+                    next: { $push: "$next" },
+                    quantity: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    nxid: "$_id.nxid",
+                    serial: "$_id.serial",
+                    next_owner: "$_id.next_owner",
+                    quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+                }
+            }
+        ])
+        // Get parts already on asset
+        let existing = await PartRecord.aggregate([
+            {
+                $match: { asset_tag: asset_tag, date_created: { $lt: d },date_replaced: { $gt: d }}
+            },
+            {
+                $group: { 
+                    _id: { nxid: "$nxid", serial: "$serial" },
+                    quantity: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    nxid: "$_id.nxid",
+                    serial: "$_id.serial",
+                    quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+                }
+            }
+        ])
+        existing = existing.concat(await PartRecord.aggregate([
+            {
+                $match: { asset_tag: asset_tag, date_created: { $lt: d },date_replaced: null }
+            },
+            {
+                $group: { 
+                    _id: { nxid: "$nxid", serial: "$serial" },
+                    quantity: { $sum: 1 }
+                }
+            },
+            {
+                $project: {
+                    nxid: "$_id.nxid",
+                    serial: "$_id.serial",
+                    quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+                }
+            }
+        ]))
+        // Find current asset iteration
+        let current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, date_replaced: { $gt: d }}) as AssetSchema
+        // 
+        if(current_asset==null)
+            current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, next: null }) as AssetSchema
+        // Who updated
+        let by = ""
+        // Added parts for mapping
+        let addedParts = [] as CartItem[]
+        if(current_asset&&d.getTime()==current_asset.date_created!.getTime())
+            by = current_asset.by as string
+        // Remap removed parts, find by attribute
+        if(Array.isArray(added))
+            addedParts = added.map((a)=>{
+                if(by=="")
+                    by = a.by
+                return { nxid: a.nxid, serial: a.serial, quantity: a.quantity } as CartItem
+            })
+        let removedParts = [] as CartItem[]
+        // Remap removed parts, find by attribute
+        if(Array.isArray(removed))
+            removedParts = removed.map((a)=>{
+                if(by=="") {
+                    by = a.next_owner
+                }
+                return { nxid: a.nxid, serial: a.serial, quantity: a.quantity } as CartItem
+            })
+        // If no by is found
+        if(current_asset&&by=="")
+            by = current_asset.by as string
+        return res({ date_begin: d, asset_id: current_asset._id, info_updated: ((added.length==0&&removed.length==0)||current_asset.date_created!.getTime() == d.getTime()), existing: existing as CartItem[], added: addedParts, removed: removedParts, by: by } as AssetEvent)
+    })
+}
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {
         try {
@@ -278,7 +392,7 @@ const assetManager = {
             // Set by attribute to requesting user
             let dateCreated = Date.now()
             asset.by = req.user.user_id;
-            asset.date_created = dateCreated;
+            asset.date_created = new Date(dateCreated);
             asset.date_updated = dateCreated;
             asset.prev = null;
             asset.next = null;
@@ -463,6 +577,7 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+
     updateAsset: async (req: Request, res: Response) => {
         try {
             // Get data from request body
@@ -626,6 +741,9 @@ const assetManager = {
                 // Assets are not similar
                 delete asset._id
                 asset.prev = getAsset._id
+                asset.date_created = current_date
+                asset.by = req.user.user_id
+                delete asset.date_updated
                 // Create new asset
                 Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
                     if (err) {
@@ -652,6 +770,7 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+
     getPartsOnAsset: async (req: Request, res: Response) => {
         try {
             const { asset_tag } = req.query
@@ -713,6 +832,7 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+
     deleteAsset: async (req: Request, res: Response) => {
         try {
             if(!req.user.roles.includes("admin"))
@@ -734,7 +854,7 @@ const assetManager = {
                 }
                 asset.prev = asset._id
                 asset.next = "deleted"
-                asset.date_created = current_date
+                asset.date_created = new Date(current_date)
                 delete asset._id
                 // Create new iteration of asset
                 Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
@@ -758,184 +878,65 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+
     getAssetHistory: async (req: Request, res: Response) => {
         try {
-            function getHistory(startDate: string) {
+            function aggregationHistory(pageNum: number, pageSize: number){
                 return async (err: CallbackError, asset: AssetSchema) => {
-                try{
-
                     if (err) {
                         return res.status(500).send("API could not handle your request: " + err);
                     }
-                    let dates = [] as string[]
-                    // Get all assets associated with NXID
-                    let allAssets = await Asset.find({asset_tag: asset.asset_tag})
-                    // Get all part records associated with NXID
-                    let allPartRecords = await PartRecord.find({asset_tag: asset.asset_tag})
-                    // Get all asset dates
-                    await Promise.all(allAssets.map(async (thisAsset) => {
-                        let date = thisAsset.date_created as Date
-                        if((date!=null)&&(dates.indexOf(date.toISOString())<0))
-                            dates.push(date.toISOString())
-                    }))
-                    // Get all part add and remove dates
-                    await Promise.all(allPartRecords.map(async (record) => {
-                        // Get date created
-                        let date = record.date_created as Date
-                        // Check if date is already in array
-                        if((date!=null)&&(dates.indexOf(date.toISOString())<0))
-                            dates.push(date.toISOString())
-                        // Get date replaced
-                        date = record.date_replaced as Date
-                        // Check if date is already in array
-                        if((date!=null)&&(dates.indexOf(date.toISOString())<0))
-                            dates.push(date.toISOString())
-                    }))
-                    // Sort the dates
-                    dates = dates.sort((a: string, b: string) => { 
-                        if (new Date(a) < new Date(b))
+                    let dates = [] as Date[]
+                    // Get all the dates of asset related events
+                    dates = dates.concat(await PartRecord.find({asset_tag: asset.asset_tag}).distinct("date_created") as Date[])
+                    dates = dates.concat(await PartRecord.find({asset_tag: asset.asset_tag}).distinct("date_replaced") as Date[])
+                    dates = dates.concat(await Asset.find({asset_tag: asset.asset_tag}).distinct("date_created") as Date[])
+                    dates = dates.concat(await Asset.find({asset_tag: asset.asset_tag}).distinct("date_replaced") as Date[])
+                    // Get rid of duplicates
+                    // Sort
+                    dates = dates.sort((a: Date, b: Date) => { 
+                        if (a < b)
                             return 1
                         return -1
                     })
-                    // Get rid of duplicates
-                    dates = dates.filter((date, index) => dates.indexOf(date) === index)
-                    if(startDate!="")
-                        dates = dates.filter((date)=> new Date(date) < new Date(startDate));
 
-                    // For each date find matching asset, added parts, and removed parts
-                    let history = await Promise.all(dates.map(async (updateDate, index, arr) => {
-                        // Create date object
-                        let by = ''
-                        let dateObject = new Date(updateDate)
-                        // Check for asset updates
-                        let assetUpdate = allAssets.find(ass => ass.date_created! <= dateObject && ass.date_replaced && dateObject < ass.date_replaced)
-                        if(!assetUpdate) {
-                            assetUpdate = allAssets.find(ass => ass.date_created! <= dateObject && ass.date_replaced == null)
-                        }
-                        let assetUpdated = (assetUpdate?.date_created as Date).toISOString() == dateObject.toISOString()
-                        // Check for parts that are already present
-                        let tempExistingParts = await PartRecord.find({
-                            asset_tag: asset.asset_tag, 
-                            $and: [
-                                {
-                                    date_created: {
-                                        $lt: dateObject
-                                    }
-                                },
-                                {
-                                    $or: [
-                                        {
-                                            date_replaced: {
-                                                $gt: dateObject
-                                            }
-                                        },
-                                        {
-                                            date_replaced: undefined
-                                        },
-                                        {
-                                            date_replaced: null
-                                        },
-                                    ]
-                                }
-                            ]
-                        })
-                        let existingParts = [] as CartItem[]
-                        // Loop over every part already on asset
-                        tempExistingParts.map((record) => {
-                            // Check if part is already in array
-                            if(record.serial&&record.nxid) {
-                                existingParts.push({nxid: record.nxid, serial: record.serial})
-                            }
-                            else {
-                                let existingRecord = existingParts.find((rec => rec.nxid == record.nxid))
-                                // If it exists, increment the quantity
-                                if(existingRecord)
-                                    existingRecord.quantity! += 1
-                                // If not, push a new object
-                                else
-                                    existingParts.push({nxid: record.nxid!, quantity: 1})
-                            }
-                        })
-                        // Check if parts were added on this time
-                        let addedParts = [] as CartItem[]
-                        // Filter for added parts, and loop over all of them
-                        allPartRecords.filter(record => (record.date_created as Date).toISOString() == updateDate).map((record) => {
-                            if(by=='') {
-                                by = record.by as string
-                            }
-                            // Check if part is already in array
-                            if (record.serial) {
-                                addedParts.push({nxid: record.nxid!, serial: record.serial})
-                            }
-                            else {
-                                let existingRecord = addedParts.find((rec => rec.nxid == record.nxid))
-                                // If it exists, increment
-                                if(existingRecord)
-                                existingRecord.quantity! += 1
-                                // If not, push a new object
-                                else
-                                addedParts.push({nxid: record.nxid!, quantity: 1})
-                            }
-                        })
-                        // Check if parts were removed
-                        let removedParts = [] as CartItem[]
-                        let tempRecordID = ''
-                        // Filter for removed parts, and loop over all of them
-                        allPartRecords.filter(record => (record.date_replaced!=undefined)&&((record.date_replaced as Date).toISOString() == updateDate)).map((record) => {
-                            if(by=='') {
-                                tempRecordID = record.next as string
-                            }
-                            if(record.serial) {
-                                removedParts.push({nxid: record.nxid!, serial: record.serial})
-                            }
-                            else {
-                                // Check if part is already in array
-                                let existingRecord = removedParts.find((rec => rec.nxid == record.nxid))
-                                // If it exists, increment
-                                if(existingRecord)
-                                existingRecord.quantity! += 1
-                                // If not, push a new object
-                                else
-                                removedParts.push({nxid: record.nxid!, quantity: 1})
-                            }
-                        })
-                        // Get current date (will be returned if asset is most recent)
-                        let nextDate = new Date(Date.now())
-                        if(by==''&&tempRecordID!='') {
-                            let test = await PartRecord.findById(tempRecordID)
-                            if(test&&test.by)
-                                by = test.by as string
-                        }
-                        if(by=='')
-                            by = assetUpdate?.by! as string
-                        // Get end date for current iteration
-                        if (index > 0)
-                            nextDate = new Date(arr[index-1])
-                        // Return history data
-                        return { date_begin: dateObject, date_end: nextDate, asset_id: assetUpdate?._id, info_updated: assetUpdated, existing: existingParts, added: addedParts, removed: removedParts, by: by } as AssetEvent
-                    }))
-                    res.status(200).json(history as AssetHistory)
-                    }
+                    let pageSkip = pageSize * (pageNum - 1)
+                    // Get rid of duplicates
+                    dates = dates
+                        .filter((d)=>d!=null)
+                        .map((d)=>d.getTime())
+                        .filter((date, index, arr) => arr.indexOf(date) === index && date != null)
+                        .map((d)=>new Date(d))
+
+                    let totalEvents = dates.length
                     
-                    catch(err) {
-                        handleError(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    }
+                    dates = dates
+                        .splice(pageSkip, pageSize)
+                    // Get history
+                    let history = await Promise.all(dates.map((d)=>{
+                        return getAssetEvent(asset.asset_tag!, d)
+                    }))
+                    let pages = Math.ceil(totalEvents/pageSize)
+                    // Return to client
+                    res.status(200).json({total: totalEvents, pages, events: history})
                 }
             }
             // Get ID from query string
             let id = req.query.id as string
-            let date = req.query.date && !isNaN(new Date(req.query.date as string).valueOf()) ? req.query.date as string : ''
+            let pageNum = parseInt(req.query.pageNum as string)
+            let pageSize = parseInt(req.query.pageSize as string)
+            if(isNaN(pageSize)||isNaN(pageNum))
+                return res.status(400).send("Invalid page number or page size");
             // Check if ID is null or doesn't match ID type
             if (!id||!(/WNX([0-9]{7})+/.test(id)||mongoose.Types.ObjectId.isValid(id)))
                 return res.status(400).send("Invalid request");
             // If NXID
             if (/WNX([0-9]{7})+/.test(id)) {
-                Asset.findOne({asset_tag: id, next: null}, getHistory(date))
+                Asset.findOne({asset_tag: id, next: null}, aggregationHistory(pageNum, pageSize))
             }
             // If mongo ID
             else {
-                Asset.findById(id, getHistory(date))
+                Asset.findById(id, aggregationHistory(pageNum, pageSize))
             }
         } catch (err) {
             handleError(err)

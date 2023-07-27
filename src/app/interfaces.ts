@@ -58,9 +58,11 @@ export interface PartSchema {
     consumable?: boolean
     audited?: string | number | Date,
 }
+
 export interface PartQuery {
     [index: string]: any,
 }
+
 export interface AssetSchema {
     [index: string]: any,
     _id?: any,
@@ -98,7 +100,7 @@ export interface AssetSchema {
     old_by?: string,
     migrated?: boolean,
 
-    date_created?: string | number | Date,
+    date_created?: Date,
     date_updated?: string | number | Date,
     date_replaced?: string | number | Date,
 }
@@ -181,4 +183,9 @@ export interface CheckInRequest {
   date: Date,
   by: string,
   parts: CheckInQueuePart[]
+}
+
+export interface AssetUpdate {
+    asset_tag: string,
+    date: Date
 }

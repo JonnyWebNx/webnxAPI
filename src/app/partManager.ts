@@ -113,7 +113,7 @@ function getAllKiosks() {
     })
 }
 
-function getAllKioskNames() {
+export function getAllKioskNames() {
     return new Promise<string[]>(async (res)=>{
         let kioskUsers = await getAllKiosks()
         let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
@@ -263,6 +263,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getPartByID: async (req: Request, res: Response) => {
         try {
             let part = {} as PartSchema
@@ -300,14 +301,13 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     checkout: async (req: Request, res: Response) => {
         try {
             let { user_id, cart } = req.body
-            if(user_id!='all') {
-                let user = await User.findById(user_id).exec()
-                if(user_id==null||user_id==undefined||user==null)
-                    return res.status(400).send("Invalid request")
-            }
+            let user = await User.findById(user_id).exec()
+            if(user_id==null||user_id==undefined||user==null)
+                return res.status(400).send("Invalid request")
             let current_date = Date.now();
             // Find each item and check quantities before updating
             let sufficientStock = ""
@@ -445,6 +445,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     checkin: async (req: Request, res: Response) => {
         try {
             let { user_id, inventory } = req.body
@@ -577,6 +578,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getCheckinQueue: async (req: Request, res: Response) => {
         try {
             PartRecord.aggregate([
@@ -636,7 +638,7 @@ const partManager = {
 
     getCheckoutHistory: async (req: Request, res: Response) => {
         try {
-            let { startDate, endDate, pageSize, pageNum, location } = req.query;
+            let { startDate, endDate, pageSize, pageNum, location, user } = req.query;
 
             let kiosks = await getAllKioskNames()
             // Parse page size and page num
@@ -657,18 +659,35 @@ const partManager = {
             PartRecord.aggregate([
                 {
                     // Get checkin queue
-                    $match: { next: { $ne: null }, location: location ? location : { $in: kiosks }, 
+                    $match: { next: { $ne: null }, location: location ? location : { $in: kiosks }, next_owner: user ? user : { $ne: null },
                         // Check if next is valid ID
                         $expr: {
-                            $ne: [
+                            $and: [
+
                                 {
-                                    $convert: {
-                                        input: "$next",
-                                        to: "objectId",
-                                        onError: "bad"
-                                    }
+                                    $ne: [
+                                        {
+                                            $convert: {
+                                                input: "$next",
+                                                to: "objectId",
+                                                onError: "bad"
+                                            }
+                                        },
+                                        "bad"
+                                    ]
                                 },
-                                "bad"
+                                {
+                                    $ne: [
+                                        {
+                                            $convert: {
+                                                input: "$next_owner",
+                                                to: "objectId",
+                                                onError: "bad"
+                                            }
+                                        },
+                                        "bad"
+                                    ]
+                                }
                             ]
                         },
                         date_replaced: { $gte: startDateParsed, $lte: endDateParsed } 
@@ -680,56 +699,14 @@ const partManager = {
                         date_replaced: 1,
                         serial: 1,
                         location: 1,
-                        next: {
+                        owner: {
                             $convert: {
-                                input: "$next",
+                                input: "$next_owner",
                                 to: "objectId"
                             }
                         }
                     }
                 },
-                // Get next part record for owner
-                {
-                    $lookup: {
-                        from: "partrecords",
-                        localField: "next",
-                        foreignField: "_id",
-                        as: "next_record"
-                    }
-                },
-                // Unwind lookup array
-                {
-                    $unwind: "$next_record"
-                },
-                // Restructure document
-                {
-                    $project: {
-                        nxid: 1,
-                        date_replaced: 1,
-                        serial: 1,
-                        location: 1,
-                        owner: "$next_record.owner"
-                    }
-                },
-                // Get rid of invalid owners
-                {
-                    $match:
-                    {   owner: { $ne: undefined },
-                        $expr: {
-                            $ne: [
-                                {
-                                    $convert: {
-                                        input: "$owner",
-                                        to: "objectId",
-                                        onError: "bad"
-                                    }
-                                },
-                                "bad"
-                            ]
-                        },
-                    } 
-                },
-                // Combine part IDs together with quantity
                 {
                     // GROUP BY DATE, USER, NXID, AND SERIAL
                     $group: {
@@ -795,6 +772,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     processCheckinRequest: async (req: Request, res: Response) => {
         try {
             // Check info from checkin request
@@ -867,6 +845,7 @@ const partManager = {
                                 nxid: p.nxid,
                                 owner: by,
                                 location: "Tech Inventory",
+                                serial: p.serial,
                                 building: req.user.building,
                                 by: req.user.user_id,
                                 prev: partToUpdate!._id,
@@ -924,6 +903,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     searchParts: async (req: Request, res: Response) => {
         try {
             function returnSearch(numPages: number, numParts: number) {
@@ -1124,6 +1104,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     addToInventory: async (req: Request, res: Response) => {
         try {
             // Get info from request
@@ -1242,6 +1223,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     deletePart: async (req: Request, res: Response) => {
         try {
             // Try to find and delete by ID
@@ -1280,6 +1262,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getDistinctOnPartRecords: async (req: Request, res: Response) => {
         try {
             // Get key to find distinct values
@@ -1304,6 +1287,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getDistinctOnPartInfo: async (req: Request, res: Response) => {
         try {
             // Get key to find distinct values
@@ -1321,6 +1305,7 @@ const partManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getUserInventory: async (req: Request, res: Response) => {
         try {
             const { user_id } = req.query.user_id ? req.query : req.user
@@ -1391,6 +1376,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getPartRecordsByID: async (req: Request, res: Response) => {
         try {
             // Get nxid from query
@@ -1410,6 +1396,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getPartRecords: async (req: Request, res: Response) => {
         try {
             // Get nxid from query
@@ -1427,6 +1414,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getPartHistoryByID: async (req: Request, res: Response) => {
         try {
             // Get mongo ID from query
@@ -1451,6 +1439,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     movePartRecords: async (req: Request, res: Response) => {
         try {
             // Get data from request
@@ -1736,6 +1725,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     deleteFromPartsRoom: async (req: Request, res: Response) => {
         try{
             // Get request params
@@ -1781,6 +1771,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getPartImage: async (req: Request, res: Response) => {
         try {
             // Create path to image
@@ -1795,6 +1786,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     auditPart: async (req: Request, res: Response) => {
         try {
             // Create path to image
@@ -1817,6 +1809,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     nextSequentialNXID: async (req: Request, res: Response) => {
         // Basic binary search
         function findMissingNumber(arr: number[]) {
