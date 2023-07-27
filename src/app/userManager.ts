@@ -497,7 +497,7 @@ const userManager = {
                     return res.status(200).json({total: result[0].total, pages: Math.ceil(result[0].total/pageSizeInt),events: returnValue});
                 }
                 // Return to client
-                res.status(200).json({total: 0, updates: []});
+                res.status(200).json({total: 0, pages: 1, events: []});
             })
         } catch (err) {
             // Error
