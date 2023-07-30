@@ -720,7 +720,7 @@ const assetManager = {
                 next: null
             }
             // Mark removed parts as deleted
-            if(correction) {
+            if(correction==true) {
                 delete removedOptions.owner
                 removedOptions.location = 'deleted'
                 removedOptions.next = 'deleted'
@@ -728,7 +728,7 @@ const assetManager = {
             // Update removed parts
             await updateParts(removedOptions, assetSearchOptions, removed, isMigrated)
             // Create new part records for added parts
-            if(correction)
+            if(correction==true)
                 isMigrated = true
             // Update added parts
             await updateParts(addedOptions, userSearchOptions, added, isMigrated)
