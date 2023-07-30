@@ -439,6 +439,124 @@ const userManager = {
         }
     },
 
+    getUserAssetUpdatesNoDetails: async (req: Request, res: Response) => {
+        try {
+            let { startDate, endDate, pageSize, pageNum, user } = req.query;
+            // Parse page size and page num
+            let pageSizeInt = parseInt(pageSize as string)
+            let pageNumInt = parseInt(pageNum as string)
+            // Turn date into usable objects
+            let startDateParsed = new Date(parseInt(startDate as string))
+            let endDateParsed = new Date(parseInt(endDate as string))
+            endDateParsed.setDate(endDateParsed.getDate()+1)
+            // Check for bad conversions
+            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
+                return res.status(400).send("Invalid page number or page size");
+            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
+                return res.status(400).send("Invalid start or end date");
+            // Calculate page skip
+            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            // Find added parts
+            let assetUpdates = await PartRecord.aggregate([
+                {
+                    $match: {
+                        by: user, 
+                        date_created: {$gte: startDateParsed, $lte: endDateParsed},
+                        asset_tag: { $ne: null },
+                        prev: {$ne: null}
+                    }
+                },
+                {
+                    $group: {
+                        _id: { asset_tag: "$asset_tag", date: "$date_created" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        asset_tag: "$_id.asset_tag",
+                        date: "$_id.date"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ])  as AssetUpdate[]
+            // Find removed parts
+            assetUpdates = assetUpdates.concat(await PartRecord.aggregate([
+                {
+                    $match: {
+                        next_owner: user, 
+                        asset_tag: { $ne: null },
+                        date_replaced: {$gte: startDateParsed, $lte: endDateParsed},
+                    }
+                },
+                {
+                    $group: {
+                        _id: { asset_tag: "$asset_tag", date: "$date_replaced" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        asset_tag: "$_id.asset_tag",
+                        date: "$_id.date"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ])  as AssetUpdate[])
+            // Find updated assets
+            assetUpdates = assetUpdates.concat(await Asset.aggregate([
+                {
+                    $match: {
+                        by: user, 
+                        date_created: {$gte: startDateParsed, $lte: endDateParsed},
+                        prev: {$ne: null}
+                    }
+                },
+                {
+                    $group: {
+                        _id: { asset_tag: "$asset_tag", date: "$date_created" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        asset_tag: "$_id.asset_tag",
+                        date: "$_id.date"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ])  as AssetUpdate[])
+            // Get all the dates of asset related events
+            assetUpdates = assetUpdates
+            .sort((a, b)=>{
+                if (a.date < b.date)
+                    return 1
+                return -1
+            })
+            .filter((a, i, arr)=>{return i===arr.findIndex((b)=>{
+                return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag
+            })})
+            .splice(pageSkip, pageSizeInt)
+            let totalUpdates = assetUpdates.length
+            res.status(200).json({total: totalUpdates, pages: Math.ceil(totalUpdates/pageSizeInt),events: assetUpdates});
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     getUserNewAssets: async (req: Request, res: Response) => {
         try {
             let { startDate, endDate, pageSize, pageNum, user } = req.query;
@@ -495,6 +613,69 @@ const userManager = {
                         return getAssetEvent(a.asset_tag, a.date)
                     }))
                     return res.status(200).json({total: result[0].total, pages: Math.ceil(result[0].total/pageSizeInt),events: returnValue});
+                }
+                // Return to client
+                res.status(200).json({total: 0, pages: 1, events: []});
+            })
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getUserNewAssetsNoDetails: async (req: Request, res: Response) => {
+        try {
+            let { startDate, endDate, pageSize, pageNum, user } = req.query;
+
+            // Parse page size and page num
+            let pageSizeInt = parseInt(pageSize as string)
+            let pageNumInt = parseInt(pageNum as string)
+            // Turn date into usable objects
+            let startDateParsed = new Date(parseInt(startDate as string))
+            let endDateParsed = new Date(parseInt(endDate as string))
+            endDateParsed.setDate(endDateParsed.getDate()+1)
+            // Check for bad conversions
+            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
+                return res.status(400).send("Invalid page number or page size");
+            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
+                return res.status(400).send("Invalid start or end date");
+            // Calculate page skip
+            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            Asset.aggregate([
+                {
+                    $match: {
+                        $or: [{ prev: null}, {prev: {$exists: false}}],
+                        by: user,
+                        date_created: { $lte: endDateParsed, $gte: startDateParsed }
+                    }
+                },
+                {
+                    $sort: {
+                        "date_created": -1
+                    }
+                },
+                // Get total count
+                {
+                    $group: {
+                        _id: null,
+                        total: {$sum: 1},
+                        updates: {$push: { asset_tag: "$asset_tag", date: "$date_created"}}
+                    }
+                },
+                // Skip to page
+                {
+                    $project: {
+                        _id: 0,
+                        total: 1,
+                        updates: {$slice: ["$updates", pageSkip, pageSizeInt]}
+                    }
+                }
+            ]).exec(async (err, result: { total: number, updates: AssetUpdate[]}[])=>{
+                if(err) {
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                if(result.length&&result.length>0) {
+                    return res.status(200).json({total: result[0].total, pages: Math.ceil(result[0].total/pageSizeInt),events: result[0].updates});
                 }
                 // Return to client
                 res.status(200).json({total: 0, pages: 1, events: []});

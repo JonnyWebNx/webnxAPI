@@ -30,27 +30,27 @@ server.listen(port, () => {
     "\x1b[0m",`\nServer running on port ${config.PORT}`);
 });
 
-PartRecord.find({owner: {$ne: undefined}}, async (err: MongooseError, res: PartRecordSchema[]) => {
-    if(err)
-        return
-    await Promise.all(res.filter((r)=>r.prev!=null).map((r, i)=>{
-        console.log("Record Num:" + (i+1))
-        return PartRecord.findByIdAndUpdate(r.prev, { next_owner: r.owner})
-    }))
-    console.log("Done")
-})
-
-Asset.find({next: { $ne: null} }, async (err: MongooseError, res: AssetSchema[]) => {
-    if(err)
-        return
-    let count = 0
-    await Promise.all(res.filter((r)=>r.prev!=null&&r.date_replaced!=null).map((r)=>{
-        count++
-        return Asset.findByIdAndUpdate(r.next, { date_created: r.date_replaced })
-    }))
-    console.log("Assets updated: "+count)
-    console.log("Done")
-})
+// PartRecord.find({owner: {$ne: undefined}}, async (err: MongooseError, res: PartRecordSchema[]) => {
+//     if(err)
+//         return
+//     await Promise.all(res.filter((r)=>r.prev!=null).map((r, i)=>{
+//         console.log("Record Num:" + (i+1))
+//         return PartRecord.findByIdAndUpdate(r.prev, { next_owner: r.owner})
+//     }))
+//     console.log("Done")
+// })
+// 
+// Asset.find({next: { $ne: null} }, async (err: MongooseError, res: AssetSchema[]) => {
+//     if(err)
+//         return
+//     let count = 0
+//     await Promise.all(res.filter((r)=>r.prev!=null&&r.date_replaced!=null).map((r)=>{
+//         count++
+//         return Asset.findByIdAndUpdate(r.next, { date_created: r.date_replaced })
+//     }))
+//     console.log("Assets updated: "+count)
+//     console.log("Done")
+// })
 // 
 // PartRecord.find({next: null}, async (err: MongooseError, res: PartRecordSchema[]) => {
 //     let orphaned = 0

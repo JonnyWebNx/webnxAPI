@@ -113,7 +113,9 @@ app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 app.get('/api/user/roles', auth, sanitize, userManager.checkRoles)
 app.get('/api/user/checkins', auth, sanitize, userManager.getUserCheckins)
 app.get('/api/user/assetsUpdated', auth, sanitize, userManager.getUserAssetUpdates)
+app.get('/api/user/assetsUpdated/noDetails', auth, sanitize, userManager.getUserAssetUpdatesNoDetails)
 app.get('/api/user/newAssets', auth, sanitize, userManager.getUserNewAssets)
+app.get('/api/user/newAssets/noDetails', auth, sanitize, userManager.getUserNewAssetsNoDetails)
 // Update
 app.put("/api/user", auth, checkRoles(["admin"]), sanitize, userManager.updateUser);
 app.put("/images/users", auth, sanitize, uploadImage, updateUserImage);
