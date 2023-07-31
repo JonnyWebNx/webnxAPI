@@ -218,7 +218,7 @@ const partManager = {
                 // Check if value is integer
                 if(typeof(req_part[k])=='string'&&!isNaN(req_part[k] as any)) {
                     // Parse integer
-                    return search_part[k] = parseInt(req_part[k] as string)
+                    return search_part[k] = parseFloat(req_part[k] as string)
                 }
                 // Check if not boolean 
                 if(!(req_part[k]=='true')&&!(req_part[k]=='false'))
