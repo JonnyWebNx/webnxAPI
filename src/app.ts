@@ -73,15 +73,15 @@ app.post("/api/password/reset", sanitize, userManager.updatePassword)
 // ***   Parts   ***
 //
 // Create
-app.post("/api/part", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.createPart);
-app.post("/api/part/add", auth, checkRoles(["lead", "clerk", "admin"]), sanitize, partManager.addToInventory);
+app.post("/api/part", auth, checkRoles(["lead", "clerk", "admin"]), sanitize, partManager.createPart);
+app.post("/api/part/add", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.addToInventory);
 app.post("/api/checkout", auth, checkRoles(["kiosk"]), sanitize, partManager.checkout);
 app.post("/api/checkin", auth, checkRoles(["kiosk"]), sanitize, partManager.checkin)
 app.post("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.processCheckinRequest)
-app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "admin"]), sanitize, partManager.movePartRecords);
+app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "lead", "admin"]), sanitize, partManager.movePartRecords);
 // Read 
 app.get("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.getCheckinQueue)
-app.get("/api/checkout/history", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.getCheckoutHistory)
+app.get("/api/checkout/history", auth, sanitize, checkRoles(['lead', 'clerk', 'admin']), partManager.getCheckoutHistory)
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
@@ -96,7 +96,7 @@ app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPar
 app.get("/api/part/audit", auth, sanitize, checkRoles(["clerk", "admin"]), partManager.auditPart)
 // Update
 app.put("/api/part", auth, checkRoles(["clerk", "admin"]), partManager.updatePartInfo);
-app.put("/images/parts", auth, sanitize, checkRoles(["clerk", "admin"]), uploadImage, updatePartImage);
+app.put("/images/parts", auth, sanitize, checkRoles(["lead", "clerk", "admin"]), uploadImage, updatePartImage);
 // Delete
 app.delete("/api/part", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deletePart);
 app.delete("/api/partRecord", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deleteFromPartsRoom);

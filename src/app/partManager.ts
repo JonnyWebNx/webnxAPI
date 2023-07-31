@@ -1575,7 +1575,7 @@ const partManager = {
             let to = {} as PartRecordSchema
             to.owner = new_owner ? new_owner as string : "";
             to.next = null
-            let buildingSwitchPerms = req.user.roles.includes("clerk")||req.user.roles.includes("admin")
+            let buildingSwitchPerms = req.user.roles.includes("clerk")||req.user.roles.includes("lead")||req.user.roles.includes("admin")
             let ebayPerms = req.user.roles.includes("ebay")||req.user.roles.includes("admin")
             switch (new_owner) {
                 case 'all':
@@ -1620,19 +1620,19 @@ const partManager = {
                     to.location = 'sold'
                     break;
                 case 'lost':
-                    if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
+                    if(!buildingSwitchPerms)
                         return res.status(400).send("You do not have permissions to mark parts as lost");
                     to.next = 'lost'
                     to.location = 'lost'
                     break;
                 case 'broken':
-                    if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
+                    if(!buildingSwitchPerms)
                         return res.status(400).send("You do not have permissions to mark parts as broken");
                     to.next = 'broken'
                     to.location = 'broken'
                     break;
                 case 'deleted':
-                    if(!(req.user.roles.includes('admin')||req.user.roles.includes('clerk')))
+                    if(!buildingSwitchPerms)
                         return res.status(400).send("You do not have permissions to mark parts as deleted");
                     to.next = 'deleted'
                     to.location = 'deleted'
