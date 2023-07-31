@@ -1606,6 +1606,10 @@ const partManager = {
                     // Testing center
                     to.location = 'Testing Center'
                     break;
+                case 'hdd':
+                    // Testing center
+                    to.location = 'Drive Wipe Shelf'
+                    break;
                 case 'sold':
                     if(!req.body.orderID)
                         return res.status(400).send("Ebay order ID not present");
