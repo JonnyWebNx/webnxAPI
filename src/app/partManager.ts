@@ -958,6 +958,18 @@ const partManager = {
             }
             // Strict sanitize
             searchString = stringSanitize(searchString, true)
+            if(searchString == "") {
+                let numParts = await Part.count()
+                let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
+                Part.find()
+                .sort({ nxid: 1 })
+                // Skip - gets requested page number
+                .skip(pageSkip)
+                // Limit - returns only enough elements to fill page
+                .limit(pageSizeInt + 1)
+                .exec(returnSearch(numPages, numParts))
+                return
+            }
             
             let fullText = false
             // Check if find works
