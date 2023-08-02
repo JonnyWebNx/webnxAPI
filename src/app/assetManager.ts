@@ -447,7 +447,7 @@ const assetManager = {
             // Send request to database
             Asset.find(asset)
                 .skip(pageSize * (pageNum - 1))
-                .limit(Number(pageSize)+1)
+                .limit(Number(pageSize))
                 .exec(returnSearch(res, numPages, numAssets))
         } catch(err) {
             handleError(err)
@@ -520,7 +520,7 @@ const assetManager = {
                 Asset.find(searchString != ''? { $text: { $search: searchString } } : {})
                     .where({next: null})
                     .skip(pageSkip)
-                    .limit(pageSizeInt+1)
+                    .limit(pageSizeInt)
                     .exec(returnSearch(res, numPages, numAssets))
             }
             else {
@@ -569,7 +569,7 @@ const assetManager = {
                         } 
                     }])
                     .skip(pageSkip)
-                    .limit(pageSizeInt+1)
+                    .limit(pageSizeInt)
                     .exec(returnSearch(res, numPages, numAssets))
             }
         } catch (err) {

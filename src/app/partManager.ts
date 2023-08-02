@@ -231,7 +231,7 @@ const partManager = {
             let numPages = numParts%pageSize>0 ? Math.trunc(numParts/pageSize) + 1 : Math.trunc(numParts/pageSize)
             Part.find(search_part)
                 .skip(pageSize * (pageNum - 1))
-                .limit(pageSize + 1)
+                .limit(pageSize)
                 .exec(async (err: CallbackError | null, parts) => {
                     if (err) {
                         // Database err
@@ -966,7 +966,7 @@ const partManager = {
                 // Skip - gets requested page number
                 .skip(pageSkip)
                 // Limit - returns only enough elements to fill page
-                .limit(pageSizeInt + 1)
+                .limit(pageSizeInt)
                 .exec(returnSearch(numPages, numParts))
                 return
             }
@@ -986,7 +986,7 @@ const partManager = {
                 // Skip - gets requested page number
                 .skip(pageSkip)
                 // Limit - returns only enough elements to fill page
-                .limit(pageSizeInt + 1)
+                .limit(pageSizeInt)
                 .exec(returnSearch(numPages, numParts))
             }
             // Find doesn't work, use aggregation pipeline
@@ -1064,7 +1064,7 @@ const partManager = {
                 // Search
                 Part.aggregate(aggregateQuery)
                     .skip(pageSkip)
-                    .limit(pageSizeInt + 1)
+                    .limit(pageSizeInt)
                     .exec(returnSearch(numPages, numParts))
             }
         } catch (err) {
