@@ -961,7 +961,7 @@ const partManager = {
             if(searchString == "") {
                 let numParts = await Part.count()
                 let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
-                Part.find()
+                Part.find({})
                 .sort({ nxid: 1 })
                 // Skip - gets requested page number
                 .skip(pageSkip)
