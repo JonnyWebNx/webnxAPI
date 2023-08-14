@@ -1080,11 +1080,8 @@ const partManager = {
         try {
             // Find part
             let part = req.body.part
-            console.log(part)
             // Try to add part to database
             let newPart = cleansePart(part)
-            console.log(newPart)
-
             // Send part to database
             newPart.created_by = req.user.user_id;
 
