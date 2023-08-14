@@ -57,6 +57,7 @@ export interface PartSchema {
     serialized?: boolean,
     consumable?: boolean
     audited?: string | number | Date,
+    notes?: string
 }
 
 export interface PartQuery {

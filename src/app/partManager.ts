@@ -33,6 +33,9 @@ function cleansePart(part: PartSchema) {
     newPart.shelf_location = part.shelf_location
     newPart.rack_num = part.rack_num
     newPart.serialized = part.serialized        
+    newPart.notes = ""
+    if(part.notes)
+        newPart.notes = part.notes
     switch(part.type) {
         case "Memory":
             newPart.frequency = part.frequency
@@ -1077,9 +1080,10 @@ const partManager = {
         try {
             // Find part
             let part = req.body.part
-
+            console.log(part)
             // Try to add part to database
             let newPart = cleansePart(part)
+            console.log(newPart)
 
             // Send part to database
             newPart.created_by = req.user.user_id;

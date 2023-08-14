@@ -32,6 +32,7 @@ const partSchema = new mongoose.Schema({
     created_by: { type: String, default: null },
     date_created: { type: Date, default: Date.now() },
     audited: { type: Date },
+    notes: { type: String }
 });
 partSchema.index({
     '$**': 'text',
