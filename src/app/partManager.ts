@@ -85,6 +85,7 @@ function cleansePart(part: PartSchema) {
             break;
         case "Optic":
             newPart.cable_end1 = part.cable_end1;
+            newPart.consumable = part.consumable ? true : false
             break;
         default:
             newPart.consumable = part.consumable ? true : false
@@ -1084,19 +1085,6 @@ const partManager = {
             let newPart = cleansePart(part)
             // Send part to database
             newPart.created_by = req.user.user_id;
-
-            function updatePartRecords(err: MongooseError, parts: PartSchema[]) {
-                if (err) {
-                    handleError(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                // Change every part record
-                parts.map((p)=>{  
-                    PartRecord.findByIdAndUpdate(p._id, {
-                        nxid: newPart!.nxid
-                    }, callbackHandler.callbackHandleError);
-                })
-            }
             // Updated part is the old part from database
             if (!/PNX([0-9]{7})+/.test(newPart.nxid ? newPart.nxid : '')) {
                 return res.status(400).send("Invalid part ID");
@@ -1106,9 +1094,14 @@ const partManager = {
             if (updatedPart == null) {
                 return res.status(400).send("Part not found.");
             }
+            if (newPart.consumable&&!updatedPart.consumable) {
+                let kiosks = await getAllKioskNames()
+
+                await PartRecord.updateMany({ nxid: updatedPart.nxid, next: null, location : {$in: kiosks} }, {$set: {next: 'consumed'}})
+            }
             if (newPart.nxid != updatedPart.nxid) {
                 // Update old NXID to new NXID
-                PartRecord.find({ nxid: updatedPart.nxid }, updatePartRecords)
+                await PartRecord.updateMany({ nxid: updatedPart.nxid }, {$set: {nxid: newPart.nxid}})
             }
             return res.status(201).json(updatedPart);
         } catch (err) {
