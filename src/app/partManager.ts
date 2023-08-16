@@ -981,20 +981,21 @@ const partManager = {
             if(pp!=undefined)
                 fullText = true
 
-            if (fullText) {
-                // Search data
-                let numParts = await Part.count(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {})
-                let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
-                Part.find(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {}, searchString != ''?{ score: { $meta: "textScore" } }:{})
-                .sort(searchString != ''?{ score: { $meta: "textScore" } }:{})
-                // Skip - gets requested page number
-                .skip(pageSkip)
-                // Limit - returns only enough elements to fill page
-                .limit(pageSizeInt)
-                .exec(returnSearch(numPages, numParts))
-            }
+            // if (fullText) {
+            //     // Search data
+            //     console.log("full text")
+            //     let numParts = await Part.count(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {})
+            //     let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
+            //     Part.find(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {}, searchString != ''?{ score: { $meta: "textScore" } }:{})
+            //     .sort(searchString != ''?{ score: { $meta: "textScore" } }:{})
+            //     // Skip - gets requested page number
+            //     .skip(pageSkip)
+            //     // Limit - returns only enough elements to fill page
+            //     .limit(pageSizeInt)
+            //     .exec(returnSearch(numPages, numParts))
+            // }
             // Find doesn't work, use aggregation pipeline
-            else {
+            // else {
                 let keywords = [searchString]
                 keywords = keywords.concat(searchString.split(" ")).filter((s)=>s!='')
                 // Use keywords to build search options
@@ -1070,7 +1071,7 @@ const partManager = {
                     .skip(pageSkip)
                     .limit(pageSizeInt)
                     .exec(returnSearch(numPages, numParts))
-            }
+            //}
         } catch (err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
@@ -1097,7 +1098,7 @@ const partManager = {
             if (newPart.consumable&&!updatedPart.consumable) {
                 let kiosks = await getAllKioskNames()
 
-                await PartRecord.updateMany({ nxid: updatedPart.nxid, next: null, location : {$in: kiosks} }, {$set: {next: 'consumed'}})
+                await PartRecord.updateMany({ nxid: updatedPart.nxid, next: null, location : {$nin: kiosks} }, {$set: {next: 'consumed'}})
             }
             if (newPart.nxid != updatedPart.nxid) {
                 // Update old NXID to new NXID
