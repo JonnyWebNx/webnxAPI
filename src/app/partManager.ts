@@ -1004,8 +1004,8 @@ const partManager = {
                 // Add regex of keywords to all search options
                 await Promise.all(keywords.map(async (key) => {
                     // Why was this even here to begin with?
-                    // searchOptions.push({ "nxid": { $regex: key, $options: "i" } })
-                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$nxid", regex: new RegExp(key, "i") } }, 1, 0] })
+                    searchOptions.push({ "nxid": { $regex: key, $options: "i" } })
+                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$nxid", regex: new RegExp(key, "i") } }, 3, 0] })
                     searchOptions.push({ "name": { $regex: key, $options: "i" } })
                     relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$name", regex: new RegExp(key, "i") } }, 5, -1] })
                     searchOptions.push({ "manufacturer": { $regex: key, $options: "i" } })
@@ -1865,6 +1865,14 @@ const partManager = {
                 // Send response
                 return res.status(200).send(nxid);
             })
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    mergeParts: async (req: Request, res: Response) => {
+        try {
+
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
