@@ -20,6 +20,8 @@ import path from 'path';
 import { PartSchema, PartQuery, CheckInRequest } from "./interfaces.js";
 import config from '../config.js'
 import fs from 'fs';
+import { objectToRegex } from './methods/partMethods.js';
+import { partRecordsToCartItemsWithInfo } from './methods/assetMethods.js';
 
 const { UPLOAD_DIRECTORY } = config
 
@@ -124,6 +126,10 @@ export function getAllKioskNames() {
         res(kioskNames)
     })
 }
+
+function isValidPartID(id: string) {
+    return /PNX([0-9]{7})+/.test(id)
+}
 const partManager = {
     // Create
     createPart: async (req: Request, res: Response) => {
@@ -138,7 +144,7 @@ const partManager = {
                 return res.status(400).send("Invalid request");
             }
             // Regex check the NXID
-            if (!/PNX([0-9]{7})+/.test(nxid)) {
+            if (!isValidPartID(nxid)) {
                 return res.status(400).send("Invalid part ID");
             }
             // Try to add part to database
@@ -204,33 +210,7 @@ const partManager = {
             // Typecast part
             let req_part = req.query
             // Create query part
-            let search_part = {} as PartQuery
-            // Copy fields from typecasted part, convert array into $all query
-            Object.keys(req_part).forEach((k)=>{
-                // early return for empty strings
-                if(req_part[k]=='')
-                    return
-                // ALlow array partial matches
-                if(Array.isArray(req_part[k])&&!(req_part[k]!.length==0)) {
-                    // Generate regex for each array field
-                    let arr = (req_part[k] as string[]).map((v)=>{
-                        return new RegExp(v, "i") 
-                    })
-                    // Use $all with array of case insensitive regexes
-                    return search_part[k] = { $all: arr }
-                }
-                // Check if value is integer
-                if(typeof(req_part[k])=='string'&&!isNaN(req_part[k] as any)) {
-                    // Parse integer
-                    return search_part[k] = parseFloat(req_part[k] as string)
-                }
-                // Check if not boolean 
-                if(!(req_part[k]=='true')&&!(req_part[k]=='false'))
-                    // Create case insensitive regex
-                    return search_part[k] = { $regex: req_part[k], $options: 'i' } 
-                // Any value here is likely a boolean
-                search_part[k] = req_part[k]
-            })
+            let search_part = objectToRegex(req_part)
             let numParts = await Part.count(search_part)
             let numPages = numParts%pageSize>0 ? Math.trunc(numParts/pageSize) + 1 : Math.trunc(numParts/pageSize)
             Part.find(search_part)
@@ -273,7 +253,7 @@ const partManager = {
             let part = {} as PartSchema
             let kiosks = await getKioskNames(req.user.building)
             // Check if NXID
-            if (/PNX([0-9]{7})+/.test((req.query.id as string).toUpperCase())) {
+            if (isValidPartID((req.query.id as string).toUpperCase())) {
                 part = await Part.findOne({ nxid: { $eq: (req.query.id as string).toUpperCase() } }) as PartSchema;
             }
             // If mongo ID
@@ -295,9 +275,12 @@ const partManager = {
                 location: req.query.location ? req.query.location : {$in: kiosks},
                 next: null
             });
+            // Get rid of unnecessary info
             part = part._doc;
+            // Add quantities
             part.total_quantity = total_quantity;
             part.quantity = quantity;
+            // return
             res.status(200).json(part);
         } catch (err) {
             // Database error
@@ -974,103 +957,81 @@ const partManager = {
                 .exec(returnSearch(numPages, numParts))
                 return
             }
-            
-            let fullText = false
-            // Check if find works
-            let pp = await Part.findOne(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {})
-            if(pp!=undefined)
-                fullText = true
-
-            // if (fullText) {
-            //     // Search data
-            //     console.log("full text")
-            //     let numParts = await Part.count(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {})
-            //     let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
-            //     Part.find(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {}, searchString != ''?{ score: { $meta: "textScore" } }:{})
-            //     .sort(searchString != ''?{ score: { $meta: "textScore" } }:{})
-            //     // Skip - gets requested page number
-            //     .skip(pageSkip)
-            //     // Limit - returns only enough elements to fill page
-            //     .limit(pageSizeInt)
-            //     .exec(returnSearch(numPages, numParts))
-            // }
-            // Find doesn't work, use aggregation pipeline
-            // else {
-                let keywords = [searchString]
-                keywords = keywords.concat(searchString.split(" ")).filter((s)=>s!='')
-                // Use keywords to build search options
-                let searchOptions = [] as any
-                let relevanceConditions = [] as any
-                // Add regex of keywords to all search options
-                await Promise.all(keywords.map(async (key) => {
-                    // Why was this even here to begin with?
-                    searchOptions.push({ "nxid": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$nxid", regex: new RegExp(key, "i") } }, 3, 0] })
-                    searchOptions.push({ "name": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$name", regex: new RegExp(key, "i") } }, 5, -1] })
-                    searchOptions.push({ "manufacturer": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$manufacturer", regex: new RegExp(key, "i") } }, 5, -1] })
-                    searchOptions.push({ "type": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$type", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "shelf_location": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$shelf_location", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "storage_interface": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$storage_interface", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "port_type": { $regex: key, $options: "i" } })
-                    // REGEX doesn't allow arrays
-                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$port_type", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "peripheral_type": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$peripheral_type", regex: new RegExp(key, "i") } }, 2, 0] })
-                    searchOptions.push({ "memory_type": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_type", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "memory_gen": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_gen", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "frequency": { $regex: key, $options: "i" } })
-                    // REGEX doesn't allow numbers
-                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$frequency", regex: new RegExp(key, "i") } }, 2, 0] })
-                    searchOptions.push({ "size": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$size", regex: new RegExp(key, "i") } }, 2, 0] })
-                    searchOptions.push({ "cable_end1": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end1", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "cable_end2": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end2", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "chipset": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$chipset", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "socket": { $regex: key, $options: "i" } })
-                    // REGEX doesn't allow arrays
-                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$socket", regex: new RegExp(key, "i") } }, 1, 0] })
-                }))
-                let aggregateQuery = [
-                    {
-                        $match: {
-                            $or: searchOptions
-                        }
-                    },
-                    {
-                        $addFields: {
-                            relevance: {
-                                $sum: relevanceConditions
-                            }
-                        }
-                    },
-                    {
-                        $sort: { relevance: -1 }
-                    },
-                    {
-                        $project: { relevance: 0 }
+            let keywords = [searchString]
+            keywords = keywords.concat(searchString.split(" ")).filter((s)=>s!='')
+            // Use keywords to build search options
+            let searchOptions = [] as any
+            let relevanceConditions = [] as any
+            // Add regex of keywords to all search options
+            await Promise.all(keywords.map(async (key) => {
+                // Why was this even here to begin with?
+                searchOptions.push({ "nxid": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$nxid", regex: new RegExp(key, "") } }, 3, 0] })
+                searchOptions.push({ "name": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$name", regex: new RegExp(key, "i") } }, 5, -1] })
+                searchOptions.push({ "manufacturer": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$manufacturer", regex: new RegExp(key, "i") } }, 5, -1] })
+                searchOptions.push({ "type": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$type", regex: new RegExp(key, "i") } }, 1, 0] })
+                searchOptions.push({ "shelf_location": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$shelf_location", regex: new RegExp(key, "i") } }, 1, 0] })
+                searchOptions.push({ "storage_interface": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$storage_interface", regex: new RegExp(key, "i") } }, 1, 0] })
+                searchOptions.push({ "port_type": { $regex: key, $options: "i" } })
+                // REGEX doesn't allow arrays
+                // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$port_type", regex: new RegExp(key, "i") } }, 1, 0] })
+                searchOptions.push({ "peripheral_type": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$peripheral_type", regex: new RegExp(key, "i") } }, 2, 0] })
+                searchOptions.push({ "memory_type": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_type", regex: new RegExp(key, "i") } }, 1, 0] })
+                searchOptions.push({ "memory_gen": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_gen", regex: new RegExp(key, "i") } }, 1, 0] })
+                searchOptions.push({ "frequency": { $regex: key, $options: "i" } })
+                // REGEX doesn't allow numbers
+                // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$frequency", regex: new RegExp(key, "i") } }, 2, 0] })
+                searchOptions.push({ "size": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$size", regex: new RegExp(key, "i") } }, 2, 0] })
+                searchOptions.push({ "cable_end1": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end1", regex: new RegExp(key, "i") } }, 1, 0] })
+                searchOptions.push({ "cable_end2": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end2", regex: new RegExp(key, "i") } }, 1, 0] })
+                searchOptions.push({ "chipset": { $regex: key, $options: "i" } })
+                relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$chipset", regex: new RegExp(key, "i") } }, 1, 0] })
+                searchOptions.push({ "socket": { $regex: key, $options: "i" } })
+                // REGEX doesn't allow arrays
+                // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$socket", regex: new RegExp(key, "i") } }, 1, 0] })
+            }))
+            let aggregateQuery = [
+                {
+                    $match: {
+                        $or: searchOptions
                     }
-                ] as any
-                // Aggregate count
-                let countQuery = await Part.aggregate(aggregateQuery).count("numParts")
-                // This is stupid but it works
-                let numParts = countQuery.length > 0&&countQuery[0].numParts ? countQuery[0].numParts : 0
-                // Ternary that hurts my eyes
-                let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
-                // Search
-                Part.aggregate(aggregateQuery)
-                    .skip(pageSkip)
-                    .limit(pageSizeInt)
-                    .exec(returnSearch(numPages, numParts))
+                },
+                {
+                    $addFields: {
+                        relevance: {
+                            $sum: relevanceConditions
+                        }
+                    }
+                },
+                {
+                    $sort: { relevance: -1 }
+                },
+                {
+                    $project: { relevance: 0 }
+                }
+            ] as any
+            // Aggregate count
+            let countQuery = await Part.aggregate(aggregateQuery).count("numParts")
+            // This is stupid but it works
+            let numParts = countQuery.length > 0&&countQuery[0].numParts ? countQuery[0].numParts : 0
+            // Ternary that hurts my eyes
+            let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
+            // Search
+            Part.aggregate(aggregateQuery)
+                .skip(pageSkip)
+                .limit(pageSizeInt)
+                .exec(returnSearch(numPages, numParts))
             //}
         } catch (err) {
             handleError(err)
@@ -1322,61 +1283,9 @@ const partManager = {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                // Store part info
-                let cachedRecords = new Map<string, PartSchema>();
-                // Unserialized parts and quantities
-                let unserializedParts = new Map<string, number>();
-                // Serialized parts
-                let cartItems = [] as CartItem[]
-
-                await Promise.all(records.map((record) => {
-                    // If serialized
-                    if(record.serial) {
-                        // Push straight to cart items
-                        cartItems.push({nxid: record.nxid!, serial: record.serial })
-                    }
-                    // If unserialized and map already has part
-                    else if (unserializedParts.has(record.nxid!)) {
-                        // Increment quantity
-                        unserializedParts.set(record.nxid!, unserializedParts.get(record.nxid!)! + 1)
-                    }
-                    // Map does not have part
-                    else {
-                        // Start at 1
-                        unserializedParts.set(record.nxid!, 1)
-                    }
-                }))
-                // Get part info and push as LoadedCartItem interface from the front end
-                unserializedParts.forEach((quantity, nxid) => {
-                    // Push unserialized parts to array
-                    cartItems.push({nxid: nxid, quantity: quantity})
-                })
-                // Check all cart items
-                await Promise.all(cartItems.map(async (item) =>{
-                    // Check if part record cache already contains part info
-                    if (!cachedRecords.has(item.nxid)) {
-                        // Set temp value
-                        cachedRecords.set(item.nxid, {})
-                        // Find part info
-                        let part = await Part.findOne({nxid: item.nxid})
-                        // If part info found
-                        if(part) {
-                            // Set new value
-                            cachedRecords.set(item.nxid, part)
-                        }
-                        // Part info not found
-                        else {
-                            // Error - reset 
-                            cachedRecords.delete(item.nxid)
-                        }
-                    }
-                }))
-                // Map part info to array (Maps can't be sent through Express/HTTP ???)
-                let parts = Array.from(cachedRecords, (record) => {
-                    return { nxid: record[0], part: record[1]}
-                })
+                let returnValue = await partRecordsToCartItemsWithInfo(records)
                 // Send response
-                res.status(200).json({ parts: parts, records: cartItems})
+                res.status(200).json(returnValue)
             })
         } catch (err) {
             handleError(err)

@@ -42,7 +42,6 @@ const asset = new mongoose.Schema({
     // Status
     live: { type: Boolean, default: false},
     in_rack: { type: Boolean },
-    avail: { type: Boolean },
     // Bay
     bay: { type: Number },
     // Physical location
