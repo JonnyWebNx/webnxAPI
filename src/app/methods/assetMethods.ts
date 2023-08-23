@@ -7,6 +7,7 @@ import { objectSanitize } from "../../config/sanitize.js"
 import callbackHandler from "../../middleware/callbackHandlers.js"
 import Asset from "../../model/asset.js"
 import Part from "../../model/part.js"
+import { isString } from "util"
 /**
  * 
  * @param parts 
@@ -266,7 +267,6 @@ export function updateParts(createOptions: PartRecordSchema, searchOptions: Part
                 }
             }
             else {
-
                 let toBeUpdated = await PartRecord.find(sOptions)
                 if (toBeUpdated.length < p.quantity)
                 return
@@ -508,6 +508,7 @@ export function returnAssetHistory(pageNum: number, pageSize: number, res: Respo
     }
 }
 
+
 /**
  *  
  *
@@ -529,6 +530,7 @@ export function userHasInInventory(user_id: string|mongoose.Types.ObjectId, inve
         })
     })
 }
+
 
 export function partRecordsToCartItems(records: PartRecordSchema[]) {
     // Map for unserialized parts

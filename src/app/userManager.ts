@@ -24,7 +24,7 @@ import crypto from 'crypto'
 import resetToken from '../model/resetToken.js';
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
-import { getAssetEvent } from './assetManager.js';
+import { getAssetEvent } from './methods/assetMethods.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
 
 // Main object containing functions

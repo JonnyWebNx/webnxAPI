@@ -8,10 +8,9 @@
 */
 import Asset from "../model/asset.js";
 import PartRecord from "../model/partRecord.js";
-import Part from "../model/part.js";
 import handleError from "../config/handleError.js";
 import { Request, Response } from "express";
-import { AssetSchema, CartItem, PartRecordSchema, PartSchema } from "./interfaces.js";
+import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
 import mongoose, { CallbackError } from "mongoose";
 import partRecord from "../model/partRecord.js";
 import { 
@@ -28,6 +27,7 @@ import {
     userHasInInventory,
     partRecordsToCartItemsWithInfo
 } from "./methods/assetMethods.js";
+import callbackHandler from "../middleware/callbackHandlers.js";
 
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {
@@ -274,9 +274,11 @@ const assetManager = {
             if(error)
                 return res.status(400).send("Error in updated parts list");
             // Make sure user has parts in their inventory
-            let hasInventory = await userHasInInventory(req.user.user_id, added)
-            if(!hasInventory)
-                return res.status(400).send("Added parts on request not found in user inventory");
+            if(!correction) {
+                let hasInventory = await userHasInInventory(req.user.user_id, added)
+                if(!hasInventory)
+                    return res.status(400).send("Added parts on request not found in user inventory");
+            }
             // Put removed parts in user inventory
             let removedOptions = {
                 owner: req.user.user_id,
@@ -331,17 +333,10 @@ const assetManager = {
                 asset.by = req.user.user_id
                 delete asset.date_updated
                 // Create new asset
-                Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
-                    if (err) {
-                        handleError(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    }
-                    // Update old asset
-                    Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id, date_replaced: current_date }, returnAsset(res))
-                })
+                Asset.create(asset, callbackHandler.updateAssetAndReturn)
             }
+            // Assets are similar
             else {
-                // Assets are similar
                 // Check if parts were added or removed
                 if(added.length>0||removed.length>0) {
                     // If parts were added or removed, set date_updated to current date
@@ -404,21 +399,7 @@ const assetManager = {
                 asset.date_created = new Date(current_date)
                 delete asset._id
                 // Create new iteration of asset
-                Asset.create(asset, (err: CallbackError, new_asset: AssetSchema) => {
-                    if(err) {
-                        res.status(500).send("API could not handle your request: "+err);
-                        return;
-                    }
-                    // Update old iteration
-                    Asset.findByIdAndUpdate(new_asset.prev, { next: new_asset._id}, (err: CallbackError, new_asset: AssetSchema) => {
-                        if(err) {
-                            res.status(500).send("API could not handle your request: "+err);
-                            return;
-                        }
-                        // All done
-                        res.status(200).send("Success")
-                    })
-                })
+                Asset.create(asset, callbackHandler.updateAssetAndReturn(res))
             })
         } catch(err) {
             handleError(err)
