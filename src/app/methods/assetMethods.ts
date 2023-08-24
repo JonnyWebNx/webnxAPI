@@ -252,7 +252,14 @@ export function updateParts(createOptions: PartRecordSchema, searchOptions: Part
         if(p.serial) {
             cOptions.serial = p.serial
             sOptions.serial = p.serial
-            if (!migrated) {
+            if (migrated) {
+                // Check if serial already exists
+                let existing = await PartRecord.findOne({nxid: p.nxid, serial: p.serial, next: null})
+                // Skip creation - avoid duplication
+                if(existing)
+                    return
+            } else {
+                // Check if prev exists
                 let prev = await PartRecord.findOne(sOptions)
                 if(!prev)
                     return
@@ -425,9 +432,13 @@ export function getAssetEvent(asset_tag: string, d: Date) {
         let existing = await getExistingPartsAsset(asset_tag, d)
         // Find current asset iteratio
         let current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, date_replaced: { $gt: d }}) as AssetSchema
+        console.log(current_asset)
+        console.log(current_asset == null)
         // 
         if(current_asset==null)
             current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, next: null }) as AssetSchema
+        console.log(asset_tag)
+        console.log(d)
         // Who updated
         let by = ""
         // Added parts for mapping
@@ -453,7 +464,6 @@ export function getAssetEvent(asset_tag: string, d: Date) {
         // If no by is found
         if(current_asset&&current_asset.by&&by=="")
             by = current_asset.by as string
-        console.log(by)
         return res({ date_begin: d, asset_id: current_asset._id, info_updated: ((added.length==0&&removed.length==0)||current_asset.date_created!.getTime() == d.getTime()), existing: existing as CartItem[], added: addedParts, removed: removedParts, by: by } as AssetEvent)
     })
 }

@@ -11,7 +11,7 @@ import PartRecord from "../model/partRecord.js";
 import handleError from "../config/handleError.js";
 import { Request, Response } from "express";
 import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
-import mongoose, { CallbackError } from "mongoose";
+import mongoose, { CallbackError, isValidObjectId } from "mongoose";
 import partRecord from "../model/partRecord.js";
 import { 
     isValidAssetTag,
@@ -28,6 +28,8 @@ import {
     partRecordsToCartItemsWithInfo
 } from "./methods/assetMethods.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
+import { getNumPages, getPageNumAndSize, getTextSearchParams } from "./methods/genericMethods.js";
+import { cartItemsValid, combineAndRemoveDuplicateCartItems, sanitizeCartItems } from "./methods/partMethods.js";
 
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {
@@ -85,25 +87,17 @@ const assetManager = {
     },
     getAssets: async (req: Request, res: Response) => {
         try {
-            // Clear unnecessary param
-            if (req.query.advanced) {
-                delete req.query.advanced;
-            }
-            if(!(req.query.pageSize&&req.query.pageNum))
-                return res.status(400).send(`Missing page number or page size`);      
-            let pageSize = parseInt(req.query.pageSize as string);
-            let pageNum = parseInt(req.query.pageNum as string);
-            delete req.query.pageNum
-            delete req.query.pageSize
-            // get object from request
-            let asset = req.query as AssetSchema;
+            // Parse search info
+            let { pageSize, pageSkip } = getPageNumAndSize(req)
+            // Get asset object from request
+            let asset = cleanseAsset(req.query as AssetSchema);
             asset.next = null;
             let numAssets = await Asset.count(asset)
-            let numPages = numAssets%pageSize>0 ? Math.trunc(numAssets/pageSize) + 1 : Math.trunc(numAssets/pageSize)
+            let numPages = getNumPages(pageSize, numAssets)
             // Send request to database
             Asset.find(asset)
-                .skip(pageSize * (pageNum - 1))
-                .limit(Number(pageSize))
+                .skip(pageSkip)
+                .limit(pageSize)
                 .exec(returnAssetSearch(res, numPages, numAssets))
         } catch(err) {
             handleError(err)
@@ -135,20 +129,8 @@ const assetManager = {
             // Search data
             // Limit
             // Page number
-            let { searchString, pageSize, pageNum } = req.query;
-            let pageSizeInt = parseInt(pageSize as string)
-            let pageNumInt = parseInt(pageNum as string)
-            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
-                return res.status(400).send("Invalid page number or page size");
-            let pageSkip = pageSizeInt * (pageNumInt - 1)
-            if(typeof(searchString)!="string") {
-                return res.status(400).send("Search string undefined");
-            }
+            let { searchString, pageSize, pageSkip } = getTextSearchParams(req);
             // Find parts
-            // Skip - gets requested page number
-            // Limit - returns only enough elements to fill page
-
-            // Split keywords from search string
             let fullText = false
             // Check if text search yields results            
             let ass = await Asset.findOne(searchString != ''? { $text: { $search: searchString } } : {})
@@ -159,12 +141,12 @@ const assetManager = {
             if (fullText) {
                 let numAssets = await Asset.count(searchString != ''? { $text: { $search: searchString } } : {}).where({next: null})
                 // Ternary that hurts my eyes
-                let numPages = numAssets%pageSizeInt>0 ? Math.trunc(numAssets/pageSizeInt) + 1 : Math.trunc(numAssets/pageSizeInt)
+                let numPages = getNumPages(pageSize, numAssets)
 
                 Asset.find(searchString != ''? { $text: { $search: searchString } } : {})
                     .where({next: null})
                     .skip(pageSkip)
-                    .limit(pageSizeInt)
+                    .limit(pageSize)
                     .exec(returnAssetSearch(res, numPages, numAssets))
             }
             else {
@@ -198,12 +180,11 @@ const assetManager = {
                     ]
                     
                         } 
-                    }]).count("numAssets")
+                }]).count("numAssets")
                 // This is stupid but it works
                 let numAssets = countQuery.length > 0&&countQuery[0].numAssets ? countQuery[0].numAssets : 0
                 // Ternary that hurts my eyes
-                let numPages = numAssets%pageSizeInt>0 ? Math.trunc(numAssets/pageSizeInt) + 1 : Math.trunc(numAssets/pageSizeInt)
-
+                let numPages = getNumPages(pageSize, numAssets)
                 Asset.aggregate([{ $match: {
                     $and: [
                         { $or: searchOptions },
@@ -213,7 +194,7 @@ const assetManager = {
                         } 
                     }])
                     .skip(pageSkip)
-                    .limit(pageSizeInt)
+                    .limit(pageSize)
                     .exec(returnAssetSearch(res, numPages, numAssets))
             }
         } catch (err) {
@@ -269,12 +250,15 @@ const assetManager = {
                 asset_tag: asset.asset_tag, 
                 next: null
             })
+            parts = sanitizeCartItems(parts)
+            if(!(await cartItemsValid(parts)))
+                return res.status(400).send("Error in updated parts list");
 
             let { added, removed, error } = getAddedAndRemoved(parts, existingParts)
-            if(error)
+            if(error==true)
                 return res.status(400).send("Error in updated parts list");
             // Make sure user has parts in their inventory
-            if(!correction) {
+            if(correction!=true) {
                 let hasInventory = await userHasInInventory(req.user.user_id, added)
                 if(!hasInventory)
                     return res.status(400).send("Added parts on request not found in user inventory");
@@ -355,7 +339,11 @@ const assetManager = {
     // @TODO: simplify this to an aggregate function
     getPartsOnAsset: async (req: Request, res: Response) => {
         try {
-            const { asset_tag } = req.query
+            // Parse asset_tag
+            const asset_tag = req.query.asset_tag as string
+            // Check if valid
+            if (!asset_tag||!isValidAssetTag(asset_tag))
+                return res.status(400).send("Invalid request");
             // Find all parts records associated with asset tag
             PartRecord.find({asset_tag, next: null}, async (err: CallbackError, records: PartRecordSchema[]) => {
                 // If mongoose returns error
@@ -379,7 +367,9 @@ const assetManager = {
         try {
             if(!req.user.roles.includes("admin"))
                 return res.status(403).send("Only admin can delete assets.")
-            const { asset_tag } = req.query
+            const asset_tag = req.query.asset_tag as string
+            if (!asset_tag||!isValidAssetTag(asset_tag))
+                return res.status(400).send("Invalid request");
             // Find all parts records associated with asset tag
             let records = await PartRecord.find({ asset_tag, next: null,})   
             let current_date = Date.now()
@@ -411,15 +401,13 @@ const assetManager = {
         try {
             // Get ID from query string
             let id = req.query.id as string
-            let pageNum = parseInt(req.query.pageNum as string)
-            let pageSize = parseInt(req.query.pageSize as string)
-            if(isNaN(pageSize)||isNaN(pageNum))
-                return res.status(400).send("Invalid page number or page size");
+            // Get page num and page size
+            let { pageNum, pageSize } = getPageNumAndSize(req)
             // Check if ID is null or doesn't match ID type
-            if (!id||!(/WNX([0-9]{7})+/.test(id)||mongoose.Types.ObjectId.isValid(id)))
+            if (!id||(!isValidAssetTag(id)&&!isValidObjectId(id)))
                 return res.status(400).send("Invalid request");
             // If NXID
-            if (/WNX([0-9]{7})+/.test(id)) {
+            if (isValidAssetTag(id)) {
                 Asset.findOne({asset_tag: id, next: null}, returnAssetHistory(pageNum, pageSize, res))
             }
             // If mongo ID

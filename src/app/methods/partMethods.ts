@@ -1,38 +1,120 @@
-import { PartQuery, CartItem, PartSchema, PartRecordSchema } from "../interfaces.js"
+import { CartItem, PartSchema, PartRecordSchema, UserSchema } from "../interfaces.js"
 import { CallbackError } from "mongoose"
 import Part from "../../model/part.js"
 import { getAddedAndRemoved } from "./assetMethods.js"
 import PartRecord from "../../model/partRecord.js"
+import { objectSanitize, stringSanitize } from "../../config/sanitize.js"
+import User from "../../model/user.js"
+import { Request, Response } from "express"
+import handleError from "../../config/handleError.js"
 
-export function objectToRegex(obj: any) {
-    let regexObject = {} as PartQuery
-    Object.keys(obj).forEach((k)=>{
-        // early return for empty strings
-        if(obj[k]=='')
-            return
-        // ALlow array partial matches
-        if(Array.isArray(obj[k])&&!(obj[k]!.length==0)) {
-            // Generate regex for each array field
-            let arr = (obj[k] as string[]).map((v)=>{
-                return new RegExp(v, "i") 
-            })
-            // Use $all with array of case insensitive regexes
-            return regexObject[k] = { $all: arr }
-        }
-        // Check if value is integer
-        if(typeof(obj[k])=='string'&&!isNaN(obj[k] as any)) {
-            // Parse integer
-            return regexObject[k] = parseFloat(obj[k] as string)
-        }
-        // Check if not boolean 
-        if(!(obj[k]=='true')&&!(obj[k]=='false'))
-            // Create case insensitive regex
-            return regexObject[k] = { $regex: obj[k], $options: 'i' } 
-        // Any value here is likely a boolean
-        regexObject[k] = obj[k]
-    })
-    return regexObject
+export function cleansePart(part: PartSchema) {
+    let newPart = {} as PartSchema
+    newPart.nxid = part.nxid?.toUpperCase()
+    newPart.manufacturer = part.manufacturer
+    newPart.name = part.name
+    newPart.type = part.type
+    newPart.shelf_location = part.shelf_location
+    newPart.rack_num = part.rack_num
+    newPart.serialized = part.serialized        
+    newPart.notes = ""
+    if(part.notes)
+        newPart.notes = part.notes
+    switch(part.type) {
+        case "Memory":
+            newPart.frequency = part.frequency
+            newPart.capacity = part.capacity
+            newPart.memory_type = part.memory_type
+            newPart.memory_gen = part.memory_gen
+            if(part.mem_rank)
+                newPart.mem_rank = part.mem_rank
+            break
+        case "CPU":
+            if(part.frequency)
+                newPart.frequency = part.frequency
+            newPart.socket = part.socket
+            break
+        case "Motherboard":
+            newPart.memory_gen = part.memory_gen
+            if(part.chipset)
+                newPart.chipset = part.chipset
+            newPart.socket = part.socket
+            break
+        case "Peripheral Card":
+	    newPart.mainboard_con = part.mainboard_con
+            newPart.peripheral_type = part.peripheral_type
+            newPart.num_ports = part.num_ports
+	    if(part.port_type)
+            	newPart.port_type = part.port_type
+            break
+        case "Storage":
+            newPart.storage_type = part.storage_type
+            newPart.storage_interface = part.storage_interface
+            newPart.size = part.size
+            newPart.capacity = part.capacity
+            newPart.capacity_unit = part.capacity_unit
+        case "Backplane":
+            newPart.port_type = part.port_type
+            newPart.num_ports = part.num_ports
+            break;
+        case "Cable":
+            newPart.cable_end1 = part.cable_end1
+            newPart.cable_end2 = part.cable_end2
+            newPart.consumable = part.consumable
+            break                
+        case "Heatsink":
+            newPart.socket = part.socket
+            newPart.size = part.size
+            newPart.active = part.active
+            break;
+        case "Optic":
+            newPart.cable_end1 = part.cable_end1;
+            newPart.consumable = part.consumable ? true : false
+            break;
+        default:
+            newPart.consumable = part.consumable ? true : false
+            break;
+    }
+    
+    return objectSanitize(newPart, false) as PartSchema
 }
+
+export function getKiosks(building: number) {
+    return new Promise<UserSchema[]>(async (res)=>{
+        let kioskUsers = await User.find({roles: ['kiosk'], building: building})
+        res(kioskUsers)
+    })
+}
+
+export function getKioskNames(building: number) {
+    return new Promise<string[]>(async (res)=>{
+        let kioskUsers = await getKiosks(building)
+        let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
+        res(kioskNames)
+    })
+}
+
+export function getAllKiosks() {
+    return new Promise<UserSchema[]>(async (res)=>{
+        let kioskUsers = await User.find({roles: ['kiosk']})
+        res(kioskUsers)
+    })
+}
+
+export function getAllKioskNames() {
+    return new Promise<string[]>(async (res)=>{
+        let kioskUsers = await getAllKiosks()
+        let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
+        res(kioskNames)
+    })
+}
+
+export function isValidPartID(id: string|undefined) {
+    if(!id)
+        id = ""
+    return /PNX([0-9]{7})+/.test(id)
+}
+
 
 export function combineAndRemoveDuplicateCartItems(cartItems: CartItem[]) {
     // Initialize working variables
@@ -102,9 +184,9 @@ export function cartItemsValid(cartItems: CartItem[]) {
                     // Make sure quantity is a number
                     ||(item.quantity&&isNaN(item.quantity))
                     // Make sure serial is string and not empty
-                    ||(item.serial&&(typeof(item.serial)!="string"&&typeof(item.serial)!="string")&&item.serial!="")
+                    ||(item.serial&&(typeof(item.serial)!="string"||item.serial==""))
                     // Make sure serialized parts have serial and unserialized do not
-                    ||((part.serialized&&!part.serial)||(!part.serialized&&part.serial))
+                    ||((part.serialized==true&&!item.serial)||(part.serialized==false&&item.serial))
                 ) {
                     valid = false
                 }
@@ -115,11 +197,6 @@ export function cartItemsValid(cartItems: CartItem[]) {
     })
 }
 
-/**
- *
- * @TODO OPTIMIZE!!!!
- *
- */
 export function kioskHasInInventory(kioskName: string, building: number, inventory: CartItem[]) {
     return new Promise<boolean>((res)=>{
         let nxids = inventory.map((i)=>i.nxid).filter((i, index, arr)=>arr.indexOf(i)==index)
@@ -136,4 +213,88 @@ export function kioskHasInInventory(kioskName: string, building: number, invento
             res(added.length==0)
         })
     })
+}
+
+
+export function getPartSearchRegex(searchString: string) {
+    let keywords = [searchString]
+    keywords = keywords.concat(searchString.split(" ")).filter((s)=>s!='')
+    let searchOptions = [] as any
+    let relevanceConditions = [] as any
+    // Add regex of keywords to all search options
+    keywords.map((key) => {
+        // Why was this even here to begin with?
+        searchOptions.push({ "nxid": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$nxid", regex: new RegExp(key, "") } }, 3, 0] })
+        searchOptions.push({ "name": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$name", regex: new RegExp(key, "i") } }, 5, -1] })
+        searchOptions.push({ "manufacturer": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$manufacturer", regex: new RegExp(key, "i") } }, 5, -1] })
+        searchOptions.push({ "type": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$type", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "shelf_location": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$shelf_location", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "storage_interface": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$storage_interface", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "port_type": { $regex: key, $options: "i" } })
+        // REGEX doesn't allow arrays
+        // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$port_type", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "peripheral_type": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$peripheral_type", regex: new RegExp(key, "i") } }, 2, 0] })
+        searchOptions.push({ "memory_type": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_type", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "memory_gen": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_gen", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "frequency": { $regex: key, $options: "i" } })
+        // REGEX doesn't allow numbers
+        // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$frequency", regex: new RegExp(key, "i") } }, 2, 0] })
+        searchOptions.push({ "size": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$size", regex: new RegExp(key, "i") } }, 2, 0] })
+        searchOptions.push({ "cable_end1": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end1", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "cable_end2": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end2", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "chipset": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$chipset", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "socket": { $regex: key, $options: "i" } })
+        // REGEX doesn't allow arrays
+        // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$socket", regex: new RegExp(key, "i") } }, 1, 0] })
+    })
+    return { regexKeywords: searchOptions, relevanceScore: relevanceConditions }
+}
+
+export function returnPartSearch(numPages: number, numParts: number, req: Request, res: Response, building?: number) {
+    // Return mongoose callback
+    return async (err: CallbackError | null, parts: PartSchema[])  => {
+        if (err) {
+            // Database err
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+        // Map for all parts
+        let kioskNames = await getKioskNames(req.user.building)
+        let { building, location } = req.query;
+        let returnParts = await Promise.all(parts.map(async (part: PartSchema)=>{
+            // Check parts room quantity
+            let count = await PartRecord.count({
+                nxid: part.nxid,
+                next: null,
+                location: location ? location : {$in: kioskNames},
+                building: isNaN(parseInt(building as string)) ? req.user.building : parseInt(building as string)
+            });
+            // Get total quantity
+            let total_count = await PartRecord.count({
+                nxid: part.nxid,
+                next: null
+            });
+            // Copy part
+            let tempPart = JSON.parse(JSON.stringify(part))
+            // Add quantities
+            tempPart.quantity = count;
+            tempPart.total_quantity = total_count;
+            // Return
+            return tempPart
+        }))
+        return res.status(200).json({ numPages, numParts, parts: returnParts});
+    }
 }
