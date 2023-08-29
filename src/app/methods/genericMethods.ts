@@ -7,7 +7,7 @@ export function getPageNumAndSize(req: Request) {
     let pageSize = parseInt(req.query.pageSize as string)
     // If NaN, default to 20 per page
     if(isNaN(pageSize))
-        pageSize = 20
+        pageSize = 50
     // If NaN, default to page 1
     if(isNaN(pageNum))
         pageNum = 1

@@ -9,6 +9,12 @@ const EXAMPLE_USER = {
     email: "test123@email.com",
     password: "password",
 }
+const EXAMPLE_USER2 = {
+    first_name: "User",
+    last_name: "Test",
+    email: "321test@email.com",
+    password: "wordpass",
+}
 
 
 describe("Register, login, and delete user", () => {
@@ -210,7 +216,7 @@ describe("Get all users", () => {
 })
 
 describe("Update user", () => {
-    let tempUser = JSON.parse(JSON.stringify(EXAMPLE_USER))
+    let tempUser = JSON.parse(JSON.stringify(EXAMPLE_USER2))
     tempUser._id = USER_ID
     
     it("Tech cannot update user",async () => {

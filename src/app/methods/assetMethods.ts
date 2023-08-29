@@ -69,69 +69,53 @@ export function returnAssetSearch(res: Response, numPages: number, numAssets: nu
  * @returns Copy of asset with extra information removed
  */
 export function cleanseAsset(asset: AssetSchema) {
-    let copy = JSON.parse(JSON.stringify(asset)) as AssetSchema
-    copy.asset_tag = copy.asset_tag ? copy.asset_tag.toUpperCase() : ""
-    switch(copy.asset_type) {
+    let newAsset = {} as AssetSchema
+    newAsset.asset_tag = asset.asset_tag?.toUpperCase()
+    newAsset.building = asset.building
+    newAsset.asset_type = asset.asset_type
+    newAsset.next = asset.next
+    newAsset.prev = asset.prev
+    newAsset.by = asset.by
+    newAsset.live = asset.live
+    newAsset.pallet = asset.pallet
+    newAsset.date_created = asset.date_created
+    newAsset.date_updated = asset.date_updated
+    newAsset.date_replaced = asset.date_replaced
+    newAsset.notes = asset.notes
+    newAsset.bay = asset.bay
+    newAsset.old_by = asset.old_by
+    newAsset.model = asset.model
+    newAsset.serial = asset.serial
+    newAsset.migrated = asset.migrated
+    newAsset.manufacturer = asset.manufacturer
+    switch(asset.asset_type) {
         case "PDU":
         case "Switch":
-            delete copy.public_port;
-            delete copy.private_port;
-            delete copy.ipmi_port;
-            delete copy.sid;
-            delete copy.units;
-            delete copy.num_psu;
-            delete copy.psu_model;
-            delete copy.rails;
-            delete copy.in_rack;
-            delete copy.parent;
-            if(copy.live) {
-                delete copy.pallet
-            }
-            else {
-                delete copy.power_port
-            }
+            newAsset.fw_rev = asset.fw_rev
+            newAsset.power_port = asset.power_port
             break;
         case "Server":
-            // Remove location if no rails are present
-            if(!copy.in_rack&&!copy.live) {
-                delete copy.public_port;
-                delete copy.private_port;
-                delete copy.ipmi_port;
-                delete copy.power_port;
+            newAsset.chassis_type = asset.chassis_type
+            newAsset.rails = asset.rails
+            newAsset.cheat = asset.cheat
+            newAsset.units = asset.units
+            newAsset.num_psu = asset.num_psu
+            newAsset.psu_model = asset.psu_model
+            newAsset.parent = asset.parent
+            newAsset.cable_type = asset.cable_type
+            newAsset.num_bays = asset.num_bays
+            newAsset.bay_type = asset.bay_type
+            newAsset.in_rack = asset.in_rack
+            if(newAsset.in_rack==true) {
+                newAsset.power_port = asset.power_port
+                newAsset.ipmi_port = asset.ipmi_port
+                newAsset.private_port = asset.private_port
+                newAsset.public_port = asset.public_port
             }
-            else {
-                delete copy.pallet
-            }
-            // Remove SID if not live
-            if(!copy.live) {
-                delete copy.sid;
-            }
-            if(copy.chassis_type!='Node')
-                delete copy.parent;
-            if(!copy.num_bays||copy.num_bays < 1)
-                delete copy.bay_type
-            if(!copy.num_psu||copy.num_psu<1)
-                delete copy.psu_model
-            delete copy.fw_rev
-            break;
-        case "Laptop":
-        default:
-            delete copy.rails;
-            delete copy.in_rack;
-            delete copy.live;
-            delete copy.public_port;
-            delete copy.private_port;
-            delete copy.ipmi_port;
-            delete copy.power_port;
-            delete copy.sid;
-            delete copy.units;
-            delete copy.num_psu;
-            delete copy.psu_model;
-            delete copy.cheat;
-            delete copy.parent;
-            break;
+            if(newAsset.live)
+                newAsset.sid = asset.sid
     }
-    return objectSanitize(copy, false);
+    return objectSanitize(newAsset, false);
 }
 
 // Pushes any parts from array2 that array1 does not have to the differenceDest array
@@ -432,13 +416,9 @@ export function getAssetEvent(asset_tag: string, d: Date) {
         let existing = await getExistingPartsAsset(asset_tag, d)
         // Find current asset iteratio
         let current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, date_replaced: { $gt: d }}) as AssetSchema
-        console.log(current_asset)
-        console.log(current_asset == null)
         // 
         if(current_asset==null)
             current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, next: null }) as AssetSchema
-        console.log(asset_tag)
-        console.log(d)
         // Who updated
         let by = ""
         // Added parts for mapping

@@ -58,7 +58,7 @@ const partManager = {
             let newPart = cleansePart(part)
             // Send part to database
             newPart.created_by = req.user.user_id;
-            await Part.create(newPart, async (err: MongooseError, part: PartSchema) => {
+            Part.create(newPart, async (err: MongooseError, part: PartSchema) => {
                 if (err) {
                     // Return and send error to client side for prompt
                     return res.status(500).send("API could not handle your request: " + err);
@@ -70,7 +70,9 @@ const partManager = {
                     location: req.body.location ? req.body.location : "Parts Room",
                     by: req.user.user_id
                 }
-                let serials = req.body.parts.serials as string[]
+                let serials = [] as string[]
+                if(req.body.part&&req.body.part.serials)
+                    serials = req.body.part.serials as string[]
                 let parts = [] as CartItem[]
                 // If part is serialized, map serials to cart items
                 if(part.serialized)
@@ -432,7 +434,12 @@ const partManager = {
         try {
             // Check info from checkin request
             let { date, by } = req.body
+            // SANITIZE
             let parts = req.body.parts as CheckInQueuePart[]
+            // Remove duplicates
+            parts = parts.filter((item, index, arr)=>index==arr.findIndex((a)=>{
+                return (a.nxid == item.nxid)&&(a.serial==item.serial)
+            }))
             // Check if anything is missing
             if(!date||!by||!parts)
                 return res.status(400).send("Invalid request")

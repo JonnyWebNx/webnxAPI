@@ -11,7 +11,7 @@ import PartRecord from "../model/partRecord.js";
 import handleError from "../config/handleError.js";
 import { Request, Response } from "express";
 import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
-import mongoose, { CallbackError, isValidObjectId } from "mongoose";
+import { CallbackError, isValidObjectId } from "mongoose";
 import partRecord from "../model/partRecord.js";
 import { 
     isValidAssetTag,
@@ -135,7 +135,7 @@ const assetManager = {
             // Check if text search yields results            
             let ass = await Asset.findOne(searchString != ''? { $text: { $search: searchString } } : {})
             // Set fulltext if text search yields results
-            if(ass!=undefined)
+            if(ass!=null)
                 fullText = true
             // Fulltext search
             if (fullText) {
@@ -317,7 +317,7 @@ const assetManager = {
                 asset.by = req.user.user_id
                 delete asset.date_updated
                 // Create new asset
-                Asset.create(asset, callbackHandler.updateAssetAndReturn)
+                Asset.create(asset, callbackHandler.updateAssetAndReturn(res))
             }
             // Assets are similar
             else {
