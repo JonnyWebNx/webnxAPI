@@ -1,4 +1,4 @@
-import { CartItem, PartSchema, PartRecordSchema, UserSchema } from "../interfaces.js"
+import { CartItem, PartSchema, PartRecordSchema, UserSchema, InventoryEntry } from "../interfaces.js"
 import { CallbackError } from "mongoose"
 import Part from "../../model/part.js"
 import { getAddedAndRemoved } from "./assetMethods.js"
@@ -168,6 +168,71 @@ export function sanitizeCartItems(cartItems: CartItem[]) {
                 return { nxid: item.nxid, serial: item.serial }
             return { nxid: item.nxid, quantity: item.quantity }
         }))
+}
+
+export function sanitizeInventoryEntry(entry: InventoryEntry) {
+    let sanitized = {} as InventoryEntry
+    // Check if valid part ID
+    if(isValidPartID(entry.nxid))
+        sanitized.nxid = entry.nxid
+    else
+        sanitized.nxid = ""
+    // Check if valid array
+    if(Array.isArray(entry.serials))
+        sanitized.serials = entry.serials
+    else
+        sanitized.serials = []
+    // Check if valid array
+    if(Array.isArray(entry.newSerials))
+        sanitized.newSerials = entry.newSerials
+    else
+        sanitized.newSerials = []
+    // Check if valid number
+    if(isNaN(entry.unserialized))
+        sanitized.unserialized = 0
+    else
+        sanitized.unserialized = entry.unserialized
+    // Return sanitized object
+    return sanitized
+}
+
+export function sanitizeInventoryEntries(invEntries: InventoryEntry[]) {
+    invEntries = invEntries
+    // Sanitize each remaining item
+    .map((item) => {
+        return sanitizeInventoryEntry(item)
+    })
+    // Remove duplicates and empty nxids
+    .filter((item, index, arr)=>{
+        return (index == arr.findIndex((val)=>val.nxid==item.nxid)&&item.nxid!='')
+    })
+    return invEntries
+}
+
+export function inventoryEntriesValid(invEntries: InventoryEntry[]) {
+    return new Promise<boolean>(async (res)=>{
+        // Run all requests concurrently
+        let valid = true
+        await Promise.all(invEntries.map((item)=>{
+            return new Promise<void>(async (resolve)=>{
+                let part = await Part.findOne({nxid: item.nxid}) as PartSchema
+                if(
+                    !part
+                    // Make sure item does not have quantity AND serial
+                    ||!Array.isArray(item.serials)
+                    // Make sure quantity is a number
+                    ||isNaN(item.unserialized)
+                    // Make sure serial is string and not empty
+                    ||!Array.isArray(item.newSerials)
+                    // Make sure serialized parts have serial and unserialized do not
+                ) {
+                    valid = false
+                }
+                resolve()
+            })
+        }))
+        res(valid)
+    })
 }
 
 export function cartItemsValid(cartItems: CartItem[]) {

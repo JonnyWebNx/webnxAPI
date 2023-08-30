@@ -30,10 +30,13 @@ import {
     getAllKioskNames,
     isValidPartID,
     getPartSearchRegex,
-    returnPartSearch
+    returnPartSearch,
+    sanitizeInventoryEntries,
+    inventoryEntriesValid
 } from './methods/partMethods.js';
-import { partRecordsToCartItemsWithInfo, updateParts, userHasInInventory } from './methods/assetMethods.js';
+import { partRecordsToCartItemsWithInfo, updateParts, updatePartsAddSerials, userHasInInventory } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from './methods/genericMethods.js';
+import { stringSanitize } from '../config/sanitize.js';
 const { UPLOAD_DIRECTORY } = config
 
 
@@ -935,6 +938,8 @@ const partManager = {
             let { old_owner, new_owner } = req.body
             let parts = req.body.parts as CartItem[]
             parts = sanitizeCartItems(parts)
+            if(new_owner=="sold")
+                return res.status(400).send("Please refresh to update app");
             // Check if cart items are valid
             if(!(await cartItemsValid(parts)))
                 return res.status(400).send("Error in updated parts list");
@@ -980,15 +985,6 @@ const partManager = {
                     // Testing center
                     to.location = 'Drive Wipe Shelf'
                     break;
-                case 'sold':
-                    if(!req.body.orderID)
-                        return res.status(400).send("Ebay order ID not present");
-                    if(!ebayPerms)
-                        return res.status(400).send("You do not have eBay permissions");
-                    to.ebay = req.body.orderID
-                    to.next = 'sold'
-                    to.location = 'sold'
-                    break;
                 case 'lost':
                     if(!buildingSwitchPerms)
                         return res.status(400).send("You do not have permissions to mark parts as lost");
@@ -1032,7 +1028,48 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-
+    sellOnEbay: async (req: Request, res: Response) => {
+        try {
+            // Get data from request
+            let parts = req.body.parts as InventoryEntry[]
+            parts = sanitizeInventoryEntries(parts)
+            // Check if cart items are valid
+            if(!(await inventoryEntriesValid(parts)))
+                return res.status(400).send("Error in updated parts list");
+            // Check if user has cart items in inventory
+            let partsToCheck = [] as CartItem[]
+            // Convert InventoryEntries to CartItems
+            parts.map((p)=>{
+                // Map serials
+                p.serials.map((s)=>{
+                    partsToCheck.push({nxid: p.nxid!, serial: s})
+                })
+                // Push unserialized
+                if(p.unserialized>0)
+                    partsToCheck.push({nxid: p.nxid!, quantity: p.unserialized})
+            })
+            // Check if user has inventory 
+            if(!(await userHasInInventory(req.user.user_id, partsToCheck)))
+                return res.status(400).send("User does not have parts in inventory");
+            // Check if location is valid
+            let to = {} as PartRecordSchema
+            to.owner = "sold";
+            to.ebay = stringSanitize(req.body.orderID, false)
+            to.next = 'sold'
+            to.location = 'sold'
+            to.date_created = Date.now()
+            to.building = req.user.building
+            to.by = req.user.user_id
+            // Update records
+            let searchOptions = {owner: req.user.user_id, next: null}
+            await updatePartsAddSerials(to, searchOptions, parts)
+            // Success !!!
+            return res.status(200).send("Success");
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     deleteFromPartsRoom: async (req: Request, res: Response) => {
         try{
             // Get request params

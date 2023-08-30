@@ -1,5 +1,5 @@
 import PartRecord from "../../model/partRecord.js"
-import { CartItem, AssetSchema, PartRecordSchema, AssetEvent, PartSchema } from "../interfaces.js"
+import { CartItem, AssetSchema, PartRecordSchema, AssetEvent, PartSchema, InventoryEntry } from "../interfaces.js"
 import mongoose, { CallbackError, ObjectId } from "mongoose"
 import { Response } from "express"
 import handleError from "../../config/handleError.js"
@@ -7,7 +7,6 @@ import { objectSanitize } from "../../config/sanitize.js"
 import callbackHandler from "../../middleware/callbackHandlers.js"
 import Asset from "../../model/asset.js"
 import Part from "../../model/part.js"
-import { isString } from "util"
 /**
  * 
  * @param parts 
@@ -111,8 +110,9 @@ export function cleanseAsset(asset: AssetSchema) {
                 newAsset.ipmi_port = asset.ipmi_port
                 newAsset.private_port = asset.private_port
                 newAsset.public_port = asset.public_port
+                delete newAsset.pallet
             }
-            if(newAsset.live)
+            if(newAsset.live==true)
                 newAsset.sid = asset.sid
     }
     return objectSanitize(newAsset, false);
@@ -270,6 +270,55 @@ export function updateParts(createOptions: PartRecordSchema, searchOptions: Part
     }))
 }
 
+export function updatePartsAddSerials(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: InventoryEntry[]) {
+    return Promise.all(arr.map(async (p)=>{
+        // Create Options
+        let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
+        // Search options
+        let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
+        sOptions.nxid = p.nxid
+        cOptions.nxid = p.nxid
+        sOptions.serial = undefined
+        let toBeUpdated = await PartRecord.find(sOptions)
+        for (let i = 0; i < p.unserialized; i++) {
+            // Check if part will have new serial
+            if(p.newSerials&&p.newSerials[i]) {
+                // Check if serial already exists
+                let existing = await PartRecord.findOne({nxid: p.nxid, serial: p.newSerials[i], next: null})
+                // Only add serial if doesn't already exist
+                if(existing==null)
+                    cOptions.serial = p.newSerials[i]
+            }
+            // Part does not have new serial
+            else
+                delete cOptions.serial
+            // Make sure there is a record to update
+            if(toBeUpdated[i]) {
+                // Update record
+                cOptions.prev = toBeUpdated[i]._id
+                PartRecord.create(cOptions, callbackHandler.updateRecord)
+            }
+            // No more records to update, break loop
+            else
+                break
+        }
+        // For parts that already have serials
+        for(let serial of p.serials) {
+            // Set create and search options serial
+            sOptions.serial = serial
+            cOptions.serial = serial
+            // Find previous
+            let prev = await PartRecord.findOne(sOptions)
+            // If no previous is found, skip
+            if(!prev)
+                continue
+            // Set prvious
+            cOptions.prev = prev._id
+            // Update record
+            PartRecord.create(cOptions, callbackHandler.updateRecord)
+        }
+    }))
+}
 /**
  * 
  * @param asset1 

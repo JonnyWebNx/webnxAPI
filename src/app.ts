@@ -79,6 +79,7 @@ app.post("/api/checkout", auth, checkRoles(["kiosk"]), sanitize, partManager.che
 app.post("/api/checkin", auth, checkRoles(["kiosk"]), sanitize, partManager.checkin)
 app.post("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.processCheckinRequest)
 app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "lead", "admin"]), sanitize, partManager.movePartRecords);
+app.post("/api/part/sell", auth, checkRoles(["ebay", "lead", "admin"]), sanitize, partManager.sellOnEbay);
 // Read 
 app.get("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.getCheckinQueue)
 app.get("/api/checkout/history", auth, sanitize, checkRoles(['lead', 'clerk', 'admin']), partManager.getCheckoutHistory)
