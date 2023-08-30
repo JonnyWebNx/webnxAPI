@@ -114,6 +114,7 @@ export interface PartRecordSchema {
     building?: Number,
     location?: string,
     asset_tag?: string,
+    pallet_tag?: string,
     serial?: string,
     owner?: string | Types.ObjectId,
     ebay?: string,
@@ -189,4 +190,17 @@ export interface CheckInRequest {
 export interface AssetUpdate {
     asset_tag: string,
     date: Date
+}
+
+export interface PalletSchema {
+    _id: Types.ObjectId,
+    pallet_tag: string,
+    location: string,
+    building: number,
+    by: string,
+    date_created: Date,
+    date_replaced: Date,
+    notes: string,
+    prev: string|null | Types.ObjectId,
+    next: string|null | Types.ObjectId,
 }

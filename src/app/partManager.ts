@@ -6,7 +6,6 @@
  * @brief Part manager object for querying database and creating responses
  * 
  */
-import { stringSanitize, objectSanitize } from '../config/sanitize.js';
 import Part from '../model/part.js'
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
@@ -14,116 +13,33 @@ import User from "../model/user.js";
 import handleError from "../config/handleError.js";
 import callbackHandler from '../middleware/callbackHandlers.js'
 import { AssetSchema, CartItem, CheckInQueuePart, InventoryEntry, PartRecordSchema, UserSchema } from "./interfaces.js";
-import mongoose, { CallbackError, Mongoose, MongooseError } from "mongoose";
+import mongoose, { CallbackError, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
-import { PartSchema, PartQuery, CheckInRequest } from "./interfaces.js";
+import { PartSchema } from "./interfaces.js";
 import config from '../config.js'
 import fs from 'fs';
-
+import {
+    cartItemsValid,
+    kioskHasInInventory,
+    sanitizeCartItems,
+    cleansePart,
+    getKiosks,
+    getKioskNames,
+    getAllKiosks,
+    getAllKioskNames,
+    isValidPartID,
+    getPartSearchRegex,
+    returnPartSearch,
+    sanitizeInventoryEntries,
+    inventoryEntriesValid
+} from './methods/partMethods.js';
+import { partRecordsToCartItemsWithInfo, updateParts, updatePartsAddSerials, userHasInInventory } from './methods/assetMethods.js';
+import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from './methods/genericMethods.js';
+import { stringSanitize } from '../config/sanitize.js';
 const { UPLOAD_DIRECTORY } = config
 
 
-function cleansePart(part: PartSchema) {
-    let newPart = {} as PartSchema
-    newPart.nxid = part.nxid?.toUpperCase()
-    newPart.manufacturer = part.manufacturer
-    newPart.name = part.name
-    newPart.type = part.type
-    newPart.shelf_location = part.shelf_location
-    newPart.rack_num = part.rack_num
-    newPart.serialized = part.serialized        
-    newPart.notes = ""
-    if(part.notes)
-        newPart.notes = part.notes
-    switch(part.type) {
-        case "Memory":
-            newPart.frequency = part.frequency
-            newPart.capacity = part.capacity
-            newPart.memory_type = part.memory_type
-            newPart.memory_gen = part.memory_gen
-            if(part.mem_rank)
-                newPart.mem_rank = part.mem_rank
-            break
-        case "CPU":
-            if(part.frequency)
-                newPart.frequency = part.frequency
-            newPart.socket = part.socket
-            break
-        case "Motherboard":
-            newPart.memory_gen = part.memory_gen
-            if(part.chipset)
-                newPart.chipset = part.chipset
-            newPart.socket = part.socket
-            break
-        case "Peripheral Card":
-	    newPart.mainboard_con = part.mainboard_con
-            newPart.peripheral_type = part.peripheral_type
-            newPart.num_ports = part.num_ports
-	    if(part.port_type)
-            	newPart.port_type = part.port_type
-            break
-        case "Storage":
-            newPart.storage_type = part.storage_type
-            newPart.storage_interface = part.storage_interface
-            newPart.size = part.size
-            newPart.capacity = part.capacity
-            newPart.capacity_unit = part.capacity_unit
-        case "Backplane":
-            newPart.port_type = part.port_type
-            newPart.num_ports = part.num_ports
-            break;
-        case "Cable":
-            newPart.cable_end1 = part.cable_end1
-            newPart.cable_end2 = part.cable_end2
-            newPart.consumable = part.consumable
-            break                
-        case "Heatsink":
-            newPart.socket = part.socket
-            newPart.size = part.size
-            newPart.active = part.active
-            break;
-        case "Optic":
-            newPart.cable_end1 = part.cable_end1;
-            newPart.consumable = part.consumable ? true : false
-            break;
-        default:
-            newPart.consumable = part.consumable ? true : false
-            break;
-    }
-    
-    return objectSanitize(newPart, false) as PartSchema
-}
-
-function getKiosks(building: number) {
-    return new Promise<UserSchema[]>(async (res)=>{
-        let kioskUsers = await User.find({roles: ['kiosk'], building: building})
-        res(kioskUsers)
-    })
-}
-
-function getKioskNames(building: number) {
-    return new Promise<string[]>(async (res)=>{
-        let kioskUsers = await getKiosks(building)
-        let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
-        res(kioskNames)
-    })
-}
-
-function getAllKiosks() {
-    return new Promise<UserSchema[]>(async (res)=>{
-        let kioskUsers = await User.find({roles: ['kiosk']})
-        res(kioskUsers)
-    })
-}
-
-export function getAllKioskNames() {
-    return new Promise<string[]>(async (res)=>{
-        let kioskUsers = await getAllKiosks()
-        let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
-        res(kioskNames)
-    })
-}
 const partManager = {
     // Create
     createPart: async (req: Request, res: Response) => {
@@ -138,14 +54,14 @@ const partManager = {
                 return res.status(400).send("Invalid request");
             }
             // Regex check the NXID
-            if (!/PNX([0-9]{7})+/.test(nxid)) {
+            if (!isValidPartID(nxid)) {
                 return res.status(400).send("Invalid part ID");
             }
             // Try to add part to database
             let newPart = cleansePart(part)
             // Send part to database
             newPart.created_by = req.user.user_id;
-            await Part.create(newPart, (err: MongooseError, part: PartSchema) => {
+            Part.create(newPart, async (err: MongooseError, part: PartSchema) => {
                 if (err) {
                     // Return and send error to client side for prompt
                     return res.status(500).send("API could not handle your request: " + err);
@@ -157,27 +73,20 @@ const partManager = {
                     location: req.body.location ? req.body.location : "Parts Room",
                     by: req.user.user_id
                 }
-                // If parts have serial numbers, map one record per serial number
-                if(part.serialized&&req.body.part.serials) {
-                    let serials = req.body.part.serials as string[]
-                    Promise.all(serials.map(async (serial) => {
-                        let optionsCopy = JSON.parse(JSON.stringify(createOptions))
-                        optionsCopy.serial = serial
-                        PartRecord.create(optionsCopy, callbackHandler.callbackHandleError)
-                    }))
-                }
-                // If parts do not have serial numbers, create generic records
-                else if(!part.serialized){
-                    if(quantity==undefined)
-                        quantity = 0
-                    for (let i = 0; i < quantity; i++) {
-                        // Create part records to match the quantity and location of the part schema creation
-                        PartRecord.create(createOptions, callbackHandler.callbackHandleError)
-                    }
-                }
+                let serials = [] as string[]
+                if(req.body.part&&req.body.part.serials)
+                    serials = req.body.part.serials as string[]
+                let parts = [] as CartItem[]
+                // If part is serialized, map serials to cart items
+                if(part.serialized)
+                    parts = serials.map((s)=>{return { nxid: part.nxid!, serial: s }})
+                else
+                    parts = [{nxid: part.nxid!, quantity}]
+                // Migration mode creates new records instead of updating
+                if(parts.length>0)
+                    await updateParts(createOptions, {}, parts, true)
                 // Succesful query
                 return res.status(200).json(part);
-
             });
         } catch (err) {
             handleError(err)
@@ -188,79 +97,22 @@ const partManager = {
     getPart: async (req: Request, res: Response) => {
         try {
             // Destructure request
-            const { location, building } = req.query;
-            let kiosks = await getKioskNames(req.user.building)
-            if (req.query.advanced) {
-                delete req.query.advanced;
-            }
-            if(!(req.query.pageSize&&req.query.pageNum))
-                return res.status(400).send(`Missing page number or page size`);      
-            let pageSize = parseInt(req.query.pageSize as string);
-            let pageNum = parseInt(req.query.pageNum as string);
+            let { pageSize, pageSkip } = getPageNumAndSize(req)
             delete req.query.pageNum
             delete req.query.pageSize
             delete req.query.location
             delete req.query.building
+            delete req.query.advanced;
             // Typecast part
             let req_part = req.query
             // Create query part
-            let search_part = {} as PartQuery
-            // Copy fields from typecasted part, convert array into $all query
-            Object.keys(req_part).forEach((k)=>{
-                // early return for empty strings
-                if(req_part[k]=='')
-                    return
-                // ALlow array partial matches
-                if(Array.isArray(req_part[k])&&!(req_part[k]!.length==0)) {
-                    // Generate regex for each array field
-                    let arr = (req_part[k] as string[]).map((v)=>{
-                        return new RegExp(v, "i") 
-                    })
-                    // Use $all with array of case insensitive regexes
-                    return search_part[k] = { $all: arr }
-                }
-                // Check if value is integer
-                if(typeof(req_part[k])=='string'&&!isNaN(req_part[k] as any)) {
-                    // Parse integer
-                    return search_part[k] = parseFloat(req_part[k] as string)
-                }
-                // Check if not boolean 
-                if(!(req_part[k]=='true')&&!(req_part[k]=='false'))
-                    // Create case insensitive regex
-                    return search_part[k] = { $regex: req_part[k], $options: 'i' } 
-                // Any value here is likely a boolean
-                search_part[k] = req_part[k]
-            })
+            let search_part = objectToRegex(req_part)
             let numParts = await Part.count(search_part)
-            let numPages = numParts%pageSize>0 ? Math.trunc(numParts/pageSize) + 1 : Math.trunc(numParts/pageSize)
+            let numPages = getNumPages(pageSize, numParts)
             Part.find(search_part)
-                .skip(pageSize * (pageNum - 1))
+                .skip(pageSkip)
                 .limit(pageSize)
-                .exec(async (err: CallbackError | null, parts) => {
-                    if (err) {
-                        // Database err
-                        handleError(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    }
-                    let returnParts = await Promise.all(parts.map(async(part)=>{
-                        let count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null,
-                            location: location ? location : {$in: kiosks},
-                            building: building ? building : req.user.building
-                        });
-                        let total_count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null
-                        });
-                        let tempPart = JSON.parse(JSON.stringify(part))
-                        
-                        tempPart.quantity = count;
-                        tempPart.total_quantity = total_count;
-                        return tempPart
-                    }))
-                    return res.status(200).json({numParts, numPages, parts: returnParts});
-                })
+                .exec(returnPartSearch(numPages, numParts, req, res))
         } catch (err) {
             // Database error
             handleError(err)
@@ -273,7 +125,7 @@ const partManager = {
             let part = {} as PartSchema
             let kiosks = await getKioskNames(req.user.building)
             // Check if NXID
-            if (/PNX([0-9]{7})+/.test((req.query.id as string).toUpperCase())) {
+            if (isValidPartID((req.query.id as string).toUpperCase())) {
                 part = await Part.findOne({ nxid: { $eq: (req.query.id as string).toUpperCase() } }) as PartSchema;
             }
             // If mongo ID
@@ -295,9 +147,12 @@ const partManager = {
                 location: req.query.location ? req.query.location : {$in: kiosks},
                 next: null
             });
+            // Get rid of unnecessary info
             part = part._doc;
+            // Add quantities
             part.total_quantity = total_quantity;
             part.quantity = quantity;
+            // return
             res.status(200).json(part);
         } catch (err) {
             // Database error
@@ -314,132 +169,33 @@ const partManager = {
                 return res.status(400).send("Invalid request")
             let current_date = Date.now();
             // Find each item and check quantities before updating
-            let sufficientStock = ""
-            let serialQuantityError = ""
-            let serializedError = ""
-            let duplicateSerial = ""
-            let infoError = ""
             let kiosk = await User.findById(req.user.user_id)
             let kioskName = kiosk?.first_name + " " + kiosk?.last_name
-            // Using hash map for quick search
-            let serialMap = new Map<string, boolean>();
-            await Promise.all(cart.map(async (item: CartItem) => {
-                // Check quantity before
-                let info = await Part.findOne({nxid: item.nxid})
-                if(info?.serialized&&item.serial) {
-                    if(serialMap.has(item.serial)) {
-                        duplicateSerial = item.nxid + ": " + item.serial
-                        return
-                    }
-                    serialMap.set(item.serial, true)
-                    // Find serialized part
-                    let serializedItem = await PartRecord.findOne({
-                        nxid: item.nxid,
-                        location: kioskName,
-                        building: req.user.building,
-                        next: null,
-                        serial: item.serial
-                    })
-                    // Check if serial number is non existent
-                    if(serializedItem==undefined) {
-                        serialQuantityError = item.nxid + ": " + item.serial
-                        serialMap.delete(item.serial)
-                    }
-                } else {
-                    // Check if part is serialized
-                    if(info&&info.serialized&&info.nxid) {
-                        // Mark as error
-                        serializedError = info.nxid
-                        return
-                    }
-                    // Check if part info is non existent
-                    if(info==null) {
-                        // Mark as error
-                        infoError = item.nxid
-                        return
-                    }
-                    // Get quantity
-                    let quantity = await PartRecord.count({
-                        nxid: item.nxid,
-                        location: kioskName,
-                        building: req.user.building,
-                        next: null
-                    });
-                    // Check stock vs list
-                    if (quantity < item.quantity!) {
-                        // Insufficient stock
-                        sufficientStock = item.nxid
-                    }
-                }
-            }))
-            // Check error conditions
-            if(sufficientStock!='')
-                return res.status(400).send(`Insufficient stock for ${sufficientStock}.`)
-            if(serialQuantityError!='')
-                return res.status(400).send(`${serialQuantityError} is not available in parts room.`)
-            if(serializedError!='')
-                return res.status(400).send(`${serializedError} is a serialized part, please specify serial number`)
-            if(infoError!='')
-                return res.status(400).send(`${serializedError} does not exist.`)
-            if(duplicateSerial!='')
-                return res.status(400).send(`Duplicate serial ${duplicateSerial} found in request.`)
-            // Loop through each item and create new parts record and update old parts record
-            await Promise.all(cart.map(async (item: CartItem) => {
-                // If part is serialized
-                if(item.serial) {
-                    // Find matching part
-                    let prevPart = await PartRecord.findOne({
-                        nxid: item.nxid, 
-                        serial: item.serial,
-                        location: kioskName,
-                        building: req.user.building,
-                        next: null
-                    })
-                    // If found, create new record
-                    if (prevPart) {
-                        PartRecord.create({
-                            nxid: item.nxid,
-                            owner: user_id,
-                            serial: item.serial,
-                            location: "Tech Inventory",
-                            building: req.user.building,
-                            by: req.user.user_id,
-                            prev: prevPart._id,
-                            next: null,
-                            date_created: current_date,
-                        }, callbackHandler.updateRecord);
-                    }
-                }
-                else {
-                    let partInfo = await Part.findOne({nxid: item.nxid})
-                    // Find all matching part records to minimize requests and ensure updates don't conflict when using async part updating
-                    let records = await PartRecord.find({
-                        nxid: item.nxid,
-                        location: kioskName,
-                        building: req.user.building,
-                        next: null
-                    });
-                    // Loop for quanity of part item
-                    for (let j = 0; j < item.quantity!; j++) {
-                        let createOptions = {
-                            nxid: item.nxid,
-                            owner: user_id,
-                            location: "Tech Inventory",
-                            building: req.user.building,
-                            by: req.user.user_id,
-                            prev: records[j]._id,
-                            next: null,
-                            date_created: current_date,
-                        } as PartRecordSchema
-                        // Check if consumable
-                        if(partInfo&&partInfo.consumable)
-                            // Mark as consumed
-                            createOptions.next = "consumed"
-                        // Create new iteration
-                        PartRecord.create(createOptions, callbackHandler.updateRecord);
-                    }
-                }
-            }))
+            // sanitize
+            cart = sanitizeCartItems(cart)
+            // Check if inventory items are valid
+            if(!(await cartItemsValid(cart)))
+                return res.status(400).send("Error in checkin items")
+            // Check if user has items in inventory
+            if(!(await kioskHasInInventory(kioskName, req.user.building, cart)))
+                return res.status(400).send("Items not found in user inventory")
+            // Send parts to user inventory
+            let createOptions = {
+                owner: user_id,
+                location: "Tech Inventory",
+                building: req.user.building,
+                by: req.user.user_id,
+                next: null,
+                date_created: current_date,
+            }
+            // Get parts from kiosk
+            let searchOptions = {
+                next: null,
+                location: kioskName,
+                building: req.user.building
+            }
+            // Update part records
+            await updateParts(createOptions, searchOptions, cart, false)
             // Success
             res.status(200).send("Successfully checked out.")
         }
@@ -456,123 +212,32 @@ const partManager = {
             // Make sure user is valid of 'all' as in
             // All Techs
             let current_date = Date.now();
-
             if(user_id!='all'&&user_id!='testing') {
                 let user = await User.findById(user_id).exec()
                 if(user_id==null||user_id==undefined||user==null)
                     return res.status(400).send("Invalid request")
             }
-
-            let sufficientStock = ""
-            let serialQuantityError = ""
-            let serializedError = ""
-            let duplicateSerial = ""
-            let infoError = ""
-            // Check quantities before updating records
-            let serialMap = new Map<string, boolean>();
-            await Promise.all(inventory.map(async(item: CartItem) => {
-                let info = await Part.findOne({nxid: item.nxid})
-                if(info?.serialized&&item.serial) {
-                    if(serialMap.has(item.serial)) {
-                        duplicateSerial = item.nxid + ": " + item.serial
-                        return
-                    }
-                    serialMap.set(item.serial, true)
-                    // Find serialized part
-                    let serializedItem = await PartRecord.findOne({
-                        nxid: item.nxid,
-                        next: null,
-                        owner: user_id,
-                        serial: item.serial
-                    })
-                    // Check if serial number is non existent
-                    if(serializedItem==undefined) {
-                        serialQuantityError = item.nxid + ": " + item.serial
-                        serialMap.delete(item.serial)
-                    }
-                }
-                else {
-                    // Check if part is serialized
-                    if(info&&info.serialized&&info.nxid) {
-                        // Mark as error
-                        serializedError = info.nxid
-                        return
-                    }
-                    // Check if part info is non existent
-                    if(info==null) {
-                        // Mark as error
-                        infoError = item.nxid
-                        return
-                    }
-                    let quantity = await PartRecord.count({
-                        nxid: item.nxid,
-                        next: null,
-                        owner: user_id
-                    })
-                    // If check in quantity is greater than 
-                    // inventory quantity
-                    if (quantity < item.quantity!) {
-                        // Insufficient stock
-                        sufficientStock = item.nxid
-                    }
-                }
-            }))
-            // Check error conditions
-            if(sufficientStock!='')
-                return res.status(400).send(`Insufficient inventory quantity for ${sufficientStock}.`)
-            if(serialQuantityError!='')
-                return res.status(400).send(`${serialQuantityError} is not in user's inventory.`)
-            if(serializedError!='')
-                return res.status(400).send(`${serializedError} is a serialized part, please specify serial number`)
-            if(infoError!='')
-                return res.status(400).send(`${serializedError} does not exist.`)
-            if(duplicateSerial!='')
-                return res.status(400).send(`Duplicate serial ${duplicateSerial} found in request.`)
+            // Santizie cart items
+            inventory = sanitizeCartItems(inventory)
+            // Check if inventory items are valid
+            if(!(await cartItemsValid(inventory)))
+                return res.status(400).send("Error in checkin items")
+            // Check if user has items in inventory
+            if(!(await userHasInInventory(user_id, inventory)))
+                return res.status(400).send("Items not found in user inventory")
             // Iterate through each item and update records
-            await Promise.all(inventory.map(async(item: CartItem) => {
-                // Get database quantity
-                if (item.serial) {
-                    let part = await PartRecord.findOne({
-                        nxid: item.nxid,
-                        next: null,
-                        owner: user_id,
-                        serial: item.serial
-                    })
-                    if(part!=null) {
-                        PartRecord.create({
-                            nxid: item.nxid,
-                            next: null,
-                            prev: part._id,
-                            location: "Check In Queue",
-                            serial: item.serial,
-                            building: req.user.building,
-                            by: user_id,
-                            date_created: current_date,
-                        }, callbackHandler.updateRecord)
-                    }
-                }
-                else {
-                    const records = await PartRecord.find({
-                        nxid: item.nxid,
-                        next: null,
-                        owner: user_id
-                    });
-                    // Loop through the quantity of the item and 
-                    // change records
-                    for (let i = 0; i < item.quantity!; i++) {
-                        // Create new part record - set prev to old record
-                        PartRecord.create({
-                            nxid: item.nxid,
-                            next: null,
-                            prev: records[i]._id,
-                            location: "Check In Queue",
-                            building: req.user.building,
-                            by: user_id,
-                            date_created: current_date,
-                        }, callbackHandler.updateRecord);
-                    }
-                }
-            }))
+            let createOptions = {
+                next: null,
+                location: "Check In Queue",
+                building: req.user.building,
+                by: user_id,
+                date_created: current_date,
+            }
+            let searchOptions = {
+                next: null,
+                owner: user_id,
+            }
+            await updateParts(createOptions, searchOptions, inventory, false)
             // Success
             res.status(200).send("Successfully checked in.")
         }
@@ -642,23 +307,14 @@ const partManager = {
 
     getCheckoutHistory: async (req: Request, res: Response) => {
         try {
-            let { startDate, endDate, pageSize, pageNum, location, user } = req.query;
-
+            // Get location and user info
+            let { location, user } = req.query;
+            // Get kiosks
             let kiosks = await getAllKioskNames()
             // Parse page size and page num
-            let pageSizeInt = parseInt(pageSize as string)
-            let pageNumInt = parseInt(pageNum as string)
-            // Turn date into usable objects
-            let startDateParsed = new Date(parseInt(startDate as string))
-            let endDateParsed = new Date(parseInt(endDate as string))
-            endDateParsed.setDate(endDateParsed.getDate()+1)
-            // Check for bad conversions
-            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
-                return res.status(400).send("Invalid page number or page size");
-            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
-                return res.status(400).send("Invalid start or end date");
-            // Calculate page skip
-            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            let { pageSize, pageSkip } = getPageNumAndSize(req)
+            // Parse start and end date 
+            let { startDate, endDate } = getStartAndEndDate(req)
             // Flexing the MongoDB aggregation pipeline
             PartRecord.aggregate([
                 {
@@ -694,7 +350,7 @@ const partManager = {
                                 }
                             ]
                         },
-                        date_replaced: { $gte: startDateParsed, $lte: endDateParsed } 
+                        date_replaced: { $gte: startDate, $lte: endDate } 
                     } 
                 },
                 {
@@ -760,7 +416,7 @@ const partManager = {
                     $project: {
                         _id: 0,
                         total: 1,
-                        checkouts: {$slice: ["$checkouts", pageSkip, pageSizeInt]}
+                        checkouts: {$slice: ["$checkouts", pageSkip, pageSize]}
                     }
                 }
             ]).exec((err, result: any)=>{
@@ -781,12 +437,17 @@ const partManager = {
         try {
             // Check info from checkin request
             let { date, by } = req.body
+            // SANITIZE
             let parts = req.body.parts as CheckInQueuePart[]
+            // Remove duplicates
+            parts = parts.filter((item, index, arr)=>index==arr.findIndex((a)=>{
+                return (a.nxid == item.nxid)&&(a.serial==item.serial)
+            }))
             // Check if anything is missing
             if(!date||!by||!parts)
                 return res.status(400).send("Invalid request")
             // Get kiosks
-            let kioskReq = await User.find({roles: ['kiosk'], building: req.user.building})
+            let kioskReq = await getKiosks(req.user.building)
             // Create hash map
             let kiosks = new Map<string, UserSchema>()
             // Convert to hash
@@ -821,46 +482,7 @@ const partManager = {
             await Promise.all(parts.map((p)=>{
                 return new Promise(async (res)=>{
                     // Check if serialized
-                    if(p.serial) {
-                        // Find one
-                        let partToUpdate = await PartRecord.findOne({
-                            nxid: p.nxid, 
-                            next: null, 
-                            location: "Check In Queue", 
-                            date_created: date,
-                            building: req.user.building,
-                            by: by,
-                            serial: p.serial
-                        })
-                        // Create new iteration
-                        let createOptions = {
-                            nxid: p.nxid,
-                            next: null,
-                            prev: partToUpdate!._id,
-                            location: p.newLocation,
-                            serial: p.serial,
-                            building: req.user.building,
-                            by: req.user.user_id,
-                            date_created: current_date,
-                        } as PartRecordSchema
-                        // If not approved
-                        if(!p.approved)
-                            createOptions = {
-                                nxid: p.nxid,
-                                owner: by,
-                                location: "Tech Inventory",
-                                serial: p.serial,
-                                building: req.user.building,
-                                by: req.user.user_id,
-                                prev: partToUpdate!._id,
-                                next: null,
-                                date_created: current_date,
-                            }
-                        PartRecord.create(createOptions, callbackHandler.updateRecord)
-                        return res("")
-                    }
-                    // Find all matching records
-                    let partsToUpdate = await PartRecord.find({
+                    let searchOptions = {
                         nxid: p.nxid, 
                         next: null, 
                         location: "Check In Queue", 
@@ -868,34 +490,50 @@ const partManager = {
                         building: req.user.building,
                         by: by,
                         serial: p.serial
-                    })
+                    }
+                    let approvedOptions = {
+                        nxid: p.nxid,
+                        next: null,
+                        location: p.newLocation,
+                        serial: p.serial,
+                        building: req.user.building,
+                        by: req.user.user_id,
+                        date_created: current_date,
+                    } as PartRecordSchema
+                    let deniedOptions = {
+                        nxid: p.nxid,
+                        owner: by,
+                        location: "Tech Inventory",
+                        serial: p.serial,
+                        building: req.user.building,
+                        by: req.user.user_id,
+                        next: null,
+                        date_created: current_date,
+                    } as PartRecordSchema
+                    if(p.serial) {
+                        // Find one
+                        let partToUpdate = await PartRecord.findOne(searchOptions)
+                        approvedOptions.prev = partToUpdate!._id
+                        deniedOptions.prev = partToUpdate!._id
+                        // Create new iteration
+                        // If not approved
+                        if(p.approved==true)
+                            PartRecord.create(approvedOptions, callbackHandler.updateRecord)
+                        else
+                            PartRecord.create(deniedOptions, callbackHandler.updateRecord)
+                        return res("")
+                    }
+                    // Find all matching records
+                    let partsToUpdate = await PartRecord.find(searchOptions)
                     // Update all approved records
                     for (let i = 0; i < p.approvedCount!; i++) {
-                        let createOptions = {
-                            nxid: p.nxid,
-                            next: null,
-                            prev: partsToUpdate[i]._id,
-                            location: p.newLocation,
-                            serial: p.serial,
-                            building: req.user.building,
-                            by: req.user.user_id,
-                            date_created: current_date,
-                        } as PartRecordSchema
-                        PartRecord.create(createOptions, callbackHandler.updateRecord)
+                        approvedOptions.prev = partsToUpdate[i]._id
+                        PartRecord.create(approvedOptions, callbackHandler.updateRecord)
                     }
                     // Update unapproved records
                     for (let i = p.approvedCount!; i < p.quantity!; i++) {
-                        let createOptions = {
-                            nxid: p.nxid,
-                            owner: by,
-                            location: "Tech Inventory",
-                            building: req.user.building,
-                            by: req.user.user_id,
-                            prev: partsToUpdate[i]._id,
-                            next: null,
-                            date_created: current_date,
-                        }
-                        PartRecord.create(createOptions, callbackHandler.updateRecord)
+                        deniedOptions.prev = partsToUpdate[i]._id
+                        PartRecord.create(deniedOptions, callbackHandler.updateRecord)
                     }
                     return res("")
                 })
@@ -910,167 +548,60 @@ const partManager = {
 
     searchParts: async (req: Request, res: Response) => {
         try {
-            function returnSearch(numPages: number, numParts: number) {
-                // Return mongoose callback
-                return async (err: CallbackError | null, parts: PartSchema[])  => {
-                    if (err) {
-                        // Database err
-                        handleError(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    }
-                    // Map for all parts
-                    let kioskNames = await getKioskNames(req.user.building)
-                    let returnParts = await Promise.all(parts.map(async (part: PartSchema)=>{
-                        // Check parts room quantity
-                        let count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null,
-                            location: location ? location : {$in: kioskNames},
-                            building: building ? building : req.user.building
-                        });
-                        // Get total quantity
-                        let total_count = await PartRecord.count({
-                            nxid: part.nxid,
-                            next: null
-                        });
-                        // Copy part
-                        let tempPart = JSON.parse(JSON.stringify(part))
-                        // Add quantities
-                        tempPart.quantity = count;
-                        tempPart.total_quantity = total_count;
-                        // Return
-                        return tempPart
-                    }))
-                    return res.status(200).json({ numPages, numParts, parts: returnParts});
-                }
-            }
-            // Search data
-            // Limit
-            // Page number
-            let { searchString, pageSize, pageNum, building, location } = req.query;
-            // Find parts
-            // Skip - gets requested page number
-            // Limit - returns only enough elements to fill page
-            let pageSizeInt = parseInt(pageSize as string)
-            let pageNumInt = parseInt(pageNum as string)
-            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
-                return res.status(400).send("Invalid page number or page size");
-            let pageSkip = pageSizeInt * (pageNumInt - 1)
-            // Splice keywords from search string
-            if(typeof(searchString)!="string") {
-                return res.status(400).send("Search string undefined");
-            }
-            // Strict sanitize
-            searchString = stringSanitize(searchString, true)
+            // Get search string and page info
+            let { pageSize, pageSkip, searchString } = getTextSearchParams(req)
+            // If search string is empty
             if(searchString == "") {
+                // Count all parts
                 let numParts = await Part.count()
-                let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
+                // Calc number of pages
+                let numPages = getNumPages(pageSize, numParts)
+                // Get all parts
                 Part.find({})
-                .sort({ nxid: 1 })
-                // Skip - gets requested page number
-                .skip(pageSkip)
-                // Limit - returns only enough elements to fill page
-                .limit(pageSizeInt)
-                .exec(returnSearch(numPages, numParts))
+                    // Sort by NXID
+                    .sort({ nxid: 1 })
+                    // Skip - gets requested page number
+                    .skip(pageSkip)
+                    // Limit - returns only enough elements to fill page
+                    .limit(pageSize)
+                    // Return search to user
+                    .exec(returnPartSearch(numPages, numParts, req, res))
                 return
             }
-            
-            let fullText = false
-            // Check if find works
-            let pp = await Part.findOne(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {})
-            if(pp!=undefined)
-                fullText = true
-
-            // if (fullText) {
-            //     // Search data
-            //     console.log("full text")
-            //     let numParts = await Part.count(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {})
-            //     let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
-            //     Part.find(searchString != ''? { $text: { $search: "\""+searchString+"\"" } } : {}, searchString != ''?{ score: { $meta: "textScore" } }:{})
-            //     .sort(searchString != ''?{ score: { $meta: "textScore" } }:{})
-            //     // Skip - gets requested page number
-            //     .skip(pageSkip)
-            //     // Limit - returns only enough elements to fill page
-            //     .limit(pageSizeInt)
-            //     .exec(returnSearch(numPages, numParts))
-            // }
-            // Find doesn't work, use aggregation pipeline
-            // else {
-                let keywords = [searchString]
-                keywords = keywords.concat(searchString.split(" ")).filter((s)=>s!='')
-                // Use keywords to build search options
-                let searchOptions = [] as any
-                let relevanceConditions = [] as any
-                // Add regex of keywords to all search options
-                await Promise.all(keywords.map(async (key) => {
-                    // Why was this even here to begin with?
-                    searchOptions.push({ "nxid": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$nxid", regex: new RegExp(key, "i") } }, 3, 0] })
-                    searchOptions.push({ "name": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$name", regex: new RegExp(key, "i") } }, 5, -1] })
-                    searchOptions.push({ "manufacturer": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$manufacturer", regex: new RegExp(key, "i") } }, 5, -1] })
-                    searchOptions.push({ "type": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$type", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "shelf_location": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$shelf_location", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "storage_interface": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$storage_interface", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "port_type": { $regex: key, $options: "i" } })
-                    // REGEX doesn't allow arrays
-                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$port_type", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "peripheral_type": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$peripheral_type", regex: new RegExp(key, "i") } }, 2, 0] })
-                    searchOptions.push({ "memory_type": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_type", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "memory_gen": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$memory_gen", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "frequency": { $regex: key, $options: "i" } })
-                    // REGEX doesn't allow numbers
-                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$frequency", regex: new RegExp(key, "i") } }, 2, 0] })
-                    searchOptions.push({ "size": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$size", regex: new RegExp(key, "i") } }, 2, 0] })
-                    searchOptions.push({ "cable_end1": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end1", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "cable_end2": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$cable_end2", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "chipset": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$chipset", regex: new RegExp(key, "i") } }, 1, 0] })
-                    searchOptions.push({ "socket": { $regex: key, $options: "i" } })
-                    // REGEX doesn't allow arrays
-                    // relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$socket", regex: new RegExp(key, "i") } }, 1, 0] })
-                }))
-                let aggregateQuery = [
-                    {
-                        $match: {
-                            $or: searchOptions
-                        }
-                    },
-                    {
-                        $addFields: {
-                            relevance: {
-                                $sum: relevanceConditions
-                            }
-                        }
-                    },
-                    {
-                        $sort: { relevance: -1 }
-                    },
-                    {
-                        $project: { relevance: 0 }
+            // Get regex for aggregate search
+            let { regexKeywords, relevanceScore } = getPartSearchRegex(searchString)
+            // Use keywords to build search options
+            let aggregateQuery = [
+                {
+                    $match: {
+                        $or: regexKeywords
                     }
-                ] as any
-                // Aggregate count
-                let countQuery = await Part.aggregate(aggregateQuery).count("numParts")
-                // This is stupid but it works
-                let numParts = countQuery.length > 0&&countQuery[0].numParts ? countQuery[0].numParts : 0
-                // Ternary that hurts my eyes
-                let numPages = numParts%pageSizeInt>0 ? Math.trunc(numParts/pageSizeInt) + 1 : Math.trunc(numParts/pageSizeInt)
-                // Search
-                Part.aggregate(aggregateQuery)
-                    .skip(pageSkip)
-                    .limit(pageSizeInt)
-                    .exec(returnSearch(numPages, numParts))
+                },
+                {
+                    $addFields: {
+                        relevance: {
+                            $sum: relevanceScore
+                        }
+                    }
+                },
+                {
+                    $sort: { relevance: -1 }
+                },
+                {
+                    $project: { relevance: 0 }
+                }
+            ] as any
+            // Aggregate count
+            let countQuery = await Part.aggregate(aggregateQuery).count("numParts")
+            // This is stupid but it works
+            let numParts = countQuery.length > 0&&countQuery[0].numParts ? countQuery[0].numParts : 0
+            // Ternary that hurts my eyes
+            let numPages = getNumPages(pageSize, numParts)
+            // Search
+            Part.aggregate(aggregateQuery)
+                .skip(pageSkip)
+                .limit(pageSize)
+                .exec(returnPartSearch(numPages, numParts, req, res))
             //}
         } catch (err) {
             handleError(err)
@@ -1087,23 +618,27 @@ const partManager = {
             // Send part to database
             newPart.created_by = req.user.user_id;
             // Updated part is the old part from database
-            if (!/PNX([0-9]{7})+/.test(newPart.nxid ? newPart.nxid : '')) {
+            if (!isValidPartID(newPart.nxid))
                 return res.status(400).send("Invalid part ID");
-            }
-
+            // Update part
             let updatedPart = await Part.findByIdAndUpdate(part._id, newPart);
+            // If part isn't found
             if (updatedPart == null) {
                 return res.status(400).send("Part not found.");
             }
+            // If part is now consumable
             if (newPart.consumable&&!updatedPart.consumable) {
+                // Get kiosk names
                 let kiosks = await getAllKioskNames()
-
+                // Mark all parts outside kiosks as consumed
                 await PartRecord.updateMany({ nxid: updatedPart.nxid, next: null, location : {$nin: kiosks} }, {$set: {next: 'consumed'}})
             }
+            // If NXID was changed
             if (newPart.nxid != updatedPart.nxid) {
                 // Update old NXID to new NXID
                 await PartRecord.updateMany({ nxid: updatedPart.nxid }, {$set: {nxid: newPart.nxid}})
             }
+            // Return success
             return res.status(201).json(updatedPart);
         } catch (err) {
             // Database error
@@ -1185,7 +720,9 @@ const partManager = {
             Part.findOne({ nxid }, async (err: MongooseError, part: PartSchema) => {
                 if (err)
                     return res.status(500).send("API could not handle your request: " + err);
-                if(serials.length > 0) {
+                if(!part)
+                    return res.status(400).send("Part not found.");
+                if(part.serialized&&serials.length > 0) {
                     // Get existing records to check serials
                     let records = await PartRecord.find({nxid, next: null}) as PartRecordSchema[];
                     // Use hashmap for easier and faster checks
@@ -1215,7 +752,7 @@ const partManager = {
                         PartRecord.create(createOptionsCopy, callbackHandler.callbackHandleError);
                     })
                 }
-                else {
+                else if(quantity&&quantity>0){
                     for (let i = 0; i < quantity; i++) {
                         // Create new parts records to match the quantity
                         PartRecord.create(createOptions, callbackHandler.callbackHandleError);
@@ -1322,61 +859,9 @@ const partManager = {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                // Store part info
-                let cachedRecords = new Map<string, PartSchema>();
-                // Unserialized parts and quantities
-                let unserializedParts = new Map<string, number>();
-                // Serialized parts
-                let cartItems = [] as CartItem[]
-
-                await Promise.all(records.map((record) => {
-                    // If serialized
-                    if(record.serial) {
-                        // Push straight to cart items
-                        cartItems.push({nxid: record.nxid!, serial: record.serial })
-                    }
-                    // If unserialized and map already has part
-                    else if (unserializedParts.has(record.nxid!)) {
-                        // Increment quantity
-                        unserializedParts.set(record.nxid!, unserializedParts.get(record.nxid!)! + 1)
-                    }
-                    // Map does not have part
-                    else {
-                        // Start at 1
-                        unserializedParts.set(record.nxid!, 1)
-                    }
-                }))
-                // Get part info and push as LoadedCartItem interface from the front end
-                unserializedParts.forEach((quantity, nxid) => {
-                    // Push unserialized parts to array
-                    cartItems.push({nxid: nxid, quantity: quantity})
-                })
-                // Check all cart items
-                await Promise.all(cartItems.map(async (item) =>{
-                    // Check if part record cache already contains part info
-                    if (!cachedRecords.has(item.nxid)) {
-                        // Set temp value
-                        cachedRecords.set(item.nxid, {})
-                        // Find part info
-                        let part = await Part.findOne({nxid: item.nxid})
-                        // If part info found
-                        if(part) {
-                            // Set new value
-                            cachedRecords.set(item.nxid, part)
-                        }
-                        // Part info not found
-                        else {
-                            // Error - reset 
-                            cachedRecords.delete(item.nxid)
-                        }
-                    }
-                }))
-                // Map part info to array (Maps can't be sent through Express/HTTP ???)
-                let parts = Array.from(cachedRecords, (record) => {
-                    return { nxid: record[0], part: record[1]}
-                })
+                let returnValue = await partRecordsToCartItemsWithInfo(records)
                 // Send response
-                res.status(200).json({ parts: parts, records: cartItems})
+                res.status(200).json(returnValue)
             })
         } catch (err) {
             handleError(err)
@@ -1451,133 +936,16 @@ const partManager = {
         try {
             // Get data from request
             let { old_owner, new_owner } = req.body
-            let parts = req.body.parts as InventoryEntry[]
-
-            // Inventory check
-            let inventoryCheck = await PartRecord.find({owner: old_owner, next: null})
-            let inventoryHash = new Map<string, InventoryEntry>()
-
-            // Store whether or not part is serialized in map
-            let partSerialized = new Map<string, boolean>();
-
-            // Error arrays
-            let notEnough = [] as string[]
-            let missingSerial = [] as string[]
-            let partNotFound = [] as string[]
-            let serialNotInInv = [] as string[]
-            let duplicateEntry = [] as string[]
-            let serialNotNeeded = [] as string[]
-            let duplicateSerial = [] as string[]
-            let nxidMissing = false
-            
-            // Check for duplicates
-            parts.map((p: InventoryEntry, i)=>{
-                // If search index does not equal current index
-                if(parts.findIndex((k)=>k.nxid==p.nxid)!=i) {
-                    duplicateEntry.push(p.nxid?p.nxid:"Undefined NXID")
-                    return false
-                }
-                return true
-            })
-            if(duplicateEntry.length>0)
-                return res.status(400).send("Duplicate NXIDs in request: "+duplicateEntry.join(', '));
-            // Turn array into hashmap
-            inventoryCheck.map((record)=>{
-                // Create boilerplate
-                let invEntry = { unserialized: 0, serials: [""]}
-                // Check if hashtable already has entries
-                if(inventoryHash.has(record.nxid!))
-                    // Load existing entries
-                    invEntry = inventoryHash.get(record.nxid!)!
-                // If record has serial number
-                if(record.serial)
-                    // Push to serials
-                    invEntry.serials.push(record.serial)
-                else
-                    // Increment number of unserialized
-                    invEntry.unserialized++
-                inventoryHash.set(record.nxid!, invEntry)
-            })
-
-            // Check all parts in list for inventory
-            await Promise.all(parts.map(async (entry: InventoryEntry, i) =>{
-                // Chech if entry is a duplicate
-                if(parts.findIndex((k)=>k.nxid==entry.nxid)!=i)
-                    duplicateEntry.push(entry.nxid?entry.nxid:"Undefined NXID")
-                // Check if NXID is in request
-                if(!entry.nxid)
-                    return nxidMissing = true
-                // Check if part info has been fetched
-                if(!partSerialized.has(entry.nxid)) {
-                    // Fetch part info
-                    let partInfo = await Part.findOne({nxid: entry.nxid})
-                    // If not found, push to errors
-                    if(partInfo==null)
-                        return partNotFound.push(entry.nxid)
-                    // Part found, add to map
-                    partSerialized.set(entry.nxid, partInfo.serialized ? true : false)
-                }
-                // Check if part is serialized
-                let serialized = partSerialized.get(entry.nxid)
-                // Check if inventory has part
-                if(!inventoryHash.has(entry.nxid))
-                    // Push error
-                    return notEnough.push(entry.nxid)
-                // Get existing inventory entry
-                const existingInv = inventoryHash.get(entry.nxid)!
-                // If serialized
-                if(serialized) {
-                    // Check if all parts have serials
-                    if(entry.unserialized&&entry.unserialized>0&&(entry.newSerials?.length!=entry.unserialized))
-                        // Push error
-                        missingSerial.push(entry.nxid)
-                    // Make sure all serials on request are in inventory
-                    await Promise.all(entry.serials.map(async (s)=>{
-                        if(!existingInv.serials.includes(s))
-                            // Push error
-                            serialNotInInv.push(entry.nxid+": "+s)
-                    }))
-                    // If there are new serial numbers
-                    if(entry.newSerials)
-                        // Check if they are unique
-                        await Promise.all(entry.newSerials.map(async(s)=>{
-                            let existingSerial = await PartRecord.findOne({nxid: entry.nxid, serial: s, next: null})
-                            // Check if already exists
-                            if(existingSerial)
-                                // Push error
-                                duplicateSerial.push(entry.nxid+": "+s)
-                        }))
-                    return
-                }
-                // Check for unserialized records
-                let unserializedRecordsCount = await PartRecord.count({nxid: entry.nxid, owner: old_owner, next: null, serial: undefined})
-                // Check quantities
-                if(unserializedRecordsCount<entry.unserialized)
-                    notEnough.push(entry.nxid)
-                // Check if serials are present but not required
-                if((entry.serials.length>0||(entry.newSerials&&entry.newSerials.length>0))&&new_owner!='sold')
-                   serialNotNeeded.push(entry.nxid) 
-                // Not serialized
-                // Check quantities
-                if(existingInv.unserialized<entry.unserialized)
-                    // Push error
-                    notEnough.push(entry.nxid)
-            }))
-            // Return to client with errors if present
-            if(duplicateEntry.length>0)
-                return res.status(400).send("Duplicate NXIDs in request: "+duplicateEntry.join(', '));
-            if(partNotFound.length>0)
-                return res.status(400).send("Part info not found for: "+partNotFound.join(', '));
-            if(notEnough.length>0)
-                return res.status(400).send("Not enough in inventory: "+notEnough.join(', '));
-            if(missingSerial.length>0)
-                return res.status(400).send("Serial numbers missing for: "+missingSerial.join(', '))
-            if(serialNotInInv.length>0)
-                return res.status(400).send("Serial not present in inventory: "+serialNotInInv.join(', '))
-            if(duplicateSerial.length>0)
-                return res.status(400).send("Serial number already exists for: "+duplicateSerial.join(', '))
-            if(serialNotNeeded.length>0)
-                return res.status(400).send("Serials not necessary for: "+serialNotNeeded.join(', '))
+            let parts = req.body.parts as CartItem[]
+            parts = sanitizeCartItems(parts)
+            if(new_owner=="sold")
+                return res.status(400).send("Please refresh to update app");
+            // Check if cart items are valid
+            if(!(await cartItemsValid(parts)))
+                return res.status(400).send("Error in updated parts list");
+            // Check if user has cart items in inventory
+            if(!(await userHasInInventory(old_owner, parts)))
+                return res.status(400).send("User does not have parts in inventory");
             // Check if location is valid
             let to = {} as PartRecordSchema
             to.owner = new_owner ? new_owner as string : "";
@@ -1617,15 +985,6 @@ const partManager = {
                     // Testing center
                     to.location = 'Drive Wipe Shelf'
                     break;
-                case 'sold':
-                    if(!req.body.orderID)
-                        return res.status(400).send("Ebay order ID not present");
-                    if(!ebayPerms)
-                        return res.status(400).send("You do not have eBay permissions");
-                    to.ebay = req.body.orderID
-                    to.next = 'sold'
-                    to.location = 'sold'
-                    break;
                 case 'lost':
                     if(!buildingSwitchPerms)
                         return res.status(400).send("You do not have permissions to mark parts as lost");
@@ -1661,82 +1020,56 @@ const partManager = {
             to.building = to.building ? to.building : req.user.building
             to.by = req.user.user_id
             // Update records
-            await Promise.all(parts.map(async (entry)=>{
-                // If ebay order
-                if(to.ebay) {
-                    // Get unserialized
-                    let serialized = partSerialized.get(entry.nxid!)
-                    let unserializedRecords = [] as PartRecordSchema[]
-                    // If unserialized, fetch unserialized records for updating
-                    if(!serialized)
-                        unserializedRecords = await PartRecord.find({nxid: entry.nxid, serial: undefined, owner: old_owner, next: null})
-                    // Check quantities
-                    if(!serialized&&unserializedRecords.length<entry.serials.length)
-                        return
-                    entry.serials.map(async (s, index)=>{
-                                                // Clone to object
-                        let newRecord = JSON.parse(JSON.stringify(to))
-                        // Set serial
-                        newRecord.nxid = entry.nxid
-                        newRecord.serial = s
-                        if(serialized) {
-                            // Find sepcific serial
-                            PartRecord.findOne({nxid: entry.nxid, serial: s, owner: old_owner, next: null}, (err: MongooseError, oldRecord: PartRecordSchema)=>{
-                                if(err)
-                                    return handleError(err)
-                                newRecord.prev = oldRecord._id
-                                // Create and upate
-                                PartRecord.create(newRecord, callbackHandler.updateRecord)
-                            })
-                        }
-                        else {
-                            // Previous record unserialized
-                            newRecord.prev = unserializedRecords[index]._id
-                            // Create new part record and update old one
-                            PartRecord.create(newRecord, callbackHandler.updateRecord)
-                        }
-                    })
-                }
-                else {
-                    entry.serials.map(async (s)=>{
-                        // Clone to object
-                        let newRecord = JSON.parse(JSON.stringify(to))
-                        // Set serial
-                        newRecord.nxid = entry.nxid
-                        newRecord.serial = s
-                        PartRecord.findOne({nxid: entry.nxid, serial: s, owner: old_owner, next: null}, (err: MongooseError, oldRecord: PartRecordSchema)=>{
-                            if(err)
-                                return handleError(err)
-                            newRecord.prev = oldRecord._id
-                            PartRecord.create(newRecord, callbackHandler.updateRecord)
-                        })
-                    })
-                    // Update unserialized records
-                    let unserializedRecords = [] as PartRecordSchema[]
-                    if(entry.unserialized>0)
-                        unserializedRecords = await PartRecord.find({nxid: entry.nxid, serial: undefined, owner: old_owner, next: null})
-                    if(entry.unserialized>unserializedRecords.length)
-                        return
-                    for (let i = 0; i < entry.unserialized; i++) {
-                        // Clone to object
-                        let newRecord = JSON.parse(JSON.stringify(to))
-                        newRecord.nxid = entry.nxid
-                        // If newSerials, add serial to object
-                        if(entry.newSerials)
-                            newRecord.serial = entry.newSerials[i]
-                        // Find objects with undefined serials
-                        newRecord.prev = unserializedRecords[i]._id
-                        PartRecord.create(newRecord, callbackHandler.updateRecord)
-                    }
-                }
-            }))
+            let searchOptions = {owner: old_owner, next: null}
+            await updateParts(to, searchOptions, parts, false)
             return res.status(200).send("Success");
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-
+    sellOnEbay: async (req: Request, res: Response) => {
+        try {
+            // Get data from request
+            let parts = req.body.parts as InventoryEntry[]
+            parts = sanitizeInventoryEntries(parts)
+            // Check if cart items are valid
+            if(!(await inventoryEntriesValid(parts)))
+                return res.status(400).send("Error in updated parts list");
+            // Check if user has cart items in inventory
+            let partsToCheck = [] as CartItem[]
+            // Convert InventoryEntries to CartItems
+            parts.map((p)=>{
+                // Map serials
+                p.serials.map((s)=>{
+                    partsToCheck.push({nxid: p.nxid!, serial: s})
+                })
+                // Push unserialized
+                if(p.unserialized>0)
+                    partsToCheck.push({nxid: p.nxid!, quantity: p.unserialized})
+            })
+            // Check if user has inventory 
+            if(!(await userHasInInventory(req.user.user_id, partsToCheck)))
+                return res.status(400).send("User does not have parts in inventory");
+            // Check if location is valid
+            let to = {} as PartRecordSchema
+            to.owner = "sold";
+            to.ebay = stringSanitize(req.body.orderID, false)
+            to.next = 'sold'
+            to.location = 'sold'
+            to.date_created = Date.now()
+            to.building = req.user.building
+            to.by = req.user.user_id
+            // Update records
+            let searchOptions = {owner: req.user.user_id, next: null}
+            await updatePartsAddSerials(to, searchOptions, parts)
+            // Success !!!
+            return res.status(200).send("Success");
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     deleteFromPartsRoom: async (req: Request, res: Response) => {
         try{
             // Get request params
@@ -1747,7 +1080,7 @@ const partManager = {
             let location = req.query.location as string
             let kiosks = await getKioskNames(building)
             // Check request
-            if(!nxid||!/PNX([0-9]{7})+/.test(nxid)||new_quantity<0||!kiosks.includes(location))
+            if(!nxid||!isValidPartID(nxid)||new_quantity<0||!kiosks.includes(location))
                 return res.status(400).send("Invalid request");
             let partInfo = await Part.findOne({nxid})
             if(partInfo?.serialized)

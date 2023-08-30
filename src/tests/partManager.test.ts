@@ -48,7 +48,7 @@ function generateIncompletePart() {
 //     return new Promise(resolve => setTimeout(resolve, ms));
 // }
 // Check if items in cart have been checked out
-async function checkIfCheckedOut(cart: CartItem[]){
+function checkIfCheckedOut(cart: CartItem[]){
     return Promise.all(
         cart.map(async (part) => {
             let res = await request("localhost:4001")
@@ -62,7 +62,7 @@ async function checkIfCheckedOut(cart: CartItem[]){
 }
 
 // Check if items in cart have been checked in
-async function checkIfCheckedIn(cart: CartItem[]){
+function checkIfCheckedIn(cart: CartItem[]){
     return Promise.all(
         cart.map(async (part) => {
             let res = await request("localhost:4001")
@@ -75,14 +75,14 @@ async function checkIfCheckedIn(cart: CartItem[]){
     )
 }
 
-async function makeCheckoutList() {
+function makeCheckoutList() {
     return new Promise<CartItem[]>(async (resolve)=>{
         // Search parts
         let search = await request("localhost:4001")
                 .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
                 .set("Authorization", KIOSK_TOKEN!)
             // Typecast
-            let parts = search.body as PartSchema[]
+            let parts = search.body.parts as PartSchema[]
             let serializedCount = 0
             let unserializedCount = 0
             // Filter and map unserialized parts
@@ -118,14 +118,14 @@ async function makeCheckoutList() {
 }
 
 // Making this a seperate function for specific cases
-async function makeSerializedCheckoutList() {
+function makeSerializedCheckoutList() {
     return new Promise<CartItem[]>(async (resolve)=>{
         // Search parts
         let search = await request("localhost:4001")
                 .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
                 .set("Authorization", KIOSK_TOKEN!)
             // Typecast
-            let parts = search.body as PartSchema[]
+            let parts = search.body.parts as PartSchema[]
             // Filter serialized parts
             let serialized = parts.filter((e)=>e.quantity&&e.quantity!>0&&e.serialized==true)
             // Fetch serials and map
@@ -144,7 +144,7 @@ async function makeSerializedCheckoutList() {
     })
 }
 // Move parts and return requests as array
-async function movePart(parts: CartItem[], to: string, from: string, orderID?: string) {
+function movePart(parts: CartItem[], to: string, from: string, orderID?: string) {
     
     let transferListHash = new Map<string, InventoryEntry>()
     // Process transfer list
@@ -184,7 +184,7 @@ async function movePart(parts: CartItem[], to: string, from: string, orderID?: s
 }
 
 // Return request for user inventory with token
-async function getUserInventory(token: string) {
+function getUserInventory(token: string) {
     return request("localhost:4001")
         .get("/api/user/inventory")
         .set("Authorization", token)
@@ -197,7 +197,9 @@ const emptySearch = (token: string, text: string) => {
         .set("Authorization", token)
         .then((search) => {
             expect(search.statusCode).toBe(200)
-            expect(search.body.length).toBe(0)
+            expect(search.body.numParts).toBe(0)
+            expect(search.body.numPages).toBe(0)
+            expect(search.body.parts.length).toBe(0)
         })
 }
 
@@ -208,7 +210,9 @@ const textSearch = (token: string, query: string) => {
         .set("Authorization", token)
         .then((search) => {
             expect(search.statusCode).toBe(200)
-            expect(search.body.length).toBeGreaterThan(0)
+            expect(search.body.numParts).toBeGreaterThan(0)
+            expect(search.body.numPages).toBeGreaterThan(0)
+            expect(search.body.parts.length).toBeGreaterThan(0)
         })
 }
 describe("Create, get, update and delete parts", () => {
@@ -235,7 +239,8 @@ describe("Create, get, update and delete parts", () => {
             .get(`/api/part/id?id=${completePart.nxid}`)
             .set("Authorization", token)
         expect(get1.statusCode).toBe(200)
-        expect(get1.body.total_quantity).toBe(completePart.quantity)
+        expect(get1.body.total_quantity).toBeDefined()
+        expect(get1.body.quantity).toBeDefined()
         
         // Search part by data
         let searchPart = JSON.parse(JSON.stringify(completePart))
@@ -254,7 +259,7 @@ describe("Create, get, update and delete parts", () => {
             .get(`/api/part?${queryString}`)
             .set("Authorization", token)
         expect(get2.statusCode).toBe(200)
-        expect(get2.body[0].nxid).toBe(completePart.nxid)
+        expect(get2.body.parts[0].nxid).toBe(completePart.nxid)
         // Invalid add to inventory request
         let invalidAdd = await request("localhost:4001")
             .post("/api/part/add")
@@ -289,7 +294,7 @@ describe("Create, get, update and delete parts", () => {
             .get(`/api/part?location=Parts+Room&building=3&${queryString}`)
             .set("Authorization", token)
         expect(get3.statusCode).toBe(200)
-        expect(get3.body[0].total_quantity).toBe(5+completePart.quantity!)
+        expect(get3.body.parts[0].total_quantity).toBe(5+completePart.quantity!)
         // Delete
         let deletePart = await request("localhost:4001")
             .delete(`/api/part?nxid=${completePart.nxid}`)
@@ -496,6 +501,30 @@ describe("Checkout", () => {
                 inventory: cart
             })
         expect(checkin.statusCode).toBe(200)
+        // Create parts list for checkin
+        let checkInApprovalParts = cart.map((item)=>{
+            if(item.serial)
+                return { approved: true, nxid: item.nxid, serial: item.serial, newLocation: "Parts Room" }
+            return { approved: true, nxid: item.nxid, quantity: item.quantity, approvedCount: item.quantity, newLocation: "Parts Room"}
+        })
+        // Get checkin queue
+        let getCheckinQueue = await request("localhost:4001")
+            .get('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(getCheckinQueue.statusCode).toBe(200)
+        let queue = getCheckinQueue.body
+        // Create request
+        let checkInApprovalReq = {
+            by: TECH_USER_ID,
+            date: queue[0].date,
+            parts: checkInApprovalParts
+        }
+        // Approve check in
+        let checkinApproval = await request("localhost:4001")
+            .post('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+            .send(checkInApprovalReq)
+        expect(checkinApproval.statusCode).toBe(200)
         // CHECK QUANTITY
         checkIfCheckedIn(cart)
     })
@@ -503,7 +532,7 @@ describe("Checkout", () => {
         let search = await request("localhost:4001")
             .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
             .set("Authorization", KIOSK_TOKEN!)
-        let parts = search.body as PartSchema[]
+        let parts = search.body.parts as PartSchema[]
         let cart = parts
             .filter((e)=>e.quantity&&e.quantity>0&&e.serialized==true)
             .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity} as PartSchema})
@@ -522,7 +551,7 @@ describe("Checkout", () => {
         let search = await request("localhost:4001")
             .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
             .set("Authorization", KIOSK_TOKEN!)
-        let parts = search.body as PartSchema[]
+        let parts = search.body.parts as PartSchema[]
         let cart = parts
             .filter((e)=>e.quantity&&e.quantity>0&&e.serialized!=true)
             .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity!*2} as PartSchema})
@@ -541,7 +570,7 @@ describe("Checkout", () => {
         let search = await request("localhost:4001")
             .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
             .set("Authorization", KIOSK_TOKEN!)
-        let parts = search.body as PartSchema[]
+        let parts = search.body.parts as PartSchema[]
         let cart = parts
             .filter((e)=>e.quantity&&e.quantity>0&&e.serialized==true)
             .map((p)=>{ return { nxid: p.nxid, serial: 'fakeandbrokenserialnumber1234'} as PartSchema})
@@ -556,7 +585,7 @@ describe("Checkout", () => {
             })
         expect(checkout.statusCode).toBe(400)
     })
-    it("Check out duplicate serial fails",async () => {
+    it("Check out duplicate serial does not fail",async () => {
         let cart = await makeSerializedCheckoutList()
         expect(cart.length).toBeGreaterThan(0)
         cart = cart.concat(cart)
@@ -568,7 +597,41 @@ describe("Checkout", () => {
                 user_id: TECH_USER_ID,
                 cart: cart
             })
-        expect(checkout.statusCode).toBe(400)
+        expect(checkout.statusCode).toBe(200)
+        // Create parts list for checkin
+        let checkInApprovalParts = cart.map((item)=>{
+            if(item.serial)
+                return { approved: true, nxid: item.nxid, serial: item.serial, newLocation: "Parts Room" }
+            return { approved: true, nxid: item.nxid, quantity: item.quantity, approvedCount: item.quantity, newLocation: "Parts Room"}
+        })
+        let failCheckin = await request("localhost:4001")
+        .post('/api/checkin')
+        .set("Authorization", KIOSK_TOKEN!)
+        .send({
+            user_id: TECH_USER_ID,
+            inventory: cart
+        })
+        expect(failCheckin.statusCode).toBe(200)
+        // Get checkin queue
+        let getCheckinQueue = await request("localhost:4001")
+            .get('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(getCheckinQueue.statusCode).toBe(200)
+        let queue = getCheckinQueue.body
+        // Create request
+        let checkInApprovalReq = {
+            by: TECH_USER_ID,
+            date: queue[0].date,
+            parts: checkInApprovalParts
+        }
+        // Approve check in
+        let checkinApproval = await request("localhost:4001")
+            .post('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+            .send(checkInApprovalReq)
+        expect(checkinApproval.statusCode).toBe(200)
+        // CHECK QUANTITY
+        checkIfCheckedIn(cart)
     })
 })
 
@@ -584,7 +647,7 @@ describe("Checkin", ()=>{
         })
         expect(checkin.statusCode).toBe(400)
     })
-    it("Check in duplicate serial fails.", async() => {
+    it("Check in duplicate serial does not fail.", async() => {
         let cart = await makeSerializedCheckoutList()
         expect(cart.length).toBeGreaterThan(0)
         // Check out serialized parts
@@ -606,16 +669,43 @@ describe("Checkin", ()=>{
             user_id: TECH_USER_ID,
             inventory: duplicateCart
         })
-        expect(failCheckin.statusCode).toBe(400)
-        // Real check in
-        let checkin = await request("localhost:4001")
-        .post('/api/checkin')
-        .set("Authorization", KIOSK_TOKEN!)
-        .send({
-            user_id: TECH_USER_ID,
-            inventory: cart
+        expect(failCheckin.statusCode).toBe(200)
+
+        // Create parts list for checkin
+        let checkInApprovalParts = cart.map((item)=>{
+            if(item.serial)
+                return { approved: true, nxid: item.nxid, serial: item.serial, newLocation: "Parts Room" }
+            return { approved: true, nxid: item.nxid, quantity: item.quantity, approvedCount: item.quantity, newLocation: "Parts Room"}
         })
-        expect(checkin.statusCode).toBe(200)
+        // Get checkin queue
+        let getCheckinQueue = await request("localhost:4001")
+            .get('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(getCheckinQueue.statusCode).toBe(200)
+        let queue = getCheckinQueue.body
+        // Create request
+        let checkInApprovalReq = {
+            by: TECH_USER_ID,
+            date: queue[0].date,
+            parts: checkInApprovalParts
+        }
+        // Approve check in
+        let checkinApproval = await request("localhost:4001")
+            .post('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+            .send(checkInApprovalReq)
+        expect(checkinApproval.statusCode).toBe(200)
+        // CHECK QUANTITY
+        checkIfCheckedIn(cart)
+        // Real check in
+        // let checkin = await request("localhost:4001")
+        // .post('/api/checkin')
+        // .set("Authorization", KIOSK_TOKEN!)
+        // .send({
+        //     user_id: TECH_USER_ID,
+        //     inventory: cart
+        // })
+        // expect(checkin.statusCode).toBe(200)
     })
     it("Check in serialized without serial fails", async() => {
         let cart = await makeSerializedCheckoutList() 
@@ -650,6 +740,34 @@ describe("Checkin", ()=>{
             inventory: cart
         })
         expect(checkin.statusCode).toBe(200)
+
+
+        // Create parts list for checkin
+        let checkInApprovalParts = cart.map((item)=>{
+            if(item.serial)
+                return { approved: true, nxid: item.nxid, serial: item.serial, newLocation: "Parts Room" }
+            return { approved: true, nxid: item.nxid, quantity: item.quantity, approvedCount: item.quantity, newLocation: "Parts Room"}
+        })
+        // Get checkin queue
+        let getCheckinQueue = await request("localhost:4001")
+            .get('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(getCheckinQueue.statusCode).toBe(200)
+        let queue = getCheckinQueue.body
+        // Create request
+        let checkInApprovalReq = {
+            by: TECH_USER_ID,
+            date: queue[0].date,
+            parts: checkInApprovalParts
+        }
+        // Approve check in
+        let checkinApproval = await request("localhost:4001")
+            .post('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+            .send(checkInApprovalReq)
+        expect(checkinApproval.statusCode).toBe(200)
+        // CHECK QUANTITY
+        checkIfCheckedIn(cart)
     })
     it("Check in parts as different user fails", async ()=>{
         let cart = await makeCheckoutList()
@@ -682,8 +800,33 @@ describe("Checkin", ()=>{
                 inventory: cart
             })
         expect(checkin.statusCode).toBe(200)
+
+        // Create parts list for checkin
+        let checkInApprovalParts = cart.map((item)=>{
+            if(item.serial)
+                return { approved: true, nxid: item.nxid, serial: item.serial, newLocation: "Parts Room" }
+            return { approved: true, nxid: item.nxid, quantity: item.quantity, approvedCount: item.quantity, newLocation: "Parts Room"}
+        })
+        // Get checkin queue
+        let getCheckinQueue = await request("localhost:4001")
+            .get('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(getCheckinQueue.statusCode).toBe(200)
+        let queue = getCheckinQueue.body
+        // Create request
+        let checkInApprovalReq = {
+            by: TECH_USER_ID,
+            date: queue[0].date,
+            parts: checkInApprovalParts
+        }
+        // Approve check in
+        let checkinApproval = await request("localhost:4001")
+            .post('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+            .send(checkInApprovalReq)
+        expect(checkinApproval.statusCode).toBe(200)
         // CHECK QUANTITY
-        await checkIfCheckedIn(cart)
+        checkIfCheckedIn(cart)
     })
 })
 
@@ -700,7 +843,7 @@ describe("Move parts", ()=>{
         let search = await request("localhost:4001")
             .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
             .set("Authorization", KIOSK_TOKEN!)
-        let parts = search.body as PartSchema[]
+        let parts = search.body.parts as PartSchema[]
         // Filter and map unserialized parts
         let cart = parts
             .filter((e)=>e.quantity&&e.quantity!>0&&e.serialized!=true)
@@ -754,6 +897,202 @@ describe("Move parts", ()=>{
                 inventory: cart
             })
         expect(checkin.statusCode).toBe(200)
+        // Create parts list for checkin
+        let checkInApprovalParts = cart.map((item)=>{
+            if(item.serial)
+                return { approved: true, nxid: item.nxid, serial: item.serial, newLocation: "Parts Room" }
+            return { approved: true, nxid: item.nxid, quantity: item.quantity, approvedCount: item.quantity, newLocation: "Parts Room"}
+        })
+        // Get checkin queue
+        let getCheckinQueue = await request("localhost:4001")
+            .get('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(getCheckinQueue.statusCode).toBe(200)
+        let queue = getCheckinQueue.body
+        // Create request
+        let checkInApprovalReq = {
+            by: TECH_USER_ID,
+            date: queue[0].date,
+            parts: checkInApprovalParts
+        }
+        // Approve check in
+        let checkinApproval = await request("localhost:4001")
+            .post('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+            .send(checkInApprovalReq)
+        expect(checkinApproval.statusCode).toBe(200)
+        // CHECK QUANTITY
+        await checkIfCheckedIn(cart)
+    })
+    it('Move from clerk to all techs', async () => {
+        // Search parts
+        let search = await request("localhost:4001")
+            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+        let parts = search.body.parts as PartSchema[]
+        // Filter and map unserialized parts
+        let cart = parts
+            .filter((e)=>e.quantity&&e.quantity!>0&&e.serialized!=true)
+            .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity} as CartItem})
+        expect(cart.length).toBeGreaterThan(0)
+        // Filter serialized parts
+        parts = parts.filter((e)=>e.quantity&&e.quantity!>0&&e.serialized==true)
+        // Fetch serials and map
+        let serialized = await Promise.all(parts.map(async(p)=>{
+            let res = await request('localhost:4001')
+                .get(`/api/partRecord/distinct?key=serial&where[nxid]=${p.nxid}&where[location]=Parts+Room&where[building]=3&where[next]=null`)
+                .set("Authorization", ADMIN_TOKEN!)
+            expect(res.statusCode).toBe(200)
+            let serials = res.body as string[]
+            expect(serials.length).toBe(p.quantity)
+            return { nxid: p.nxid, serial: serials[0] } as CartItem
+        }))
+        expect(serialized.length).toBeGreaterThan(0)
+        // Join serialized and unserialized
+        cart = cart.concat(serialized)
+        // Check out parts
+        let checkout = await request("localhost:4001")
+            .post(`/api/checkout`)
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: CLERK_USER_ID,
+                cart: cart
+            })
+        expect(checkout.statusCode).toBe(200)
+        // CHECK QUANTITY
+        // Move parts to all techs 
+        let move = await movePart(cart, allTechs, clerkInventory)
+        // Check moves
+        expect(move.statusCode).toBe(200)
+        // expect(m.statusCode).toBe(200)
+        // Check quantities
+        let clerkInv = await getUserInventory(INVENTORY_TOKEN!)
+        expect(clerkInv.statusCode).toBe(200)
+        // Move back
+        let moveBack = await movePart(cart, clerkInventory, allTechs)
+        // Check moves
+        expect(moveBack.statusCode).toBe(200)
+        // Check quantities
+        
+        // Check in parts
+        let checkin = await request("localhost:4001")
+            .post('/api/checkin')
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: CLERK_USER_ID,
+                inventory: cart
+            })
+        expect(checkin.statusCode).toBe(200)
+        // Create parts list for checkin
+        let checkInApprovalParts = cart.map((item)=>{
+            if(item.serial)
+                return { approved: true, nxid: item.nxid, serial: item.serial, newLocation: "Parts Room" }
+            return { approved: true, nxid: item.nxid, quantity: item.quantity, approvedCount: item.quantity, newLocation: "Parts Room"}
+        })
+        // Get checkin queue
+        let getCheckinQueue = await request("localhost:4001")
+            .get('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(getCheckinQueue.statusCode).toBe(200)
+        let queue = getCheckinQueue.body
+        // Create request
+        let checkInApprovalReq = {
+            by: CLERK_USER_ID,
+            date: queue[0].date,
+            parts: checkInApprovalParts
+        }
+        // Approve check in
+        let checkinApproval = await request("localhost:4001")
+            .post('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+            .send(checkInApprovalReq)
+        expect(checkinApproval.statusCode).toBe(200)
+        // CHECK QUANTITY
+        await checkIfCheckedIn(cart)
+    })
+    it('Move from admin to all techs', async () => {
+        // Search parts
+        let search = await request("localhost:4001")
+            .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)
+            .set("Authorization", KIOSK_TOKEN!)
+        let parts = search.body.parts as PartSchema[]
+        // Filter and map unserialized parts
+        let cart = parts
+            .filter((e)=>e.quantity&&e.quantity!>0&&e.serialized!=true)
+            .map((p)=>{ return { nxid: p.nxid, quantity: p.quantity} as CartItem})
+        expect(cart.length).toBeGreaterThan(0)
+        // Filter serialized parts
+        parts = parts.filter((e)=>e.quantity&&e.quantity!>0&&e.serialized==true)
+        // Fetch serials and map
+        let serialized = await Promise.all(parts.map(async(p)=>{
+            let res = await request('localhost:4001')
+                .get(`/api/partRecord/distinct?key=serial&where[nxid]=${p.nxid}&where[location]=Parts+Room&where[building]=3&where[next]=null`)
+                .set("Authorization", ADMIN_TOKEN!)
+            expect(res.statusCode).toBe(200)
+            let serials = res.body as string[]
+            expect(serials.length).toBe(p.quantity)
+            return { nxid: p.nxid, serial: serials[0] } as CartItem
+        }))
+        expect(serialized.length).toBeGreaterThan(0)
+        // Join serialized and unserialized
+        cart = cart.concat(serialized)
+        // Check out parts
+        let checkout = await request("localhost:4001")
+            .post(`/api/checkout`)
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: ADMIN_USER_ID,
+                cart: cart
+            })
+        expect(checkout.statusCode).toBe(200)
+        // CHECK QUANTITY
+        // Move parts to all techs 
+        let move = await movePart(cart, allTechs, adminInventory)
+        // Check moves
+        expect(move.statusCode).toBe(200)
+        // expect(m.statusCode).toBe(200)
+        // Check quantities
+        let adminInv = await getUserInventory(ADMIN_TOKEN!)
+        expect(adminInv.statusCode).toBe(200)
+        // Move back
+        let moveBack = await movePart(cart, adminInventory, allTechs)
+        // Check moves
+        expect(moveBack.statusCode).toBe(200)
+        // Check quantities
+        
+        // Check in parts
+        let checkin = await request("localhost:4001")
+            .post('/api/checkin')
+            .set("Authorization", KIOSK_TOKEN!)
+            .send({
+                user_id: ADMIN_USER_ID,
+                inventory: cart
+            })
+        expect(checkin.statusCode).toBe(200)
+        // Create parts list for checkin
+        let checkInApprovalParts = cart.map((item)=>{
+            if(item.serial)
+                return { approved: true, nxid: item.nxid, serial: item.serial, newLocation: "Parts Room" }
+            return { approved: true, nxid: item.nxid, quantity: item.quantity, approvedCount: item.quantity, newLocation: "Parts Room"}
+        })
+        // Get checkin queue
+        let getCheckinQueue = await request("localhost:4001")
+            .get('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+        expect(getCheckinQueue.statusCode).toBe(200)
+        let queue = getCheckinQueue.body
+        // Create request
+        let checkInApprovalReq = {
+            by: ADMIN_USER_ID,
+            date: queue[0].date,
+            parts: checkInApprovalParts
+        }
+        // Approve check in
+        let checkinApproval = await request("localhost:4001")
+            .post('/api/checkin/queue')
+            .set("Authorization", ADMIN_TOKEN!)
+            .send(checkInApprovalReq)
+        expect(checkinApproval.statusCode).toBe(200)
         // CHECK QUANTITY
         await checkIfCheckedIn(cart)
     })

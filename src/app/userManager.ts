@@ -24,7 +24,8 @@ import crypto from 'crypto'
 import resetToken from '../model/resetToken.js';
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
-import { getAssetEvent } from './assetManager.js';
+import { getAssetEvent } from './methods/assetMethods.js';
+import { getNumPages, getPageNumAndSize, getStartAndEndDate } from './methods/genericMethods.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
 
 // Main object containing functions
@@ -134,7 +135,7 @@ const userManager = {
             subject: `Password Reset`,
             text: `Here is a password reset link, it will expire in 1 hour.\n${link}`
         };
-        transporter.sendMail(mailOptions as Options, function(err, info){
+        transporter.sendMail(mailOptions as Options, function(err){
             transporter.close()
             if (err) {
                 console.log(err)
@@ -224,24 +225,13 @@ const userManager = {
 
     getUserCheckins: async (req: Request, res: Response) => {
         try {
-            let { startDate, endDate, pageSize, pageNum, user } = req.query;
-            // Parse page size and page num
-            let pageSizeInt = parseInt(pageSize as string)
-            let pageNumInt = parseInt(pageNum as string)
-            // Turn date into usable objects
-            let startDateParsed = new Date(parseInt(startDate as string))
-            let endDateParsed = new Date(parseInt(endDate as string))
-            endDateParsed.setDate(endDateParsed.getDate()+1)
-            // Check for bad conversions
-            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
-                return res.status(400).send("Invalid page number or page size");
-            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
-                return res.status(400).send("Invalid start or end date");
-            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let user = req.query.user
             PartRecord.aggregate([
                 {
                     // Get checkin queue
-                    $match: { next: { $ne: null }, location: "Check In Queue", by: user, date_created: { $lte: endDateParsed, $gte: startDateParsed } } 
+                    $match: { next: { $ne: null }, location: "Check In Queue", by: user, date_created: { $lte: endDate, $gte: startDate } } 
                 },
                 {
                     // GROUP BY DATE, USER, NXID, AND SERIAL
@@ -300,7 +290,7 @@ const userManager = {
                     $project: {
                         _id: 0,
                         total: 1,
-                        checkins: {$slice: ["$checkins", pageSkip, pageSizeInt]}
+                        checkins: {$slice: ["$checkins", pageSkip, pageSize]}
                     }
                 }
             ]).exec((err, result)=>{
@@ -319,27 +309,15 @@ const userManager = {
 
     getUserAssetUpdates: async (req: Request, res: Response) => {
         try {
-            let { startDate, endDate, pageSize, pageNum, user } = req.query;
-            // Parse page size and page num
-            let pageSizeInt = parseInt(pageSize as string)
-            let pageNumInt = parseInt(pageNum as string)
-            // Turn date into usable objects
-            let startDateParsed = new Date(parseInt(startDate as string))
-            let endDateParsed = new Date(parseInt(endDate as string))
-            endDateParsed.setDate(endDateParsed.getDate()+1)
-            // Check for bad conversions
-            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
-                return res.status(400).send("Invalid page number or page size");
-            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
-                return res.status(400).send("Invalid start or end date");
-            // Calculate page skip
-            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let user = req.query.user
             // Find added parts
             let assetUpdates = await PartRecord.aggregate([
                 {
                     $match: {
                         by: user, 
-                        date_created: {$gte: startDateParsed, $lte: endDateParsed},
+                        date_created: {$gte: startDate, $lte: endDate},
                         asset_tag: { $ne: null },
                         prev: {$ne: null}
                     }
@@ -368,7 +346,7 @@ const userManager = {
                     $match: {
                         next_owner: user, 
                         asset_tag: { $ne: null },
-                        date_replaced: {$gte: startDateParsed, $lte: endDateParsed},
+                        date_replaced: {$gte: startDate, $lte: endDate},
                     }
                 },
                 {
@@ -394,7 +372,7 @@ const userManager = {
                 {
                     $match: {
                         by: user, 
-                        date_created: {$gte: startDateParsed, $lte: endDateParsed},
+                        date_created: {$gte: startDate, $lte: endDate},
                         prev: {$ne: null}
                     }
                 },
@@ -428,10 +406,10 @@ const userManager = {
             })})
             
             let totalUpdates = assetUpdates.length
-            let returnValue = await Promise.all(assetUpdates.splice(pageSkip, pageSizeInt).map((a)=>{
+            let returnValue = await Promise.all(assetUpdates.splice(pageSkip, pageSize).map((a)=>{
                 return getAssetEvent(a.asset_tag, a.date)
             }))
-            res.status(200).json({total: totalUpdates, pages: Math.ceil(totalUpdates/pageSizeInt),events: returnValue});
+            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
         } catch (err) {
             // Error
             handleError(err)
@@ -441,27 +419,15 @@ const userManager = {
 
     getUserAssetUpdatesNoDetails: async (req: Request, res: Response) => {
         try {
-            let { startDate, endDate, pageSize, pageNum, user } = req.query;
-            // Parse page size and page num
-            let pageSizeInt = parseInt(pageSize as string)
-            let pageNumInt = parseInt(pageNum as string)
-            // Turn date into usable objects
-            let startDateParsed = new Date(parseInt(startDate as string))
-            let endDateParsed = new Date(parseInt(endDate as string))
-            endDateParsed.setDate(endDateParsed.getDate()+1)
-            // Check for bad conversions
-            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
-                return res.status(400).send("Invalid page number or page size");
-            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
-                return res.status(400).send("Invalid start or end date");
-            // Calculate page skip
-            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let user = req.query.user
             // Find added parts
             let assetUpdates = await PartRecord.aggregate([
                 {
                     $match: {
                         by: user, 
-                        date_created: {$gte: startDateParsed, $lte: endDateParsed},
+                        date_created: {$gte: startDate, $lte: endDate},
                         asset_tag: { $ne: null },
                         prev: {$ne: null}
                     }
@@ -490,7 +456,7 @@ const userManager = {
                     $match: {
                         next_owner: user, 
                         asset_tag: { $ne: null },
-                        date_replaced: {$gte: startDateParsed, $lte: endDateParsed},
+                        date_replaced: {$gte: startDate, $lte: endDate},
                     }
                 },
                 {
@@ -516,7 +482,7 @@ const userManager = {
                 {
                     $match: {
                         by: user, 
-                        date_created: {$gte: startDateParsed, $lte: endDateParsed},
+                        date_created: {$gte: startDate, $lte: endDate},
                         prev: {$ne: null}
                     }
                 },
@@ -548,9 +514,9 @@ const userManager = {
             .filter((a, i, arr)=>{return i===arr.findIndex((b)=>{
                 return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag
             })})
-            .splice(pageSkip, pageSizeInt)
+            .splice(pageSkip, pageSize)
             let totalUpdates = assetUpdates.length
-            res.status(200).json({total: totalUpdates, pages: Math.ceil(totalUpdates/pageSizeInt),events: assetUpdates});
+            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates),events: assetUpdates});
         } catch (err) {
             // Error
             handleError(err)
@@ -559,28 +525,15 @@ const userManager = {
     },
     getUserNewAssets: async (req: Request, res: Response) => {
         try {
-            let { startDate, endDate, pageSize, pageNum, user } = req.query;
-
-            // Parse page size and page num
-            let pageSizeInt = parseInt(pageSize as string)
-            let pageNumInt = parseInt(pageNum as string)
-            // Turn date into usable objects
-            let startDateParsed = new Date(parseInt(startDate as string))
-            let endDateParsed = new Date(parseInt(endDate as string))
-            endDateParsed.setDate(endDateParsed.getDate()+1)
-            // Check for bad conversions
-            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
-                return res.status(400).send("Invalid page number or page size");
-            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
-                return res.status(400).send("Invalid start or end date");
-            // Calculate page skip
-            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let user = req.query.user
             Asset.aggregate([
                 {
                     $match: {
                         $or: [{ prev: null}, {prev: {$exists: false}}],
                         by: user,
-                        date_created: { $lte: endDateParsed, $gte: startDateParsed }
+                        date_created: { $lte: endDate, $gte: startDate }
                     }
                 },
                 {
@@ -601,7 +554,7 @@ const userManager = {
                     $project: {
                         _id: 0,
                         total: 1,
-                        updates: {$slice: ["$updates", pageSkip, pageSizeInt]}
+                        updates: {$slice: ["$updates", pageSkip, pageSize]}
                     }
                 }
             ]).exec(async (err, result: { total: number, updates: AssetUpdate[]}[])=>{
@@ -612,7 +565,7 @@ const userManager = {
                     let returnValue = await Promise.all(result[0].updates!.map((a: AssetUpdate)=>{
                         return getAssetEvent(a.asset_tag, a.date)
                     }))
-                    return res.status(200).json({total: result[0].total, pages: Math.ceil(result[0].total/pageSizeInt),events: returnValue});
+                    return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: returnValue});
                 }
                 // Return to client
                 res.status(200).json({total: 0, pages: 1, events: []});
@@ -625,28 +578,15 @@ const userManager = {
     },
     getUserNewAssetsNoDetails: async (req: Request, res: Response) => {
         try {
-            let { startDate, endDate, pageSize, pageNum, user } = req.query;
-
-            // Parse page size and page num
-            let pageSizeInt = parseInt(pageSize as string)
-            let pageNumInt = parseInt(pageNum as string)
-            // Turn date into usable objects
-            let startDateParsed = new Date(parseInt(startDate as string))
-            let endDateParsed = new Date(parseInt(endDate as string))
-            endDateParsed.setDate(endDateParsed.getDate()+1)
-            // Check for bad conversions
-            if(isNaN(pageSizeInt)||isNaN(pageNumInt))
-                return res.status(400).send("Invalid page number or page size");
-            if(isNaN(startDateParsed.getTime())||isNaN(endDateParsed.getTime()))
-                return res.status(400).send("Invalid start or end date");
-            // Calculate page skip
-            let pageSkip = pageSizeInt * (pageNumInt - 1)
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let user = req.query.user
             Asset.aggregate([
                 {
                     $match: {
                         $or: [{ prev: null}, {prev: {$exists: false}}],
                         by: user,
-                        date_created: { $lte: endDateParsed, $gte: startDateParsed }
+                        date_created: { $lte: endDate, $gte: startDate }
                     }
                 },
                 {
@@ -667,7 +607,7 @@ const userManager = {
                     $project: {
                         _id: 0,
                         total: 1,
-                        updates: {$slice: ["$updates", pageSkip, pageSizeInt]}
+                        updates: {$slice: ["$updates", pageSkip, pageSize]}
                     }
                 }
             ]).exec(async (err, result: { total: number, updates: AssetUpdate[]}[])=>{
@@ -675,7 +615,7 @@ const userManager = {
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 if(result.length&&result.length>0) {
-                    return res.status(200).json({total: result[0].total, pages: Math.ceil(result[0].total/pageSizeInt),events: result[0].updates});
+                    return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: result[0].updates});
                 }
                 // Return to client
                 res.status(200).json({total: 0, pages: 1, events: []});
