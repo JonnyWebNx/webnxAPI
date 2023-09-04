@@ -315,7 +315,7 @@ const assetManager = {
                 asset.prev = getAsset._id
                 asset.date_created = current_date
                 asset.by = req.user.user_id
-                asset.prev_pallet = getAsset.pallet
+                // asset.prev_pallet = getAsset.pallet
                 delete asset.date_updated
                 // Create new asset
                 Asset.create(asset, callbackHandler.updateAssetAndReturn(res))
@@ -388,7 +388,7 @@ const assetManager = {
                 asset.prev = asset._id
                 asset.next = "deleted"
                 asset.date_created = new Date(current_date)
-                asset.prev_pallet = asset.pallet
+                // asset.prev_pallet = asset.pallet
                 delete asset._id
                 // Create new iteration of asset
                 Asset.create(asset, callbackHandler.updateAssetAndReturn(res))

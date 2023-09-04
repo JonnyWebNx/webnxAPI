@@ -351,7 +351,7 @@ const palletManager = {
                         existingAsset.in_rack = false
                         // Copy pallet information
                         existingAsset.building = newPallet.building
-                        existingAsset.prev_pallet = existingAsset.pallet
+                        // existingAsset.prev_pallet = existingAsset.pallet
                         existingAsset.pallet = newPallet.pallet_tag
                         existingAsset.date_created = date
                         if(existingAsset.prev!=null)
