@@ -17,19 +17,19 @@ import {
     isValidAssetTag,
     cleanseAsset,
     findExistingSerial,
-    createPartRecordsOnAsset,
+    createPartRecordsOnAssetAsync,
     returnAsset,
     returnAssetHistory,
     returnAssetSearch,
     getAddedAndRemoved,
-    updateParts,
+    updatePartsAsync,
     assetsAreSimilar,
-    userHasInInventory,
-    partRecordsToCartItemsWithInfo
+    userHasInInventoryAsync,
+    partRecordsToCartItemsWithInfoAsync
 } from "./methods/assetMethods.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { getNumPages, getPageNumAndSize, getTextSearchParams } from "./methods/genericMethods.js";
-import { cartItemsValid, combineAndRemoveDuplicateCartItems, sanitizeCartItems } from "./methods/partMethods.js";
+import { cartItemsValidAsync, sanitizeCartItems } from "./methods/partMethods.js";
 
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {
@@ -77,7 +77,7 @@ const assetManager = {
                 return res.status(400).send(`Serial number ${existingSerial} already in inventory`);
             
             // Create part records
-            await createPartRecordsOnAsset(parts, asset.asset_tag!, req.user.user_id, asset.building!, dateCreated)
+            await createPartRecordsOnAssetAsync(parts, asset.asset_tag!, req.user.user_id, asset.building!, dateCreated)
             // Create a new asset
             Asset.create(asset, returnAsset(res));
         } catch (err) {
@@ -251,15 +251,15 @@ const assetManager = {
                 next: null
             })
             parts = sanitizeCartItems(parts)
-            if(!(await cartItemsValid(parts)))
+            if(!(await cartItemsValidAsync(parts)))
                 return res.status(400).send("Error in updated parts list");
 
             let { added, removed, error } = getAddedAndRemoved(parts, existingParts)
             if(error==true)
                 return res.status(400).send("Error in updated parts list");
             // Make sure user has parts in their inventory
-            if(correction!=true) {
-                let hasInventory = await userHasInInventory(req.user.user_id, added)
+            if(correction!=true&&isMigrated!=true) {
+                let hasInventory = await userHasInInventoryAsync(req.user.user_id, added)
                 if(!hasInventory)
                     return res.status(400).send("Added parts on request not found in user inventory");
             }
@@ -298,12 +298,12 @@ const assetManager = {
                 removedOptions.next = 'deleted'
             }
             // Update removed parts
-            await updateParts(removedOptions, assetSearchOptions, removed, isMigrated)
+            await updatePartsAsync(removedOptions, assetSearchOptions, removed, isMigrated)
             // Create new part records for added parts
             if(correction==true)
                 isMigrated = true
             // Update added parts
-            await updateParts(addedOptions, userSearchOptions, added, isMigrated)
+            await updatePartsAsync(addedOptions, userSearchOptions, added, isMigrated)
     
             // Update the asset object and return to user before updating parts records
             let getAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: asset.asset_tag, next: null}))) as AssetSchema
@@ -315,6 +315,7 @@ const assetManager = {
                 asset.prev = getAsset._id
                 asset.date_created = current_date
                 asset.by = req.user.user_id
+                // asset.prev_pallet = getAsset.pallet
                 delete asset.date_updated
                 // Create new asset
                 Asset.create(asset, callbackHandler.updateAssetAndReturn(res))
@@ -353,7 +354,7 @@ const assetManager = {
                     // Return to client
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                let returnValue = await partRecordsToCartItemsWithInfo(records)
+                let returnValue = await partRecordsToCartItemsWithInfoAsync(records)
                 // Return to client
                 res.status(200).json(returnValue)
             })
@@ -387,6 +388,7 @@ const assetManager = {
                 asset.prev = asset._id
                 asset.next = "deleted"
                 asset.date_created = new Date(current_date)
+                // asset.prev_pallet = asset.pallet
                 delete asset._id
                 // Create new iteration of asset
                 Asset.create(asset, callbackHandler.updateAssetAndReturn(res))

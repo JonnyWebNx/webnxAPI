@@ -1,7 +1,7 @@
 import { CallbackError, MongooseError } from 'mongoose'
 import handleError from '../config/handleError.js'
 import PartRecord from '../model/partRecord.js'
-import { PartRecordSchema } from '../app/interfaces.js'
+import { PartRecordSchema, AssetSchema } from '../app/interfaces.js'
 import Asset from '../model/asset.js'
 import { Response } from 'express'
 
@@ -20,7 +20,8 @@ const callbackHandler = {
         if (err) {
             return handleError(err)
         }
-        Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_owner: record.owner }, (err: MongooseError, record: PartRecordSchema) => {
+        // Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, record: PartRecordSchema) => {
+        Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, record: PartRecordSchema) => {
             if (err) {
                 return handleError(err)
             }
@@ -32,7 +33,8 @@ const callbackHandler = {
                 res.status(500).send("API could not handle your request: "+err);
                 return handleError(err)
             }
-            Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_owner: record.owner }, (err: MongooseError, record: PartRecordSchema) => {
+            // Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, record: PartRecordSchema) => {
+            Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, record: PartRecordSchema) => {
                 if (err) {
                     res.status(500).send("API could not handle your request: "+err);
                     return handleError(err)

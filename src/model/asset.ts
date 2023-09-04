@@ -56,6 +56,9 @@ const asset = new mongoose.Schema({
     // Last updated by
     by: { type: String, required: true },
     sid: { type: Number },
+    // Pallet info chanaged
+    prev_pallet: { type: String },
+    next_pallet: { type: String },
     // Parts
     // Date the part was created
     date_created: { type: Date },
