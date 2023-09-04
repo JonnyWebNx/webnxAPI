@@ -101,6 +101,9 @@ export interface AssetSchema {
     old_by?: string,
     migrated?: boolean,
 
+    prev_pallet?: string,
+    next_pallet?: string,
+
     date_created?: Date,
     date_updated?: string | number | Date,
     date_replaced?: string | number | Date,

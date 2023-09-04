@@ -20,21 +20,21 @@ import { PartSchema } from "./interfaces.js";
 import config from '../config.js'
 import fs from 'fs';
 import {
-    cartItemsValid,
-    kioskHasInInventory,
+    cartItemsValidAsync,
+    kioskHasInInventoryAsync,
     sanitizeCartItems,
     cleansePart,
-    getKiosks,
-    getKioskNames,
-    getAllKiosks,
+    getKiosksAsync,
+    getKioskNamesAsync,
+    getAllKiosksAsync,
     getAllKioskNames,
     isValidPartID,
     getPartSearchRegex,
     returnPartSearch,
     sanitizeInventoryEntries,
-    inventoryEntriesValid
+    inventoryEntriesValidAsync
 } from './methods/partMethods.js';
-import { partRecordsToCartItemsWithInfo, updateParts, updatePartsAddSerials, userHasInInventory } from './methods/assetMethods.js';
+import { partRecordsToCartItemsWithInfoAsync, updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from './methods/genericMethods.js';
 import { stringSanitize } from '../config/sanitize.js';
 const { UPLOAD_DIRECTORY } = config
@@ -84,7 +84,7 @@ const partManager = {
                     parts = [{nxid: part.nxid!, quantity}]
                 // Migration mode creates new records instead of updating
                 if(parts.length>0)
-                    await updateParts(createOptions, {}, parts, true)
+                    await updatePartsAsync(createOptions, {}, parts, true)
                 // Succesful query
                 return res.status(200).json(part);
             });
@@ -123,7 +123,7 @@ const partManager = {
     getPartByID: async (req: Request, res: Response) => {
         try {
             let part = {} as PartSchema
-            let kiosks = await getKioskNames(req.user.building)
+            let kiosks = await getKioskNamesAsync(req.user.building)
             // Check if NXID
             if (isValidPartID((req.query.id as string).toUpperCase())) {
                 part = await Part.findOne({ nxid: { $eq: (req.query.id as string).toUpperCase() } }) as PartSchema;
@@ -174,10 +174,10 @@ const partManager = {
             // sanitize
             cart = sanitizeCartItems(cart)
             // Check if inventory items are valid
-            if(!(await cartItemsValid(cart)))
+            if(!(await cartItemsValidAsync(cart)))
                 return res.status(400).send("Error in checkin items")
             // Check if user has items in inventory
-            if(!(await kioskHasInInventory(kioskName, req.user.building, cart)))
+            if(!(await kioskHasInInventoryAsync(kioskName, req.user.building, cart)))
                 return res.status(400).send("Items not found in user inventory")
             // Send parts to user inventory
             let createOptions = {
@@ -195,7 +195,7 @@ const partManager = {
                 building: req.user.building
             }
             // Update part records
-            await updateParts(createOptions, searchOptions, cart, false)
+            await updatePartsAsync(createOptions, searchOptions, cart, false)
             // Success
             res.status(200).send("Successfully checked out.")
         }
@@ -220,10 +220,10 @@ const partManager = {
             // Santizie cart items
             inventory = sanitizeCartItems(inventory)
             // Check if inventory items are valid
-            if(!(await cartItemsValid(inventory)))
+            if(!(await cartItemsValidAsync(inventory)))
                 return res.status(400).send("Error in checkin items")
             // Check if user has items in inventory
-            if(!(await userHasInInventory(user_id, inventory)))
+            if(!(await userHasInInventoryAsync(user_id, inventory)))
                 return res.status(400).send("Items not found in user inventory")
             // Iterate through each item and update records
             let createOptions = {
@@ -237,7 +237,7 @@ const partManager = {
                 next: null,
                 owner: user_id,
             }
-            await updateParts(createOptions, searchOptions, inventory, false)
+            await updatePartsAsync(createOptions, searchOptions, inventory, false)
             // Success
             res.status(200).send("Successfully checked in.")
         }
@@ -447,7 +447,7 @@ const partManager = {
             if(!date||!by||!parts)
                 return res.status(400).send("Invalid request")
             // Get kiosks
-            let kioskReq = await getKiosks(req.user.building)
+            let kioskReq = await getKiosksAsync(req.user.building)
             // Create hash map
             let kiosks = new Map<string, UserSchema>()
             // Convert to hash
@@ -455,26 +455,26 @@ const partManager = {
                 kiosks.set(k.first_name + " " + k.last_name, k)
             }
             // Validate all parts
-            for (let p of parts) {
+            for (let i = 0; i < parts.length; i++) {
                 // Check if approved or denied
-                if(p.approved==undefined&&p.approvedCount==undefined)
-                    return res.status(400).send(p.nxid + " has not been approved or denied")
+                if(parts[i].approved==undefined&&parts[i].approvedCount==undefined)
+                    return res.status(400).send(parts[i].nxid + " has not been approved or denied")
                 // Check if approved part has location
-                if((p.approved||(p.approvedCount&&p.approvedCount>0))&&(!p.newLocation||!kiosks.has(p.newLocation)))
-                    return res.status(400).send(p.nxid + " does not have a valid location")
+                if(!parts[i].newLocation||((parts[i].approved||(parts[i].approvedCount&&parts[i].approvedCount!>0))&&(!parts[i].newLocation||!kiosks.has(parts[i].newLocation!))))
+                    return res.status(400).send(parts[i].nxid + " does not have a valid location")
                 // Count parts in queue
                 let partCounts = await PartRecord.count({
-                    nxid: p.nxid, 
+                    nxid: parts[i].nxid, 
                     next: null, 
                     location: "Check In Queue", 
                     date_created: date,
                     building: req.user.building,
                     by: by,
-                    serial: p.serial
+                    serial: parts[i].serial
                 })
                 // Check quanitites
-                if((p.serial&&partCounts!=1)||(p.quantity&&p.quantity!=partCounts)||(p.approvedCount&&p.approvedCount>partCounts))
-                    return res.status(400).send(p.nxid + " does not have a valid quantity or serial")
+                if((parts[i].serial&&partCounts!=1)||(parts[i].quantity&&parts[i].quantity!=partCounts)||(parts[i].approvedCount&&parts[i].approvedCount!>partCounts))
+                    return res.status(400).send(parts[i].nxid + " does not have a valid quantity or serial")
             }
             // Get current date for updates
             let current_date = Date.now()
@@ -653,7 +653,7 @@ const partManager = {
             let { part, owner } = req.body
             const { nxid, quantity, location, building } = part;
             let serials = [] as string[]
-            let kioskNames = await getKioskNames(req.user.building)
+            let kioskNames = await getKioskNamesAsync(req.user.building)
             if(part.serial) {
                 serials = part.serial
                 // Splits string at newline
@@ -717,7 +717,7 @@ const partManager = {
             }
             // Find part info
             
-            Part.findOne({ nxid }, async (err: MongooseError, part: PartSchema) => {
+            Part.findOne(async (err: MongooseError, part: PartSchema) => {
                 if (err)
                     return res.status(500).send("API could not handle your request: " + err);
                 if(!part)
@@ -728,29 +728,27 @@ const partManager = {
                     // Use hashmap for easier and faster checks
                     let serialMap = new Map<string, PartRecordSchema>()
                     // Map array to hashmap
-                    records.map((r)=>{
-                        serialMap.set(r.serial!, r)
-                    })
+                    for(let i = 0; i < records.length; i++) {
+                        serialMap.set(records[i].serial!, records[i])
+                    }
                     // Set sentinel value
                     let existingSerial = ""
                     // Check all serials 
-                    serials.map((serial) => {
+                    for(let i = 0; i < serials.length; i++) {
                         // If serial exists in hashmap, set sentinel value
-                        if (serialMap.has(serial))
-                            existingSerial = serial
-                    })
+                        if (serialMap.has(serials[i]))
+                            existingSerial = serials[i]
+                    }
                     // If serial already exists, return error
                     if(existingSerial!="")
                         return res.status(400).send(`Serial number ${existingSerial} already in inventory`);
                     // All serials are new, continue
-                    serials.map(async (serial) => {
-                        // Make copy
-                        let createOptionsCopy = JSON.parse(JSON.stringify(createOptions))
+                    for (let i = 0; i < serials.length; i++) {
                         // Add serial
-                        createOptionsCopy.serial = serial
+                        createOptions.serial = serials[i]
                         // Create PartRecords
-                        PartRecord.create(createOptionsCopy, callbackHandler.callbackHandleError);
-                    })
+                        PartRecord.create(createOptions, callbackHandler.callbackHandleError);
+                    }
                 }
                 else if(quantity&&quantity>0){
                     for (let i = 0; i < quantity; i++) {
@@ -760,7 +758,7 @@ const partManager = {
                 }
                 // Success
                 res.status(200).send("Successfully added to inventory")
-            });
+            }, { nxid });
         } catch (err) {
             // Error
             handleError(err)
@@ -859,7 +857,7 @@ const partManager = {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                let returnValue = await partRecordsToCartItemsWithInfo(records)
+                let returnValue = await partRecordsToCartItemsWithInfoAsync(records)
                 // Send response
                 res.status(200).json(returnValue)
             })
@@ -941,17 +939,16 @@ const partManager = {
             if(new_owner=="sold")
                 return res.status(400).send("Please refresh to update app");
             // Check if cart items are valid
-            if(!(await cartItemsValid(parts)))
+            if(!(await cartItemsValidAsync(parts)))
                 return res.status(400).send("Error in updated parts list");
             // Check if user has cart items in inventory
-            if(!(await userHasInInventory(old_owner, parts)))
+            if(!(await userHasInInventoryAsync(old_owner, parts)))
                 return res.status(400).send("User does not have parts in inventory");
             // Check if location is valid
             let to = {} as PartRecordSchema
             to.owner = new_owner ? new_owner as string : "";
             to.next = null
             let buildingSwitchPerms = req.user.roles.includes("clerk")||req.user.roles.includes("lead")||req.user.roles.includes("admin")
-            let ebayPerms = req.user.roles.includes("ebay")||req.user.roles.includes("admin")
             switch (new_owner) {
                 case 'all':
                     // All techs
@@ -1021,7 +1018,7 @@ const partManager = {
             to.by = req.user.user_id
             // Update records
             let searchOptions = {owner: old_owner, next: null}
-            await updateParts(to, searchOptions, parts, false)
+            await updatePartsAsync(to, searchOptions, parts, false)
             return res.status(200).send("Success");
         } catch(err) {
             handleError(err)
@@ -1034,7 +1031,7 @@ const partManager = {
             let parts = req.body.parts as InventoryEntry[]
             parts = sanitizeInventoryEntries(parts)
             // Check if cart items are valid
-            if(!(await inventoryEntriesValid(parts)))
+            if(!(await inventoryEntriesValidAsync(parts)))
                 return res.status(400).send("Error in updated parts list");
             // Check if user has cart items in inventory
             let partsToCheck = [] as CartItem[]
@@ -1049,7 +1046,7 @@ const partManager = {
                     partsToCheck.push({nxid: p.nxid!, quantity: p.unserialized})
             })
             // Check if user has inventory 
-            if(!(await userHasInInventory(req.user.user_id, partsToCheck)))
+            if(!(await userHasInInventoryAsync(req.user.user_id, partsToCheck)))
                 return res.status(400).send("User does not have parts in inventory");
             // Check if location is valid
             let to = {} as PartRecordSchema
@@ -1062,7 +1059,7 @@ const partManager = {
             to.by = req.user.user_id
             // Update records
             let searchOptions = {owner: req.user.user_id, next: null}
-            await updatePartsAddSerials(to, searchOptions, parts)
+            await updatePartsAddSerialsAsync(to, searchOptions, parts)
             // Success !!!
             return res.status(200).send("Success");
         } catch(err) {
@@ -1078,7 +1075,7 @@ const partManager = {
             let new_quantity = parseInt(req.query.new_quantity as string)
             let building = req.query.building?parseInt(req.query.building as string):req.user.building
             let location = req.query.location as string
-            let kiosks = await getKioskNames(building)
+            let kiosks = await getKioskNamesAsync(building)
             // Check request
             if(!nxid||!isValidPartID(nxid)||new_quantity<0||!kiosks.includes(location))
                 return res.status(400).send("Invalid request");

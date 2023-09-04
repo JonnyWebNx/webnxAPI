@@ -24,7 +24,7 @@ import crypto from 'crypto'
 import resetToken from '../model/resetToken.js';
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
-import { getAssetEvent } from './methods/assetMethods.js';
+import { getAssetEventAsync } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate } from './methods/genericMethods.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
 
@@ -407,7 +407,7 @@ const userManager = {
             
             let totalUpdates = assetUpdates.length
             let returnValue = await Promise.all(assetUpdates.splice(pageSkip, pageSize).map((a)=>{
-                return getAssetEvent(a.asset_tag, a.date)
+                return getAssetEventAsync(a.asset_tag, a.date)
             }))
             res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
         } catch (err) {
@@ -563,7 +563,7 @@ const userManager = {
                 }
                 if(result.length&&result.length>0) {
                     let returnValue = await Promise.all(result[0].updates!.map((a: AssetUpdate)=>{
-                        return getAssetEvent(a.asset_tag, a.date)
+                        return getAssetEventAsync(a.asset_tag, a.date)
                     }))
                     return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: returnValue});
                 }

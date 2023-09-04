@@ -16,10 +16,10 @@ import Part from "../../model/part.js"
  * @param date 
  * @returns Promise object for awaits
  */
-export function createPartRecordsOnAsset(parts: CartItem[], asset_tag: string, user_id: any, building: number, date: number) {
-    return Promise.all(parts.map(async (part) => {
+export function createPartRecordsOnAssetAsync(parts: CartItem[], asset_tag: string, user_id: any, building: number, date: number) {
+    return Promise.all(parts.map((part) => {
         if(part.serial) {
-            await PartRecord.create({
+            return PartRecord.create({
                 nxid: part.nxid,
                 building: building,
                 location: "Asset",
@@ -30,16 +30,18 @@ export function createPartRecordsOnAsset(parts: CartItem[], asset_tag: string, u
             })
         }
         else {
+            let createPromises = []
             for (let i = 0; i < part.quantity!; i++) {
-                await PartRecord.create({
+                createPromises.push(PartRecord.create({
                     nxid: part.nxid,
                     building: building,
                     location: "Asset",
                     asset_tag: asset_tag,
                     by: user_id,
                     date_created: date
-                })
+                }))
             }
+            return Promise.all(createPromises)
         }
     }))
 }
@@ -52,13 +54,12 @@ export function createPartRecordsOnAsset(parts: CartItem[], asset_tag: string, u
  *
  */
 export function returnAssetSearch(res: Response, numPages: number, numAssets: number) {
-    return async (err: CallbackError | null, assets: AssetSchema[])  => {
+    return (err: CallbackError | null, assets: AssetSchema[])  => {
         if (err) {
             // Database err
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
-        // Map for all parts
         return res.status(200).json({numPages, numAssets, assets});
     }
 }
@@ -121,11 +122,11 @@ export function cleanseAsset(asset: AssetSchema) {
 // Pushes any parts from array2 that array1 does not have to the differenceDest array
 // Should probably only be used for getAddedAndRemoved or similar functions
 function pushDifferenceSerialized(array1: CartItem[], array2: CartItem[], differenceDest: CartItem[]) {
-    array1.map((p)=>{
-        let existing = array2.find((e)=>(p.nxid==e.nxid)&&(p.serial==e.serial));
+    for (let i = 0; i < array1.length; i++) {
+        let existing = array2.find((e)=>(array1[i].nxid==e.nxid)&&(array1[i].serial==e.serial));
         if(!existing)
-            differenceDest.push(p)
-    })
+            differenceDest.push(JSON.parse(JSON.stringify(array1[i])))
+    }
 }
 
 // Pushes any parts from map2 that map1 does not have to the differenceDest array
@@ -153,27 +154,28 @@ export function getAddedAndRemoved(req_parts: CartItem[], current_parts: PartRec
     let unserializedPartsOnRequest = new Map<string, number>();
     let serializedPartsOnRequest = [] as CartItem[];
     // Map existing records to usable data types
-    current_parts.map((p)=>{
-        // If part is serialized
-        if(p.serial) {
-            // Push to array
-            return serializedExistingParts.push({ nxid: p.nxid, serial: p.serial } as CartItem);
+    for (let i = 0; i < current_parts.length; i++) {
+        if(current_parts[i].serial) {
+            serializedExistingParts.push({ nxid: current_parts[i].nxid, serial: current_parts[i].serial } as CartItem);
+            continue
         }
-        // Update map, if map has a number increment or start value at 1 
-        return unserializedExistingParts.set(p.nxid!, unserializedExistingParts.has(p.nxid!) ? unserializedExistingParts.get(p.nxid!)!+1 : 1);
-    })
+        unserializedExistingParts.set(current_parts[i].nxid!, unserializedExistingParts.has(current_parts[i].nxid!) ? unserializedExistingParts.get(current_parts[i].nxid!)!+1 : 1);
+    }
     let reqError = false
     // Map parts from request 
-    req_parts.map((p: CartItem)=>{
-        if(p.serial) {
+    for(let i = 0; i < req_parts.length; i++) {
+        if(req_parts[i].serial) {
             // Push to array
-            return serializedPartsOnRequest.push({ nxid: p.nxid, serial: p.serial });
+            serializedPartsOnRequest.push({ nxid: req_parts[i].nxid, serial: req_parts[i].serial });
+            continue
         }
-        if (p.quantity) {
-            return unserializedPartsOnRequest.set(p.nxid, p.quantity);
+        if (req_parts[i].quantity) {
+            unserializedPartsOnRequest.set(req_parts[i].nxid, req_parts[i].quantity!);
+            continue
         }
-        return reqError = true
-    })
+        reqError = true
+        break
+    }
     // If request error
     if(reqError)
         return { added: [], removed: [], error: true}
@@ -205,15 +207,18 @@ export function getAddedAndRemoved(req_parts: CartItem[], current_parts: PartRec
 export function findExistingSerial(parts: CartItem[]) {
     return new Promise<string>(async (res)=>{
         let existingSerial = ''
-        await Promise.all(parts.map(async(part)=> {
-            // If serialized
-            if (part.serial) {
-                // Check if serial number already exists
-                let existing = await PartRecord.findOne({nxid: part.nxid, next: null, serial: part.serial});
-                // If exists, set sentinel value
-                if(existing)
-                    existingSerial = part.serial
-            }
+        await Promise.all(parts.map((part)=> {
+            return new Promise<void>(async (res2)=> {
+                // If serialized
+                if (part.serial) {
+                    // Check if serial number already exists
+                    let existing = await PartRecord.findOne({nxid: part.nxid, next: null, serial: part.serial});
+                    // If exists, set sentinel value
+                    if(existing)
+                        existingSerial = part.serial
+                }
+                res2()
+            })
         }))
         res(existingSerial)
     })
@@ -225,98 +230,108 @@ export function findExistingSerial(parts: CartItem[]) {
  * @param searchOptions
  * @param arr 
  */
-export function updateParts(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: CartItem[], migrated: boolean) {
-    return Promise.all(arr.map(async (p)=>{
-        // Create Options
-        let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
-        // Search options
-        let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
-        sOptions.nxid = p.nxid
-        cOptions.nxid = p.nxid
-        if(p.serial) {
-            cOptions.serial = p.serial
-            sOptions.serial = p.serial
-            if (migrated) {
-                // Check if serial already exists
-                let existing = await PartRecord.findOne({nxid: p.nxid, serial: p.serial, next: null})
-                // Skip creation - avoid duplication
-                if(existing)
-                    return
-            } else {
-                // Check if prev exists
-                let prev = await PartRecord.findOne(sOptions)
-                if(!prev)
-                    return
-                cOptions.prev = prev._id
+export function updatePartsAsync(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: CartItem[], migrated: boolean) {
+    return Promise.all(arr.map((p)=>{
+        return new Promise<void>(async (res)=>{
+            // Create Options
+            let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
+            // Search options
+            let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
+            sOptions.nxid = p.nxid
+            cOptions.nxid = p.nxid
+            if(p.serial) {
+                cOptions.serial = p.serial
+                sOptions.serial = p.serial
+                if (migrated) {
+                    // Check if serial already exists
+                    let existing = await PartRecord.findOne({nxid: p.nxid, serial: p.serial, next: null})
+                    // Skip creation - avoid duplication
+                    if(existing)
+                        return res()
+                } else {
+                    // Check if prev exists
+                    let prev = await PartRecord.findOne(sOptions)
+                    if(!prev)
+                        return res()
+                    cOptions.prev = prev._id
+                }
+                PartRecord.create(cOptions, callbackHandler.updateRecord)
+                res()
             }
-            PartRecord.create(cOptions, callbackHandler.updateRecord)
-        }
-        else if(p.quantity) {
-            if(migrated) {
-                for (let i = 0; i < p.quantity; i++) {
-                    PartRecord.create(cOptions, callbackHandler.callbackHandleError)
+            else if(p.quantity) {
+                if(migrated) {
+                    for (let i = 0; i < p.quantity; i++) {
+                        PartRecord.create(cOptions, callbackHandler.callbackHandleError)
+                    }
+                    res()
+                }
+                else {
+                    let toBeUpdated = await PartRecord.find(sOptions)
+                    if (toBeUpdated.length < p.quantity)
+                        return res()
+                    for (let i = 0; i < p.quantity; i++) {
+                        cOptions.prev = toBeUpdated[i]._id
+                        PartRecord.create(cOptions, callbackHandler.updateRecord)
+                    }
+                    res()
                 }
             }
-            else {
-                let toBeUpdated = await PartRecord.find(sOptions)
-                if (toBeUpdated.length < p.quantity)
-                return
-                for (let i = 0; i < p.quantity; i++) {
-                    cOptions.prev = toBeUpdated[i]._id
-                    PartRecord.create(cOptions, callbackHandler.updateRecord)
-                }
-            }
-        }
+            // No quantity or serial - do nothing
+            res()
+        })
     }))
 }
 
-export function updatePartsAddSerials(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: InventoryEntry[]) {
-    return Promise.all(arr.map(async (p)=>{
-        // Create Options
-        let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
-        // Search options
-        let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
-        sOptions.nxid = p.nxid
-        cOptions.nxid = p.nxid
-        sOptions.serial = undefined
-        let toBeUpdated = await PartRecord.find(sOptions)
-        for (let i = 0; i < p.unserialized; i++) {
-            // Check if part will have new serial
-            if(p.newSerials&&p.newSerials[i]) {
-                // Check if serial already exists
-                let existing = await PartRecord.findOne({nxid: p.nxid, serial: p.newSerials[i], next: null})
-                // Only add serial if doesn't already exist
-                if(existing==null)
-                    cOptions.serial = p.newSerials[i]
+export function updatePartsAddSerialsAsync(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: InventoryEntry[]) {
+    return Promise.all(arr.map((p)=>{
+        return new Promise<void>(async (res)=>{
+            // Create Options
+            let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
+            // Search options
+            let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
+            sOptions.nxid = p.nxid
+            cOptions.nxid = p.nxid
+            sOptions.serial = undefined
+            let toBeUpdated = await PartRecord.find(sOptions)
+            for (let i = 0; i < p.unserialized; i++) {
+                // Check if part will have new serial
+                if(p.newSerials&&p.newSerials[i]) {
+                    // Check if serial already exists
+                    let existing = await PartRecord.findOne({nxid: p.nxid, serial: p.newSerials[i], next: null})
+                    // Only add serial if doesn't already exist
+                    if(existing==null)
+                        cOptions.serial = p.newSerials[i]
+                }
+                // Part does not have new serial
+                else
+                    delete cOptions.serial
+                // Make sure there is a record to update
+                if(toBeUpdated[i]) {
+                    // Update record
+                    cOptions.prev = toBeUpdated[i]._id
+                    PartRecord.create(cOptions, callbackHandler.updateRecord)
+                }
+                // No more records to update, break loop
+                else
+                    break
             }
-            // Part does not have new serial
-            else
-                delete cOptions.serial
-            // Make sure there is a record to update
-            if(toBeUpdated[i]) {
+            // For parts that already have serials
+            for(let serial of p.serials) {
+                // Set create and search options serial
+                sOptions.serial = serial
+                cOptions.serial = serial
+                // Find previous
+                let prev = await PartRecord.findOne(sOptions)
+                // If no previous is found, skip
+                if(!prev)
+                    continue
+                // Set prvious
+                cOptions.prev = prev._id
                 // Update record
-                cOptions.prev = toBeUpdated[i]._id
                 PartRecord.create(cOptions, callbackHandler.updateRecord)
             }
-            // No more records to update, break loop
-            else
-                break
-        }
-        // For parts that already have serials
-        for(let serial of p.serials) {
-            // Set create and search options serial
-            sOptions.serial = serial
-            cOptions.serial = serial
-            // Find previous
-            let prev = await PartRecord.findOne(sOptions)
-            // If no previous is found, skip
-            if(!prev)
-                continue
-            // Set prvious
-            cOptions.prev = prev._id
-            // Update record
-            PartRecord.create(cOptions, callbackHandler.updateRecord)
-        }
+            res()
+        })
     }))
 }
 /**
@@ -368,7 +383,7 @@ export function returnAsset(res: Response) {
     }
 }
 
-export function getAddedPartsAsset(asset_tag: string, date: Date) {
+export function getAddedPartsAssetAsync(asset_tag: string, date: Date) {
     return PartRecord.aggregate([
         {
             $match: { asset_tag: asset_tag, date_created: date }
@@ -390,7 +405,7 @@ export function getAddedPartsAsset(asset_tag: string, date: Date) {
     ])
 }
 
-export function getRemovedPartsAsset(asset_tag: string, date: Date) {
+export function getRemovedPartsAssetAsync(asset_tag: string, date: Date) {
     return PartRecord.aggregate([
         {
             $match: { asset_tag: asset_tag, date_replaced: date }
@@ -413,56 +428,39 @@ export function getRemovedPartsAsset(asset_tag: string, date: Date) {
     ])
 }
 
-export function getExistingPartsAsset(asset_tag: string, date: Date) {
-    return new Promise<any[]>(async (res)=>{
-        let existing = await PartRecord.aggregate([
-            {
-                $match: { asset_tag: asset_tag, date_created: { $lt: date },date_replaced: { $gt: date }}
-            },
-            {
-                $group: { 
-                    _id: { nxid: "$nxid", serial: "$serial" },
-                    quantity: { $sum: 1 }
-                }
-            },
-            {
-                $project: {
-                    nxid: "$_id.nxid",
-                    serial: "$_id.serial",
-                    quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
-                }
+export function getExistingPartsAssetAsync(asset_tag: string, date: Date) {
+    return PartRecord.aggregate([
+        {
+            $match: { asset_tag: asset_tag, date_created: { $lt: date }, $or: [
+                    {date_replaced: null}, 
+                    {date_replaced: { $gt: date }}
+                ]
             }
-        ])
-        existing = existing.concat(await PartRecord.aggregate([
-            {
-                $match: { asset_tag: asset_tag, date_created: { $lt: date },date_replaced: null }
-            },
-            {
-                $group: { 
-                    _id: { nxid: "$nxid", serial: "$serial" },
-                    quantity: { $sum: 1 }
-                }
-            },
-            {
-                $project: {
-                    nxid: "$_id.nxid",
-                    serial: "$_id.serial",
-                    quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
-                }
+        },
+        {
+            $group: { 
+                _id: { nxid: "$nxid", serial: "$serial" },
+                quantity: { $sum: 1 }
             }
-        ]))
-        res(existing)
-    })
+        },
+        {
+            $project: {
+                nxid: "$_id.nxid",
+                serial: "$_id.serial",
+                quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+            }
+        }
+    ])
 }
 
-export function getAssetEvent(asset_tag: string, d: Date) {
+export function getAssetEventAsync(asset_tag: string, d: Date) {
     return new Promise<AssetEvent>(async (res)=>{
         // Get parts removed from asset
-        let added = await getAddedPartsAsset(asset_tag, d)
+        let added = await getAddedPartsAssetAsync(asset_tag, d)
         // Get parts added to asset
-        let removed = await getRemovedPartsAsset(asset_tag, d)
+        let removed = await getRemovedPartsAssetAsync(asset_tag, d)
         // Get parts already on asset
-        let existing = await getExistingPartsAsset(asset_tag, d)
+        let existing = await getExistingPartsAssetAsync(asset_tag, d)
         // Find current asset iteratio
         let current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, date_replaced: { $gt: d }}) as AssetSchema
         // 
@@ -501,7 +499,7 @@ export function isValidAssetTag(asset_tag: string) {
     return /WNX([0-9]{7})+/.test(asset_tag)
 }
 
-export function getAssetUpdateDates(asset_tag: string) {
+export function getAssetUpdateDatesAsync(asset_tag: string) {
     return new Promise<Date[]>(async(res)=>{
         let dates = [] as Date[]
         // Get all the dates of asset related events
@@ -531,7 +529,7 @@ export function returnAssetHistory(pageNum: number, pageSize: number, res: Respo
         if (err)
             return res.status(500).send("API could not handle your request: " + err);
 
-        let dates = await getAssetUpdateDates(asset.asset_tag!)
+        let dates = await getAssetUpdateDatesAsync(asset.asset_tag!)
         let pageSkip = pageSize * (pageNum - 1)
         let totalEvents = dates.length
         
@@ -539,7 +537,7 @@ export function returnAssetHistory(pageNum: number, pageSize: number, res: Respo
             .splice(pageSkip, pageSize)
         // Get history
         let history = await Promise.all(dates.map((d)=>{
-            return getAssetEvent(asset.asset_tag!, d)
+            return getAssetEventAsync(asset.asset_tag!, d)
         }))
         let pages = Math.ceil(totalEvents/pageSize)
         // Return to client
@@ -553,7 +551,7 @@ export function returnAssetHistory(pageNum: number, pageSize: number, res: Respo
  *
  *
  */
-export function userHasInInventory(user_id: string|mongoose.Types.ObjectId, inventory: CartItem[]) {
+export function userHasInInventoryAsync(user_id: string|mongoose.Types.ObjectId, inventory: CartItem[]) {
     return new Promise<boolean>((res)=>{
         PartRecord.find({owner: user_id, next: null}, (err: CallbackError, userInventoryRecords: PartRecordSchema[])=>{
             // If error, user likely does not exist
@@ -577,45 +575,49 @@ export function partRecordsToCartItems(records: PartRecordSchema[]) {
     // Array that is returned to client
     let cartItems = [] as CartItem[]
     // Map part records
-    records.map((record) => {
+    for(let i = 0; i < records.length; i++) {
         // If serialized, push to return array
-        if(record.serial) {
-            return cartItems.push({nxid: record.nxid!, serial: record.serial })
+        if(records[i].serial) {
+            cartItems.push({nxid: records[i].nxid!, serial: records[i].serial })
+            continue
         }
         // If unserialized, update map
-        unserializedParts.set(record.nxid!, unserializedParts.has(record.nxid!) ? unserializedParts.get(record.nxid!)! + 1 : 1)
-    })
+        unserializedParts.set(records[i].nxid!, unserializedParts.has(records[i].nxid!) ? unserializedParts.get(records[i].nxid!)! + 1 : 1)
+    }
     // Get part info and push as LoadedCartItem interface from the front end
     unserializedParts.forEach((quantity, nxid) => {
         cartItems.push({nxid: nxid, quantity: quantity})
     })
-    return cartItems
+    return cartItems as CartItem[]
 }
 
-export function partRecordsToCartItemsWithInfo(records: PartRecordSchema[]) {
+export function partRecordsToCartItemsWithInfoAsync(records: PartRecordSchema[]) {
     return new Promise<{parts: PartSchema[], records: CartItem[]}>(async (res)=>{
         // Turn records into cart items
         let cartItems = partRecordsToCartItems(records)
         // Part info cache
         let cachedInfo = new Map<string, PartSchema>();
         // Check all cart items
-        await Promise.all(cartItems.map(async (item) =>{
-            // Check if part is cached
-            if (!cachedInfo.has(item.nxid)) {
-                // Set temp value
-                cachedInfo.set(item.nxid, {})
-                // Find part
-                let part = await Part.findOne({nxid: item.nxid})
-                // Check if exists
-                if(part) {
-                    // If part was found, add to cache
-                    cachedInfo.set(item.nxid, part)
+        await Promise.all(cartItems.map((item) =>{
+            return new Promise<void>(async (res)=>{
+                // Check if part is cached
+                if (!cachedInfo.has(item.nxid)) {
+                    // Set temp value
+                    cachedInfo.set(item.nxid, {})
+                    // Find part
+                    let part = await Part.findOne({nxid: item.nxid})
+                    // Check if exists
+                    if(part) {
+                        // If part was found, add to cache
+                        cachedInfo.set(item.nxid, part)
+                    }
+                    else {
+                        // Part not found, remove temp value from cache
+                        cachedInfo.delete(item.nxid)
+                    }
                 }
-                else {
-                    // Part not found, remove temp value from cache
-                    cachedInfo.delete(item.nxid)
-                }
-            }
+                res()
+            })
         }))
         // Turn map into array
         let parts = Array.from(cachedInfo, (record) => {

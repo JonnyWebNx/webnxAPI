@@ -22,6 +22,8 @@ const partRecord = new mongoose.Schema({
     ebay: { type: String },
     // ID of the user who's request created the part record
     by: { type: String, required: true },
+    //
+    pallet_tag: { type: String },
     // Date the part was created
     date_created: { type: Date, default: Date.now() },
     date_replaced: { type: Date, default: null},

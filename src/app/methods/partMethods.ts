@@ -3,7 +3,7 @@ import { CallbackError } from "mongoose"
 import Part from "../../model/part.js"
 import { getAddedAndRemoved } from "./assetMethods.js"
 import PartRecord from "../../model/partRecord.js"
-import { objectSanitize, stringSanitize } from "../../config/sanitize.js"
+import { objectSanitize } from "../../config/sanitize.js"
 import User from "../../model/user.js"
 import { Request, Response } from "express"
 import handleError from "../../config/handleError.js"
@@ -79,22 +79,22 @@ export function cleansePart(part: PartSchema) {
     return objectSanitize(newPart, false) as PartSchema
 }
 
-export function getKiosks(building: number) {
+export function getKiosksAsync(building: number) {
     return new Promise<UserSchema[]>(async (res)=>{
         let kioskUsers = await User.find({roles: ['kiosk'], building: building})
         res(kioskUsers)
     })
 }
 
-export function getKioskNames(building: number) {
+export function getKioskNamesAsync(building: number) {
     return new Promise<string[]>(async (res)=>{
-        let kioskUsers = await getKiosks(building)
+        let kioskUsers = await getKiosksAsync(building)
         let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
         res(kioskNames)
     })
 }
 
-export function getAllKiosks() {
+export function getAllKiosksAsync() {
     return new Promise<UserSchema[]>(async (res)=>{
         let kioskUsers = await User.find({roles: ['kiosk']})
         res(kioskUsers)
@@ -103,7 +103,7 @@ export function getAllKiosks() {
 
 export function getAllKioskNames() {
     return new Promise<string[]>(async (res)=>{
-        let kioskUsers = await getAllKiosks()
+        let kioskUsers = await getAllKiosksAsync()
         let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
         res(kioskNames)
     })
@@ -209,7 +209,7 @@ export function sanitizeInventoryEntries(invEntries: InventoryEntry[]) {
     return invEntries
 }
 
-export function inventoryEntriesValid(invEntries: InventoryEntry[]) {
+export function inventoryEntriesValidAsync(invEntries: InventoryEntry[]) {
     return new Promise<boolean>(async (res)=>{
         // Run all requests concurrently
         let valid = true
@@ -235,7 +235,7 @@ export function inventoryEntriesValid(invEntries: InventoryEntry[]) {
     })
 }
 
-export function cartItemsValid(cartItems: CartItem[]) {
+export function cartItemsValidAsync(cartItems: CartItem[]) {
     return new Promise<boolean>(async (res)=>{
         // Run all requests concurrently
         let valid = true
@@ -262,7 +262,7 @@ export function cartItemsValid(cartItems: CartItem[]) {
     })
 }
 
-export function kioskHasInInventory(kioskName: string, building: number, inventory: CartItem[]) {
+export function kioskHasInInventoryAsync(kioskName: string, building: number, inventory: CartItem[]) {
     return new Promise<boolean>((res)=>{
         let nxids = inventory.map((i)=>i.nxid).filter((i, index, arr)=>arr.indexOf(i)==index)
         PartRecord.find({nxid: { $in: nxids }, location: kioskName, next: null, building}, (err: CallbackError, userInventoryRecords: PartRecordSchema[])=>{
@@ -337,7 +337,7 @@ export function returnPartSearch(numPages: number, numParts: number, req: Reques
             return res.status(500).send("API could not handle your request: " + err);
         }
         // Map for all parts
-        let kioskNames = await getKioskNames(req.user.building)
+        let kioskNames = await getKioskNamesAsync(req.user.building)
         let { building, location } = req.query;
         let returnParts = await Promise.all(parts.map(async (part: PartSchema)=>{
             // Check parts room quantity
