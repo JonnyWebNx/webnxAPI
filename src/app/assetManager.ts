@@ -315,7 +315,7 @@ const assetManager = {
                 asset.prev = getAsset._id
                 asset.date_created = current_date
                 asset.by = req.user.user_id
-                // asset.prev_pallet = getAsset.pallet
+                asset.prev_pallet = getAsset.pallet
                 delete asset.date_updated
                 // Create new asset
                 Asset.create(asset, callbackHandler.updateAssetAndReturn(res))
@@ -380,15 +380,16 @@ const assetManager = {
                 await partRecord.findByIdAndUpdate(record._id, {next: "deleted"})
             }))
             // Find asset
-            Asset.findOne({asset_tag, next: null}, (err: CallbackError, asset: AssetSchema) => {
+            Asset.findOne({asset_tag, next: null}, (err: CallbackError, ass: AssetSchema) => {
                 if(err) {
                     res.status(500).send("API could not handle your request: "+err);
                     return;
                 }
+                let asset = JSON.parse(JSON.stringify(ass)) as AssetSchema
                 asset.prev = asset._id
                 asset.next = "deleted"
                 asset.date_created = new Date(current_date)
-                // asset.prev_pallet = asset.pallet
+                asset.prev_pallet = asset.pallet
                 delete asset._id
                 // Create new iteration of asset
                 Asset.create(asset, callbackHandler.updateAssetAndReturn(res))

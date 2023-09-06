@@ -16,31 +16,33 @@ const callbackHandler = {
             }
         })
     },
-    updateAsset: (err: CallbackError, record: any) => {
+    updateAsset: (err: CallbackError, record: AssetSchema) => {
         if (err) {
             return handleError(err)
         }
-        // Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, record: PartRecordSchema) => {
-        Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, record: PartRecordSchema) => {
+        if(record.prev!=null)
+            Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, rec: AssetSchema) => {
             if (err) {
                 return handleError(err)
             }
         })
     },
     updateAssetAndReturn: (res: Response) =>{
-        return (err: CallbackError, record: any) => {
+        return (err: CallbackError, record: AssetSchema) => {
             if (err) {
                 res.status(500).send("API could not handle your request: "+err);
                 return handleError(err)
             }
-            // Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, record: PartRecordSchema) => {
-            Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, record: PartRecordSchema) => {
-                if (err) {
-                    res.status(500).send("API could not handle your request: "+err);
-                    return handleError(err)
-                }
+            if(record.prev!=null)
+                Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, rec: AssetSchema) => {
+                    if (err) {
+                        res.status(500).send("API could not handle your request: "+err);
+                        return handleError(err)
+                    }
+                    res.status(200).send("Success")
+                })
+            else
                 res.status(200).send("Success")
-            })
         }
     },
     callbackHandleError: (err: CallbackError, record: any) => {

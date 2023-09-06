@@ -1,4 +1,4 @@
-import { PalletSchema, CartItem, AssetSchema, PartRecordSchema } from "./interfaces.js"
+import { PalletSchema, CartItem, AssetSchema, PartRecordSchema, PalletEvent } from "./interfaces.js"
 import { Request, Response } from "express";
 import handleError from "../config/handleError.js";
 import Pallet from "../model/pallet.js";
@@ -44,14 +44,14 @@ function returnPallet(res: Response) {
     }
 }
 
-function returnPalletSearch(res: Response, numPages: number, numAssets: number) {
+function returnPalletSearch(res: Response, numPages: number, numPallets: number) {
     return (err: CallbackError | null, pallets: PalletSchema[])  => {
         if (err) {
             // Database err
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
-        return res.status(200).json({numPages, numAssets, pallets});
+        return res.status(200).json({numPages, numPallets, pallets});
     }
 }
 
@@ -212,7 +212,7 @@ export function getExistingAssetsPallet(pallet_tag: string, date: Date) {
 }
 
 function getPalletEvent(pallet_tag: string, date: Date) {
-    return new Promise<void>(async (res)=>{
+    return new Promise<PalletEvent>(async (res)=>{
         // Get part info
         let addedParts = await getAddedPartsPallet(pallet_tag, date)
         let removedParts = await getRemovedPartsPallet(pallet_tag, date)
@@ -234,28 +234,57 @@ function getPalletEvent(pallet_tag: string, date: Date) {
         let added = [] as CartItem[]
         // Remap removed parts, find by attribute
         if(Array.isArray(addedParts))
-            added = addedParts.map((a)=>{
-                if(by==""&&a.by)
-                    by = a.by
-                return { nxid: a.nxid, serial: a.serial, quantity: a.quantity } as CartItem
-            })
+            for(let i = 0; i < addedParts.length; i++) {
+                if(by==""&&addedParts[i].next_owner)
+                    by = addedParts[i].next_owner
+                added.push({nxid: addedParts[i].nxid, serial: addedParts[i].serial, quantity: addedParts[i].quantity } as CartItem)
+            }
         let removed = [] as CartItem[]
         // Remap removed parts, find by attribute
         if(Array.isArray(removedParts))
-            removed = removedParts.map((a)=>{
-                if(by==""&&a.next_owner) {
-                    by = a.next_owner
+            for(let i = 0; i < removedParts.length; i++) {
+                if(by==""&&removedParts[i].next_owner)
+                    by = removedParts[i].next_owner
+                removed.push({ nxid: removedParts[i].nxid, serial: removedParts[i].serial, quantity: removedParts[i].quantity } as CartItem)
+            }
+        // Check assets for by
+        if(Array.isArray(addedAssets)&&addedAssets.length>0&&by=="")
+            for(let i = 0; i < addedAssets.length; i++) {
+                if(by==""&&addedAssets[i].next_owner)
+                    by = addedAssets[i].next_owner
+                else if(by!="")
+                    break
+            }
+        // Try to get by from removed assets
+        if(Array.isArray(removedAssets)&&removedAssets.length>0&&by=="") {
+            // Loop through all removed
+            for (let i = 0; i < removedAssets.length; i++) {
+                // Get next
+                let removedAsset = await Asset.findById(removedAssets[i])
+                // If exists and has by
+                if(removedAsset&&removedAsset.by) {
+                    // Copy by
+                    by = removedAsset.by as string
+                    // Break loop
+                    break;
                 }
-                return { nxid: a.nxid, serial: a.serial, quantity: a.quantity } as CartItem
-            })
-         
-        /**
-         *
-         *
-         *  @TODO: find "by" and map parts to cart items
-         *
-         *
-         */
+            }
+        }
+        // Fallback
+        if(by==""&&pallet)
+            by = pallet.by
+        res({ 
+            date_begin: date, 
+            pallet_id: pallet!._id, 
+            info_updated: (pallet!.date_created!.getTime() == date.getTime()), 
+            existingParts: existingParts as CartItem[], 
+            addedParts: added, 
+            removedParts: removed, 
+            addedAssets,
+            removedAssets,
+            existingAssets,
+            by: by 
+        } as PalletEvent)
     })
 }
 
@@ -327,11 +356,10 @@ const palletManager = {
                         if(!isValidAssetTag(a))
                             return res()
                         // Check if asset already exists
-                        let existingAsset = await Asset.findOne({asset_tag: a, next: null}) as AssetSchema
+                        let existingAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: a, next: null}))) as AssetSchema
                         // If asset already exists
                         if(existingAsset) {
                             existingAsset.prev = existingAsset._id
-                            delete existingAsset._id
                             delete existingAsset.date_updated
                         }
                         else {
@@ -339,7 +367,8 @@ const palletManager = {
                             existingAsset = {
                                 asset_tag: a,
                                 prev: null,
-                                next: null
+                                next: null,
+                                migrated: true
                             } as AssetSchema
                         }
                         // Delete any locatin details
@@ -348,18 +377,22 @@ const palletManager = {
                         delete existingAsset.ipmi_port;
                         delete existingAsset.power_port;
                         delete existingAsset.sid;
+                        delete existingAsset._id
                         existingAsset.in_rack = false
+                        existingAsset.by = req.user.user_id
                         // Copy pallet information
                         existingAsset.building = newPallet.building
-                        // existingAsset.prev_pallet = existingAsset.pallet
+                        existingAsset.prev_pallet = existingAsset.pallet
                         existingAsset.pallet = newPallet.pallet_tag
                         existingAsset.date_created = date
                         if(existingAsset.prev!=null)
                             Asset.create(existingAsset, callbackHandler.updateAsset)
                         else
                             Asset.create(existingAsset, callbackHandler.callbackHandleError)
+                        res()
                     })
                 }))
+                res.status(200).send("Success");
             })
         } catch(err) {
             handleError(err)
@@ -374,13 +407,13 @@ const palletManager = {
             // Get asset object from request
             let pallet = cleansePallet(req.query as unknown as PalletSchema);
             pallet.next = null;
-            let numAssets = await Pallet.count(pallet)
-            let numPages = getNumPages(pageSize, numAssets)
+            let numPallets = await Pallet.count(pallet)
+            let numPages = getNumPages(pageSize, numPallets)
             // Send request to database
             Pallet.find(pallet)
                 .skip(pageSkip)
                 .limit(pageSize)
-                .exec(returnPalletSearch(res, numPages, numAssets))
+                .exec(returnPalletSearch(res, numPages, numPallets))
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);
@@ -536,7 +569,7 @@ const palletManager = {
             // Update removed parts
             await updatePartsAsync(removedOptions, palletSearchOptions, removed, false)
             // Update added parts
-            await updatePartsAsync(addedOptions, userSearchOptions, added, correction==true ? true : false)
+            await updatePartsAsync(addedOptions, userSearchOptions, added, correction==true)
     
             // Update the asset object and return to user before updating parts records
             let getPallet = JSON.parse(JSON.stringify(await Asset.findOne({pallet_tag: pallet.pallet_tag, next: null}))) as PalletSchema
