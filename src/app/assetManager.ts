@@ -205,7 +205,7 @@ const assetManager = {
     updateAsset: async (req: Request, res: Response) => {
         try {
             // Get data from request body
-            let { asset, parts, correction } = req.body;
+            let { asset, parts, correction, oldAssetTag } = req.body;
             // Check if asset is valid
             if (!isValidAssetTag(asset.asset_tag)||!(asset.asset_tag&&asset.asset_type)) {
                 // Send response if request is invalid
@@ -213,6 +213,7 @@ const assetManager = {
             }
             // Save current time for updates
             let current_date = Date.now();
+            let asset_tag_changed = false
             asset = asset as AssetSchema
             // Prep asset for updates
             asset.by = req.user.user_id;
@@ -228,9 +229,21 @@ const assetManager = {
             let isMigrated = false
             // Find an existing asset
             let existingAsset = await Asset.findOne({asset_tag: asset.asset_tag, next: null})
+            // If asset tag is being changed
+            if(correction==true&&oldAssetTag!=undefined&&isValidAssetTag(oldAssetTag)) {
+                if(existingAsset)
+                    return res.status(400).send("Asset with that tag already exists.");
+                // Try finding asset with old tag
+                existingAsset = await Asset.findOne({asset_tag: oldAssetTag, next: null})
+                // If found, set asset tag changed flag
+                if(existingAsset)
+                    asset_tag_changed = true
+                // Not found - return error
+                else
+                    return res.status(400).send("Could not find asset to update");
+            }
             // Check if existing asset is null
             if(existingAsset==null) {
-                // Return error
                 return res.status(400).send("Could not find asset to update");
             }
             // If asset is marked as migrated
@@ -247,7 +260,7 @@ const assetManager = {
             delete asset.old_by
             // Get part records that are currently on asset
             let existingParts = await PartRecord.find({
-                asset_tag: asset.asset_tag, 
+                asset_tag: existingAsset.asset_tag, 
                 next: null
             })
             parts = sanitizeCartItems(parts)
@@ -304,10 +317,14 @@ const assetManager = {
                 isMigrated = true
             // Update added parts
             await updatePartsAsync(addedOptions, userSearchOptions, added, isMigrated)
-    
+            // If asset tag is being changed
+            if(asset_tag_changed==true) {
+                // Update all records attached to this asset to match new tag
+                await PartRecord.updateMany({asset_tag: existingAsset.asset_tag}, {asset_tag: asset.asset_tag})
+                await Asset.updateMany({asset_tag: existingAsset.asset_tag}, {asset_tag: asset.asset_tag})
+            }
             // Update the asset object and return to user before updating parts records
             let getAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: asset.asset_tag, next: null}))) as AssetSchema
-            
             // Check if assets are similar
             if(!assetsAreSimilar(asset, getAsset)) {
                 // Assets are not similar
