@@ -391,7 +391,10 @@ export function returnPartSearch(numPages: number, numParts: number, req: Reques
         }
         // Add total quantities and quanities to parts
         let returnParts = parts.map((p)=>{
-            return {...p._doc, quantity: countsMap.has(p.nxid!)?countsMap.get(p.nxid!):0, total_quantity: totalCountsMap.has(p.nxid!)?totalCountsMap.get(p.nxid!):0}
+            let part = JSON.parse(JSON.stringify(p))
+            part.quantity = countsMap.has(p.nxid!)?countsMap.get(p.nxid!):0
+            part.total_quantity = totalCountsMap.has(p.nxid!)?totalCountsMap.get(p.nxid!):0
+            return part
         })
         // Return
         return res.status(200).json({ numPages, numParts, parts: returnParts});
