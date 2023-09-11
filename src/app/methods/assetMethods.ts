@@ -239,6 +239,10 @@ export function updatePartsAsync(createOptions: PartRecordSchema, searchOptions:
             let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
             sOptions.nxid = p.nxid
             cOptions.nxid = p.nxid
+            //Check consumable
+            let partInfo = await Part.findOne({nxid: p.nxid})
+            if(partInfo&&partInfo.consumable == true)
+                cOptions.next = "consumed"
             if(p.serial) {
                 cOptions.serial = p.serial
                 sOptions.serial = p.serial

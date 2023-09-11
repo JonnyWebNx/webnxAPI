@@ -32,7 +32,7 @@ import {
     getPartSearchRegex,
     returnPartSearch,
     sanitizeInventoryEntries,
-    inventoryEntriesValidAsync
+    inventoryEntriesValidAsync,
 } from './methods/partMethods.js';
 import { partRecordsToCartItemsWithInfoAsync, updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from './methods/genericMethods.js';

@@ -168,7 +168,6 @@ export type AssetHistory = AssetEvent[]
 
 export interface AssetEvent {
     date_begin: Date,
-    date_end: Date,
     asset_id: string | Types.ObjectId,
     by: string | Types.ObjectId,
     info_updated: boolean,
@@ -177,6 +176,18 @@ export interface AssetEvent {
     removed: CartItem[]
 }
 
+export interface PalletEvent {
+    date_begin: Date,
+    pallet_id: string | Types.ObjectId,
+    by: string | Types.ObjectId,
+    info_updated: boolean,
+    existingParts: CartItem[],
+    addedParts: CartItem[],
+    removedParts: CartItem[],
+    existingAssets: AssetSchema[],
+    addedAssets: AssetSchema[],
+    removedAssets: AssetSchema[]
+}
 
 export interface CheckInQueuePart extends CartItem {
   approved?: boolean,
