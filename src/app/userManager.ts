@@ -394,7 +394,6 @@ const userManager = {
                     }
                 }
             ])  as AssetUpdate[])
-            let totalUpdates = assetUpdates.length
             // Get all the dates of asset related events
             assetUpdates = assetUpdates
             .sort((a, b)=>{
@@ -405,6 +404,7 @@ const userManager = {
             .filter((a, i, arr)=>{return i===arr.findIndex((b)=>{
                 return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag
             })})
+            let totalUpdates = assetUpdates.length
             
             let returnValue = await Promise.all(assetUpdates.splice(pageSkip, pageSize).map((a)=>{
                 return getAssetEventAsync(a.asset_tag, a.date)
@@ -505,7 +505,6 @@ const userManager = {
                 }
             ])  as AssetUpdate[])
             // Get all the dates of asset related events
-            let totalUpdates = assetUpdates.length
             assetUpdates = assetUpdates
             .sort((a, b)=>{
                 if (a.date < b.date)
@@ -515,6 +514,8 @@ const userManager = {
             .filter((a, i, arr)=>{return i===arr.findIndex((b)=>{
                 return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag
             })})
+            let totalUpdates = assetUpdates.length
+            assetUpdates = assetUpdates
             .splice(pageSkip, pageSize)
             res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates),events: assetUpdates});
         } catch (err) {
