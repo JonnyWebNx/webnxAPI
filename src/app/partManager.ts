@@ -460,7 +460,7 @@ const partManager = {
                 if(parts[i].approved==undefined&&parts[i].approvedCount==undefined)
                     return res.status(400).send(parts[i].nxid + " has not been approved or denied")
                 // Check if approved part has location
-                if(!parts[i].newLocation||((parts[i].approved||(parts[i].approvedCount&&parts[i].approvedCount!>0))&&(!parts[i].newLocation||!kiosks.has(parts[i].newLocation!))))
+                if((parts[i].approved||(parts[i].approvedCount&&parts[i].approvedCount!>0))&&(!parts[i].newLocation||!kiosks.has(parts[i].newLocation!)))
                     return res.status(400).send(parts[i].nxid + " does not have a valid location")
                 // Count parts in queue
                 let partCounts = await PartRecord.count({
