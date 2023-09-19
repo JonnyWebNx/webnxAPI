@@ -217,9 +217,9 @@ function getPalletEvent(pallet_tag: string, date: Date) {
         let removedParts = await getRemovedPartsPallet(pallet_tag, date)
         let existingParts = await getExistingPartsPallet(pallet_tag, date)
         // Get asset info
-        let addedAssets = await getAddedAssetsPallet(pallet_tag, date)
-        let removedAssets = await getRemovedAssetsPallet(pallet_tag, date)
-        let existingAssets = await getExistingAssetsPallet(pallet_tag, date)
+        let addedAssets = await getAddedAssetsPallet(pallet_tag, date) as AssetSchema
+        let removedAssets = await getRemovedAssetsPallet(pallet_tag, date) as AssetSchema
+        let existingAssets = await getExistingAssetsPallet(pallet_tag, date) as AssetSchema
         let by = ""
         // Get current pallet
         let pallet = await Pallet.findOne({pallet_tag, date_created: { $lte: date }, $or: [
@@ -227,15 +227,15 @@ function getPalletEvent(pallet_tag: string, date: Date) {
             { date_replaced: null }
         ]})
         // If pallet was updated
-        if(date.getTime()==pallet?.date_created.getTime())
+        if(pallet&&date.getTime()==pallet.date_created.getTime())
             by = pallet.by
 
         let added = [] as CartItem[]
         // Remap removed parts, find by attribute
         if(Array.isArray(addedParts))
             for(let i = 0; i < addedParts.length; i++) {
-                if(by==""&&addedParts[i].next_owner)
-                    by = addedParts[i].next_owner
+                if(by==""&&addedParts[i].by)
+                    by = addedParts[i].by
                 added.push({nxid: addedParts[i].nxid, serial: addedParts[i].serial, quantity: addedParts[i].quantity } as CartItem)
             }
         let removed = [] as CartItem[]
@@ -249,8 +249,8 @@ function getPalletEvent(pallet_tag: string, date: Date) {
         // Check assets for by
         if(Array.isArray(addedAssets)&&addedAssets.length>0&&by=="")
             for(let i = 0; i < addedAssets.length; i++) {
-                if(by==""&&addedAssets[i].next_owner)
-                    by = addedAssets[i].next_owner
+                if(by==""&&addedAssets[i].by)
+                    by = addedAssets[i].by
                 else if(by!="")
                     break
             }
@@ -259,7 +259,7 @@ function getPalletEvent(pallet_tag: string, date: Date) {
             // Loop through all removed
             for (let i = 0; i < removedAssets.length; i++) {
                 // Get next
-                let removedAsset = await Asset.findById(removedAssets[i])
+                let removedAsset = await Asset.findById(removedAssets[i].next)
                 // If exists and has by
                 if(removedAsset&&removedAsset.by) {
                     // Copy by
@@ -269,6 +269,9 @@ function getPalletEvent(pallet_tag: string, date: Date) {
                 }
             }
         }
+        addedAssets = addedAssets.map((a: AssetSchema)=>a._id)
+        existingAssets = existingAssets.map((a: AssetSchema)=>a._id)
+        removedAssets = removedAssets.map((a: AssetSchema)=>a._id)
         // Fallback
         if(by==""&&pallet)
             by = pallet.by
