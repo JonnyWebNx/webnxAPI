@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { PalletSchema } from "../app/interfaces.js";
 
 const palletSchema = new mongoose.Schema({
-    pallet_tag: { type: String, required: true, unique: true },
+    pallet_tag: { type: String, required: true },
     location: { type: String, required: true },
     building: { type: Number, required: true },
     by: { type: String, required: true },
