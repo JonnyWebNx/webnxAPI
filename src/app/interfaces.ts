@@ -184,9 +184,9 @@ export interface PalletEvent {
     existingParts: CartItem[],
     addedParts: CartItem[],
     removedParts: CartItem[],
-    existingAssets: AssetSchema[],
-    addedAssets: AssetSchema[],
-    removedAssets: AssetSchema[]
+    existingAssets: string[],
+    addedAssets: string[],
+    removedAssets: string[]
 }
 
 export interface CheckInQueuePart extends CartItem {

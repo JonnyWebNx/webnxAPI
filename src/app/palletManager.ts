@@ -10,7 +10,7 @@ import { getAddedAndRemoved, isValidAssetTag, partRecordsToCartItemsWithInfoAsyn
 import { CallbackError } from "mongoose";
 import { sanitizeCartItems } from "./methods/partMethods.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
-import { getNumPages, getPageNumAndSize, getTextSearchParams } from "./methods/genericMethods.js";
+import { getNumPages, getPageNumAndSize, getTextSearchParams, objectToRegex } from "./methods/genericMethods.js";
 
 function isValidPalletTag(id: string) {
     return /PAL([0-9]{7})+/.test(id)
@@ -62,13 +62,12 @@ export function getPalletSearchRegex(searchString: string) {
     let relevanceConditions = [] as any
     // Add regex of keywords to all search options
     keywords.map((key) => {
-        // Why was this even here to begin with?
-            searchOptions.push({ "pallet_tag": { $regex: key, $options: "i" } })
-            relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$pallet_tag", regex: new RegExp(key, "i") } }, 3, 0] })
-            searchOptions.push({ "location": { $regex: key, $options: "i" } })
-            relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$pallet_tag", regex: new RegExp(key, "i") } }, 3, 0] })
-            searchOptions.push({ "notes": { $regex: key, $options: "is" } })
-            relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$notes", regex: new RegExp(key, "i") } }, 1, 0] })
+        searchOptions.push({ "pallet_tag": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$pallet_tag", regex: new RegExp(key, "i") } }, 3, 0] })
+        searchOptions.push({ "location": { $regex: key, $options: "i" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$pallet_tag", regex: new RegExp(key, "i") } }, 3, 0] })
+        searchOptions.push({ "notes": { $regex: key, $options: "is" } })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$notes", regex: new RegExp(key, "i") } }, 1, 0] })
     })
     return { regexKeywords: searchOptions, relevanceScore: relevanceConditions }
 }
@@ -218,9 +217,9 @@ function getPalletEvent(pallet_tag: string, date: Date) {
         let removedParts = await getRemovedPartsPallet(pallet_tag, date)
         let existingParts = await getExistingPartsPallet(pallet_tag, date)
         // Get asset info
-        let addedAssets = await getAddedAssetsPallet(pallet_tag, date)
-        let removedAssets = await getRemovedAssetsPallet(pallet_tag, date)
-        let existingAssets = await getExistingAssetsPallet(pallet_tag, date)
+        let addedAssets = await getAddedAssetsPallet(pallet_tag, date) as AssetSchema
+        let removedAssets = await getRemovedAssetsPallet(pallet_tag, date) as AssetSchema
+        let existingAssets = await getExistingAssetsPallet(pallet_tag, date) as AssetSchema
         let by = ""
         // Get current pallet
         let pallet = await Pallet.findOne({pallet_tag, date_created: { $lte: date }, $or: [
@@ -228,15 +227,15 @@ function getPalletEvent(pallet_tag: string, date: Date) {
             { date_replaced: null }
         ]})
         // If pallet was updated
-        if(date.getTime()==pallet?.date_created.getTime())
+        if(pallet&&date.getTime()==pallet.date_created.getTime())
             by = pallet.by
 
         let added = [] as CartItem[]
         // Remap removed parts, find by attribute
         if(Array.isArray(addedParts))
             for(let i = 0; i < addedParts.length; i++) {
-                if(by==""&&addedParts[i].next_owner)
-                    by = addedParts[i].next_owner
+                if(by==""&&addedParts[i].by)
+                    by = addedParts[i].by
                 added.push({nxid: addedParts[i].nxid, serial: addedParts[i].serial, quantity: addedParts[i].quantity } as CartItem)
             }
         let removed = [] as CartItem[]
@@ -250,8 +249,8 @@ function getPalletEvent(pallet_tag: string, date: Date) {
         // Check assets for by
         if(Array.isArray(addedAssets)&&addedAssets.length>0&&by=="")
             for(let i = 0; i < addedAssets.length; i++) {
-                if(by==""&&addedAssets[i].next_owner)
-                    by = addedAssets[i].next_owner
+                if(by==""&&addedAssets[i].by)
+                    by = addedAssets[i].by
                 else if(by!="")
                     break
             }
@@ -260,7 +259,7 @@ function getPalletEvent(pallet_tag: string, date: Date) {
             // Loop through all removed
             for (let i = 0; i < removedAssets.length; i++) {
                 // Get next
-                let removedAsset = await Asset.findById(removedAssets[i])
+                let removedAsset = await Asset.findById(removedAssets[i].next)
                 // If exists and has by
                 if(removedAsset&&removedAsset.by) {
                     // Copy by
@@ -270,6 +269,9 @@ function getPalletEvent(pallet_tag: string, date: Date) {
                 }
             }
         }
+        addedAssets = addedAssets.map((a: AssetSchema)=>a._id)
+        existingAssets = existingAssets.map((a: AssetSchema)=>a._id)
+        removedAssets = removedAssets.map((a: AssetSchema)=>a._id)
         // Fallback
         if(by==""&&pallet)
             by = pallet.by
@@ -286,6 +288,50 @@ function getPalletEvent(pallet_tag: string, date: Date) {
             by: by 
         } as PalletEvent)
     })
+}
+function addAssetsToPallet(pallet_tag: string, asset_tags: string[], by: string, date: Date, building: number) {
+    return Promise.all(asset_tags.map((a)=>{
+        return new Promise<void>(async (res)=>{
+            // Return if invalid asset tag
+            if(!isValidAssetTag(a))
+                return res()
+            // Check if asset already exists
+            let existingAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: a, next: null}))) as AssetSchema
+            // If asset already exists
+            if(existingAsset) {
+                existingAsset.prev = existingAsset._id
+                delete existingAsset.date_updated
+            }
+            else {
+                // Create new empty asset
+                existingAsset = {
+                    asset_tag: a,
+                    prev: null,
+                    next: null,
+                    migrated: true
+                } as AssetSchema
+            }
+            // Delete any locatin details
+            delete existingAsset.public_port;
+            delete existingAsset.private_port;
+            delete existingAsset.ipmi_port;
+            delete existingAsset.power_port;
+            delete existingAsset.sid;
+            delete existingAsset._id
+            existingAsset.in_rack = false
+            existingAsset.by = by
+            // Copy pallet information
+            existingAsset.building = building
+            existingAsset.prev_pallet = existingAsset.pallet
+            existingAsset.pallet = pallet_tag
+            existingAsset.date_created = date
+            if(existingAsset.prev!=null)
+                Asset.create(existingAsset, callbackHandler.updateAsset)
+            else
+                Asset.create(existingAsset, callbackHandler.callbackHandleError)
+            res()
+        })
+    }))
 }
 
 function returnPalletHistory(pageNum: number, pageSize: number, res: Response) {
@@ -309,6 +355,18 @@ function returnPalletHistory(pageNum: number, pageSize: number, res: Response) {
     }
 }
 
+function parseAssetTags(tag_list: string) {
+    let assets = tag_list && typeof(tag_list)=="string" ? tag_list as string : ""
+    let asset_tags = assets.split('\n')
+        // Filters out blank lines
+        .filter((t: string) => t != '')
+        // Gets rid of duplicates
+        .filter((t: string, i: number, arr: string[]) => i == arr.indexOf(t))
+        .map((t: string) => t.replace(/[, ]+/g, " ").trim())
+        .filter((t: string)=>isValidAssetTag(t)) as string[];
+    return asset_tags
+}
+
 const palletManager = {
 
     createPallet: async (req: Request, res: Response) => {
@@ -318,7 +376,8 @@ const palletManager = {
             // Get parts on pallet
             let parts = sanitizeCartItems(req.body.parts)
             // Get assets on pallet
-            let assets = req.body.assets.map((a: string)=>stringSanitize(a, false)) as string[]
+            let asset_tags = parseAssetTags(req.body.assets)
+            console.log(asset_tags)
             // Check if input is valid
             if(!pallet||!isValidPalletTag(pallet.pallet_tag)||!isLocationValid(pallet.location))
                 return res.status(400).send("Invalid request");
@@ -350,48 +409,7 @@ const palletManager = {
                 }
                 await updatePartsAsync(createOptions, {}, parts, true)
                 // Create/update all assets on pallet
-                await Promise.all(assets.map((a)=>{
-                    return new Promise<void>(async (res)=>{
-                        // Return if invalid asset tag
-                        if(!isValidAssetTag(a))
-                            return res()
-                        // Check if asset already exists
-                        let existingAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: a, next: null}))) as AssetSchema
-                        // If asset already exists
-                        if(existingAsset) {
-                            existingAsset.prev = existingAsset._id
-                            delete existingAsset.date_updated
-                        }
-                        else {
-                            // Create new empty asset
-                            existingAsset = {
-                                asset_tag: a,
-                                prev: null,
-                                next: null,
-                                migrated: true
-                            } as AssetSchema
-                        }
-                        // Delete any locatin details
-                        delete existingAsset.public_port;
-                        delete existingAsset.private_port;
-                        delete existingAsset.ipmi_port;
-                        delete existingAsset.power_port;
-                        delete existingAsset.sid;
-                        delete existingAsset._id
-                        existingAsset.in_rack = false
-                        existingAsset.by = req.user.user_id
-                        // Copy pallet information
-                        existingAsset.building = newPallet.building
-                        existingAsset.prev_pallet = existingAsset.pallet
-                        existingAsset.pallet = newPallet.pallet_tag
-                        existingAsset.date_created = date
-                        if(existingAsset.prev!=null)
-                            Asset.create(existingAsset, callbackHandler.updateAsset)
-                        else
-                            Asset.create(existingAsset, callbackHandler.callbackHandleError)
-                        res()
-                    })
-                }))
+                await addAssetsToPallet(newPallet.pallet_tag, asset_tags, req.user.user_id as string, date, newPallet.building)
                 res.status(200).send("Success");
             })
         } catch(err) {
@@ -405,7 +423,7 @@ const palletManager = {
             // Parse search info
             let { pageSize, pageSkip } = getPageNumAndSize(req)
             // Get asset object from request
-            let pallet = cleansePallet(req.query as unknown as PalletSchema);
+            let pallet = objectToRegex(cleansePallet(req.query as unknown as PalletSchema));
             pallet.next = null;
             let numPallets = await Pallet.count(pallet)
             let numPages = getNumPages(pageSize, numPallets)
@@ -424,7 +442,7 @@ const palletManager = {
             let id = req.query.id as string
             // Check if it is a pallet tag
             if(isValidPalletTag(id))
-                Pallet.find({pallet_id: id}, returnPallet(res))
+                Pallet.findOne({pallet_tag: id, next: null}, returnPallet(res))
             // Try to find by ID
             else
                 Pallet.findById(id, returnPallet(res))
@@ -447,7 +465,7 @@ const palletManager = {
                 // Calc number of pages
                 let numPages = getNumPages(pageSize, numPallets)
                 // Get all parts
-                Pallet.find({})
+                Pallet.find({next: null})
                     // Skip - gets requested page number
                     .skip(pageSkip)
                     // Limit - returns only enough elements to fill page
@@ -461,8 +479,13 @@ const palletManager = {
             // Create aggregate pipeline query
             let aggregateQuery = [
                 {
-                    $match: {
-                        $or: regexKeywords
+                    $match:{
+                        $and: [
+                            {
+                                $or: regexKeywords
+                            },
+                            { next: null}
+                        ]
                     }
                 },
                 {
@@ -499,7 +522,9 @@ const palletManager = {
     updatePallet: async (req: Request, res: Response) => {
         try {
             // Get data from request body
-            let { pallet, parts, correction } = req.body;
+            let { pallet, parts, correction, assets } = req.body;
+            // Get assets on pallet
+            let asset_tags = parseAssetTags(req.body.assets)
             // Check if asset is valid
             if (!isValidPalletTag(pallet.pallet_tag)||!(pallet.pallet_tag)) {
                 // Send response if request is invalid
@@ -570,9 +595,11 @@ const palletManager = {
             await updatePartsAsync(removedOptions, palletSearchOptions, removed, false)
             // Update added parts
             await updatePartsAsync(addedOptions, userSearchOptions, added, correction==true)
-    
+            // Add assets to pallet
+            await addAssetsToPallet(pallet.pallet_tag, asset_tags, req.user.user_id as string, new Date(current_date), pallet.building)
             // Update the asset object and return to user before updating parts records
-            let getPallet = JSON.parse(JSON.stringify(await Asset.findOne({pallet_tag: pallet.pallet_tag, next: null}))) as PalletSchema
+            let getPallet = JSON.parse(JSON.stringify(await Pallet.findOne({pallet_tag: pallet.pallet_tag, next: null}))) as PalletSchema
+            console.log(getPallet)
             // Check if pallets are similar
             if(!palletsAreSimilar(pallet, getPallet)) {
                 // Pallets are not similar
