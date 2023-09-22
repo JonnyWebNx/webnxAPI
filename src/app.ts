@@ -94,6 +94,7 @@ app.get("/api/part/records/id", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 app.get("/api/part/audit", auth, sanitize, checkRoles(["clerk", "admin"]), partManager.auditPart)
+app.get('/api/part/history', auth, sanitize, userManager.getPartCreationAndDeletionHistory)
 app.put("/api/part", auth, checkRoles(["clerk", "admin"]), partManager.updatePartInfo);
 app.put("/images/parts", auth, sanitize, checkRoles(["lead", "clerk", "admin"]), uploadImage, updatePartImage);
 app.delete("/api/part", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deletePart);
@@ -109,6 +110,7 @@ app.get("/api/user/all", auth, checkRoles(["tech", "kiosk", "clerk", "admin"]), 
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 app.get('/api/user/roles', auth, sanitize, userManager.checkRoles)
 app.get('/api/user/checkins', auth, sanitize, userManager.getUserCheckins)
+app.get('/api/user/alltechs', auth, sanitize, userManager.getAllTechsHistory)
 app.get('/api/user/assetsUpdated', auth, sanitize, userManager.getUserAssetUpdates)
 app.get('/api/user/assetsUpdated/noDetails', auth, sanitize, userManager.getUserAssetUpdatesNoDetails)
 app.get('/api/user/newAssets', auth, sanitize, userManager.getUserNewAssets)

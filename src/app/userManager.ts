@@ -11,9 +11,9 @@
 // Import user schema
 import bcrypt from 'bcryptjs'
 import User from '../model/user.js'
-import { MongooseError } from 'mongoose';
+import { isValidObjectId, MongooseError } from 'mongoose';
 import type { Request, Response } from 'express'
-import { UserSchema, AssetUpdate } from './interfaces.js';
+import { UserSchema, AssetUpdate, CartItem } from './interfaces.js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import handleError from '../config/handleError.js'
@@ -27,6 +27,163 @@ import Asset from '../model/asset.js'
 import { getAssetEventAsync } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate } from './methods/genericMethods.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
+
+function getAllTechsDatesAsync(startDate: Date, endDate: Date) {
+    return new Promise<Date[]>(async (res)=>{
+        let dates = [] as Date[]
+        // Get parts added
+        dates = dates.concat(await PartRecord.find({owner: "all", date_created: { $gte: startDate, $lte: endDate}}).distinct("date_created") as Date[])
+        // Get parts removed
+        dates = dates.concat(await PartRecord.find({owner: "all", date_replaced: { $gte: startDate, $lte: endDate}}).distinct("date_replaced") as Date[])
+        // Sort dates
+        dates = dates.sort((a: Date, b: Date) => { 
+            if (a < b)
+                return 1
+            return -1
+        })
+        // Get rid of duplicates
+        dates = dates
+            .filter((d)=>d!=null)
+            .map((d)=>d.getTime())
+            .filter((date, index, arr) => arr.indexOf(date) === index && date != null)
+            .map((d)=>new Date(d))
+        res(dates)
+    })
+}
+
+export function getAddedPartsAllTechsAsync(date: Date) {
+    return PartRecord.aggregate([
+        {
+            $match: { owner: "all", date_created: date }
+        },
+        {
+            $group: { 
+                _id: { nxid: "$nxid", serial: "$serial", by: "$by" },
+                quantity: { $sum: 1 }
+            }
+        },
+        {
+            $project: {
+                nxid: "$_id.nxid",
+                serial: "$_id.serial",
+                by: "$_id.by",
+                quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+            }
+        }
+    ])
+}
+
+export function getRemovedPartsAllTechsAsync(date: Date) {
+    return PartRecord.aggregate([
+        {
+            $match: { owner: "all", date_replaced: date }
+        },
+        {
+            $group: { 
+                _id: { nxid: "$nxid", serial: "$serial", next_owner: "$next_owner" },
+                next: { $push: "$next" },
+                quantity: { $sum: 1 }
+            }
+        },
+        {
+            $project: {
+                nxid: "$_id.nxid",
+                serial: "$_id.serial",
+                next_owner: "$_id.next_owner",
+                next: "$next",
+                quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+            }
+        }
+    ])
+}
+
+export function getExistingPartsAllTechsAsync(date: Date) {
+    return PartRecord.aggregate([
+        {
+            $match: { owner: "all", date_created: { $lt: date }, $or: [
+                    {date_replaced: null}, 
+                    {date_replaced: { $gt: date }}
+                ]
+            }
+        },
+        {
+            $group: { 
+                _id: { nxid: "$nxid", serial: "$serial" },
+                quantity: { $sum: 1 }
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                nxid: "$_id.nxid",
+                serial: "$_id.serial",
+                quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+            }
+        }
+    ])
+}
+
+function getAllTechsEventAsync(date: Date) {
+    return new Promise<{by: string, date: Date, existing: CartItem[], added: CartItem[], removed: CartItem[]}>(async (res)=>{
+        let existing = await getExistingPartsAllTechsAsync(date)
+        let added = await getAddedPartsAllTechsAsync(date)
+        let removed = await getRemovedPartsAllTechsAsync(date)
+        let by = ""
+        // Get by from added
+        if(added.length>0) {
+            // Loop through all just in case
+            for(let part of added) {
+                // Check if ID is valid
+                if(isValidObjectId(part.by)) {
+                    // Set by
+                    by = part.by
+                    // Break loop
+                    break
+                }
+            }
+        }
+        // Get by from removed
+        if(by==""&&removed.length>0) {
+            // Loop until by is found
+            for(let part of removed) {
+                // Next owner is valid user
+                if(isValidObjectId(part.next_owner)) {
+                    by = part.next_owner
+                    break
+                }
+                else {
+                    // Control for breaking loop
+                    let byFound = false
+                    // Loop through aggregated next IDs
+                    for(let n of part.next) {
+                        // Try to find part
+                        let rec = await PartRecord.findById(n)
+                        // If found and is valid user
+                        if(rec&&rec.by&&isValidObjectId(rec.by)) 
+                        {
+                            // Set variable
+                            by = rec.by as string
+                            // Set loop control to break outer loop
+                            byFound = true
+                            // Break this inner loop
+                            break
+                        }
+                    }
+                    // Break loop if found
+                    if(byFound)
+                        break
+                    // Next owner
+                }
+            }
+        }
+        // Remove useless data
+        added = added.map((p)=>{ return {nxid: p.nxid, serial: p.serial, quantity: p.quantity} })
+        removed = removed.map((p)=>{ return {nxid: p.nxid, serial: p.serial, quantity: p.quantity} })
+        // Return event
+        res({by, date, existing, added, removed})
+    })
+}
+
 
 // Main object containing functions
 const userManager = {
@@ -231,7 +388,7 @@ const userManager = {
             PartRecord.aggregate([
                 {
                     // Get checkin queue
-                    $match: { next: { $ne: null }, location: "Check In Queue", by: user, date_created: { $lte: endDate, $gte: startDate } } 
+                    $match: { next: { $ne: null }, location: "Check In Queue", by: user ? user : { $ne: null }, date_created: { $lte: endDate, $gte: startDate } } 
                 },
                 {
                     // GROUP BY DATE, USER, NXID, AND SERIAL
@@ -626,7 +783,174 @@ const userManager = {
             handleError(err)
             res.status(500).send("API could not handle your request: " + err);
         }
-    }
+    },
+    getAllTechsHistory: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req);
+            let dates = await getAllTechsDatesAsync(startDate, endDate)
+            let totalEvents = dates.length
+            dates = dates
+                .splice(pageSkip, pageSize)
+            // Get history
+            let history = await Promise.all(dates.map((d)=>{
+                return getAllTechsEventAsync(d)
+            }))
+            // Calculate num pages
+            let pages = getNumPages(pageSize, totalEvents)
+            // Return to client
+            res.status(200).json({total: totalEvents, pages, events: history})
+        }
+        catch(err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getPartCreationAndDeletionHistory: async (req: Request, res: Response) => {
+        let { nxid } = req.query
+        let { pageSize, pageSkip } = getPageNumAndSize(req);
+        let { startDate, endDate } = getStartAndEndDate(req);
+        let added = await PartRecord.aggregate([
+            // Find new records in data range
+            {
+                $match: { 
+                    nxid: nxid ? nxid : { $ne: undefined },
+                    date_created: { $lte: endDate, $gte: startDate },
+                    prev: null
+                }
+            },
+            // Group for quantities/serials
+            {
+                $group: { 
+                    _id: { 
+                        nxid: "$nxid",
+                        serial: "$serial",
+                        by: "$by",
+                        location: "$location",
+                        date_created: "$date_created",
+                        asset_tag: "$asset_tag",
+                        pallet_tag: "$pallet_tag",
+                        prev: "$prev"
+                    },
+                    quantity: { $sum: 1 }
+                }
+            },
+            // Group by timestamp and by
+            {
+                $group: {
+                    _id: {
+                        by: "$_id.by",
+                        date: "$_id.date_created",
+                        location: "$_id.location",
+                        asset_tag: "$_id.asset_tag",
+                        pallet_tag: "$_id.pallet_tag",
+                        prev: "$_id.prev",
+                    },            
+                    parts: { $push : { 
+                        nxid: "$_id.nxid", 
+                        quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}, 
+                        serial: "$serial"} }
+                }
+            },
+            // Project to better format
+            {
+                $project: {
+                    _id: 0,
+                    by: "$_id.by",
+                    location: "$_id.location",
+                    date: "$_id.date",
+                    prev: "$_id.prev",
+                    asset_tag: "$_id.asset_tag",
+                    pallet_tag: "$_id.pallet_tag",
+                    parts: "$parts"
+                }
+            },
+            // Sort for convenience
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])
+        let removed = await PartRecord.aggregate([
+            {
+                $match: { 
+                    nxid: nxid ? nxid : { $ne: undefined },
+                    date_created: { $lte: endDate, $gte: startDate },
+                    $expr: {
+                        $eq: [
+                            {
+                                $convert: {
+                                    input: "$next",
+                                    to: "objectId",
+                                    onError: "bad"
+                                }
+                            },
+                            "bad"
+                        ]
+                    }
+                }
+            },
+            {
+                $group: { 
+                    _id: { 
+                        nxid: "$nxid",
+                        serial: "$serial",
+                        by: "$by",
+                        location: "$location",
+                        date_created: "$date_created",
+                        asset_tag: "$asset_tag",
+                        pallet_tag: "$pallet_tag",
+                        next: "$next"
+                    },
+                    quantity: { $sum: 1 }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        by: "$_id.by",
+                        date: "$_id.date_created",
+                        location: "$_id.location",
+                        asset_tag: "$_id.asset_tag",
+                        pallet_tag: "$_id.pallet_tag",
+                        next: "$_id.next",
+                    },            
+                    parts: { $push : { 
+                        nxid: "$_id.nxid", 
+                        quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}, 
+                        serial: "$serial"} }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    by: "$_id.by",
+                    location: "$_id.location",
+                    date: "$_id.date",
+                    next: "$_id.next",
+                    asset_tag: "$_id.asset_tag",
+                    pallet_tag: "$_id.pallet_tag",
+                    parts: "$parts"
+                }
+            },
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])
+        let returnList = added.concat(removed)
+            .sort((a, b)=>{
+                if (a.date < b.date)
+                    return 1
+                return -1
+            })
+        let totalEvents = returnList.length
+        returnList = returnList.splice(pageSkip, pageSize)
+        res.status(200).json({total: totalEvents, numPages: getNumPages(pageSize, totalEvents), events: returnList})
+    },
 }
 
 export default userManager

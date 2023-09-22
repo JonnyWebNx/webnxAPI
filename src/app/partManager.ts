@@ -308,7 +308,7 @@ const partManager = {
     getCheckoutHistory: async (req: Request, res: Response) => {
         try {
             // Get location and user info
-            let { location, user } = req.query;
+            let { location, user, nxid } = req.query;
             // Get kiosks
             let kiosks = await getAllKioskNames()
             // Parse page size and page num
@@ -319,7 +319,7 @@ const partManager = {
             PartRecord.aggregate([
                 {
                     // Get checkin queue
-                    $match: { next: { $ne: null }, location: location ? location : { $in: kiosks }, next_owner: user ? user : { $ne: null },
+                    $match: { nxid: nxid ? nxid : { $ne: null}, next: { $ne: null }, location: location ? location : { $in: kiosks }, next_owner: user ? user : { $ne: null },
                         // Check if next is valid ID
                         $expr: {
                             $and: [
