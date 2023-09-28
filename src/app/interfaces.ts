@@ -218,3 +218,14 @@ export interface PalletSchema {
     prev: string|null | Types.ObjectId,
     next: string|null | Types.ObjectId,
 }
+
+export interface PartEvent {
+    by: string,
+    location: string,
+    date: Date,
+    next?: string,
+    prev?: string,
+    asset_tag?: string,
+    pallet_tag?: string,
+    parts: CartItem[]
+}

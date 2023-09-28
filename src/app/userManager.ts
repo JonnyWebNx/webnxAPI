@@ -13,7 +13,7 @@ import bcrypt from 'bcryptjs'
 import User from '../model/user.js'
 import { isValidObjectId, MongooseError } from 'mongoose';
 import type { Request, Response } from 'express'
-import { UserSchema, AssetUpdate, CartItem } from './interfaces.js';
+import { UserSchema, AssetUpdate, CartItem, PartRecordSchema } from './interfaces.js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import handleError from '../config/handleError.js'
@@ -28,7 +28,7 @@ import { getAssetEventAsync } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate } from './methods/genericMethods.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
 
-function getAllTechsDatesAsync(startDate: Date, endDate: Date) {
+export function getAllTechsDatesAsync(startDate: Date, endDate: Date) {
     return new Promise<Date[]>(async (res)=>{
         let dates = [] as Date[]
         // Get parts added
@@ -123,7 +123,159 @@ export function getExistingPartsAllTechsAsync(date: Date) {
     ])
 }
 
-function getAllTechsEventAsync(date: Date) {
+export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxid?: string) {
+    return new Promise<Date[]>(async (res)=>{
+        let dates = await PartRecord.find({
+            // Find new records in data range
+            nxid: nxid ? nxid : { $ne: undefined },
+            date_created: { $lte: endDate, $gte: startDate },
+            $or: [
+                {prev: null},
+                {
+                    $expr: {
+                        $eq: [
+                            {
+                                $convert: {
+                                    input: "$next",
+                                    to: "objectId",
+                                    onError: "bad"
+                                }
+                            },
+                            "bad"
+                        ]
+                    }
+                }
+            ]
+                
+        }).distinct("date_created")
+        dates = dates
+            .filter((d)=>d!=null)
+            .map((d)=>d.getTime())
+            .filter((date, index, arr) => arr.indexOf(date) === index && date != null)
+            .map((d)=>new Date(d))
+            .sort((a, b)=>{
+                if (a < b)
+                    return 1
+                return -1
+            })
+        res(dates)
+    })
+}
+
+export function getPartsAddedAsync(date: Date, nxid?: string) {
+    return PartRecord.aggregate([
+        {
+            $match: {
+                nxid: nxid ? nxid : { $ne: undefined },
+                date_created: date,
+                prev: null
+            }
+        },
+        {
+            $group: { 
+                _id: { nxid: "$nxid", serial: "$serial" },
+                quantity: { $sum: 1 }
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                nxid: "$_id.nxid",
+                serial: "$_id.serial",
+                quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+            }
+        }
+    ])
+}
+export function getPartsRemovedAsync(date: Date, nxid?: string) {
+    return PartRecord.aggregate([
+        {
+            $match: {
+                nxid: nxid ? nxid : { $ne: undefined },
+                date_created: date,
+                $expr: {
+                    $eq: [
+                        {
+                            $convert: {
+                                input: "$next",
+                                to: "objectId",
+                                onError: "bad"
+                            }
+                        },
+                        "bad"
+                    ]
+                }
+            }
+        },
+        {
+            $group: { 
+                _id: { nxid: "$nxid", serial: "$serial" },
+                quantity: { $sum: 1 }
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                nxid: "$_id.nxid",
+                serial: "$_id.serial",
+                quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+            }
+        }
+    ])
+}
+
+export function getPartEventAsync(date: Date, nxid?: string) {
+    return new Promise<{ date: Date, info: PartRecordSchema, added: CartItem[], removed: CartItem[] }>(async (res)=>{
+        // Try to get an added part
+        let filterQ = await PartRecord.findOne({prev: null, date_created: date, nxid: nxid ? nxid : { $ne: undefined }})
+        // If no added part
+        if(!filterQ) {
+            // Find a removed part
+            filterQ = await PartRecord.findOne({date_created: date,
+                nxid: nxid ? nxid : { $ne: undefined },
+                $expr: {
+                    $eq: [
+                        {
+                            $convert: {
+                                input: "$next",
+                                to: "objectId",
+                                onError: "bad"
+                            }
+                        },
+                        "bad"
+                    ]
+                }
+            })
+            // Get previous for filter details
+            if(filterQ&&filterQ.prev)
+                filterQ = await PartRecord.findById(filterQ.prev)
+            else
+                filterQ = {
+                    pallet_tag: "ERROR",
+                    owner: "ERROR",
+                    location: "ERROR",
+                    by: "ERROR"
+                } as any
+        }
+        // Create filter
+        let filter = {
+            pallet_tag: filterQ && filterQ.pallet_tag ? filterQ.pallet_tag : undefined,
+            asset_tag: filterQ && filterQ.asset_tag ? filterQ.asset_tag : undefined,
+            owner: filterQ && filterQ.owner ? filterQ.owner : undefined,
+            location: filterQ && filterQ.location ? filterQ.location : undefined,
+            by: filterQ && filterQ.by ? filterQ.by : undefined
+
+        }
+        // Get added parts
+        let added = await getPartsAddedAsync(date, nxid)
+        // Get removed parts
+        let removed = await getPartsRemovedAsync(date, nxid)
+        // Return history event
+        res({ date, info: filter, added, removed })
+    })
+}
+
+export function getAllTechsEventAsync(date: Date) {
     return new Promise<{by: string, date: Date, existing: CartItem[], added: CartItem[], removed: CartItem[]}>(async (res)=>{
         let existing = await getExistingPartsAllTechsAsync(date)
         let added = await getAddedPartsAllTechsAsync(date)
@@ -808,148 +960,21 @@ const userManager = {
         }
     },
     getPartCreationAndDeletionHistory: async (req: Request, res: Response) => {
-        let { nxid } = req.query
+        // Get data from query
+        let nxid = req.query.nxid as string | undefined
         let { pageSize, pageSkip } = getPageNumAndSize(req);
         let { startDate, endDate } = getStartAndEndDate(req);
-        let added = await PartRecord.aggregate([
-            // Find new records in data range
-            {
-                $match: { 
-                    nxid: nxid ? nxid : { $ne: undefined },
-                    date_created: { $lte: endDate, $gte: startDate },
-                    prev: null
-                }
-            },
-            // Group for quantities/serials
-            {
-                $group: { 
-                    _id: { 
-                        nxid: "$nxid",
-                        serial: "$serial",
-                        by: "$by",
-                        location: "$location",
-                        date_created: "$date_created",
-                        asset_tag: "$asset_tag",
-                        pallet_tag: "$pallet_tag",
-                        prev: "$prev"
-                    },
-                    quantity: { $sum: 1 }
-                }
-            },
-            // Group by timestamp and by
-            {
-                $group: {
-                    _id: {
-                        by: "$_id.by",
-                        date: "$_id.date_created",
-                        location: "$_id.location",
-                        asset_tag: "$_id.asset_tag",
-                        pallet_tag: "$_id.pallet_tag",
-                        prev: "$_id.prev",
-                    },            
-                    parts: { $push : { 
-                        nxid: "$_id.nxid", 
-                        quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}, 
-                        serial: "$serial"} }
-                }
-            },
-            // Project to better format
-            {
-                $project: {
-                    _id: 0,
-                    by: "$_id.by",
-                    location: "$_id.location",
-                    date: "$_id.date",
-                    prev: "$_id.prev",
-                    asset_tag: "$_id.asset_tag",
-                    pallet_tag: "$_id.pallet_tag",
-                    parts: "$parts"
-                }
-            },
-            // Sort for convenience
-            {
-                $sort: {
-                    "date": -1
-                }
-            }
-        ])
-        let removed = await PartRecord.aggregate([
-            {
-                $match: { 
-                    nxid: nxid ? nxid : { $ne: undefined },
-                    date_created: { $lte: endDate, $gte: startDate },
-                    $expr: {
-                        $eq: [
-                            {
-                                $convert: {
-                                    input: "$next",
-                                    to: "objectId",
-                                    onError: "bad"
-                                }
-                            },
-                            "bad"
-                        ]
-                    }
-                }
-            },
-            {
-                $group: { 
-                    _id: { 
-                        nxid: "$nxid",
-                        serial: "$serial",
-                        by: "$by",
-                        location: "$location",
-                        date_created: "$date_created",
-                        asset_tag: "$asset_tag",
-                        pallet_tag: "$pallet_tag",
-                        next: "$next"
-                    },
-                    quantity: { $sum: 1 }
-                }
-            },
-            {
-                $group: {
-                    _id: {
-                        by: "$_id.by",
-                        date: "$_id.date_created",
-                        location: "$_id.location",
-                        asset_tag: "$_id.asset_tag",
-                        pallet_tag: "$_id.pallet_tag",
-                        next: "$_id.next",
-                    },            
-                    parts: { $push : { 
-                        nxid: "$_id.nxid", 
-                        quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}, 
-                        serial: "$serial"} }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    by: "$_id.by",
-                    location: "$_id.location",
-                    date: "$_id.date",
-                    next: "$_id.next",
-                    asset_tag: "$_id.asset_tag",
-                    pallet_tag: "$_id.pallet_tag",
-                    parts: "$parts"
-                }
-            },
-            {
-                $sort: {
-                    "date": -1
-                }
-            }
-        ])
-        let returnList = added.concat(removed)
-            .sort((a, b)=>{
-                if (a.date < b.date)
-                    return 1
-                return -1
-            })
-        let totalEvents = returnList.length
-        returnList = returnList.splice(pageSkip, pageSize)
-        res.status(200).json({total: totalEvents, numPages: getNumPages(pageSize, totalEvents), events: returnList})
+        // Get event dates
+        let dates = await getPartEventDatesAsync(startDate, endDate, nxid)
+        // Total number of events
+        let total = dates.length
+        // Splice to page skip and size
+        dates = dates
+            .splice(pageSkip, pageSize)
+        // Get history from map
+        let history = await Promise.all(dates.map((d)=>getPartEventAsync(d, nxid)))
+        // Return data
+        res.status(200).json({total, numPages: getNumPages(pageSize, total), events: history})
     },
 }
 
