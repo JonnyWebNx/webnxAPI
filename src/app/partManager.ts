@@ -681,6 +681,7 @@ const partManager = {
                 prev: null,
                 next: null,
                 by: req.user.user_id,
+                date_created: new Date()
             } as PartRecordSchema
 
             switch(location) {

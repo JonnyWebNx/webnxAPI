@@ -25,8 +25,8 @@ const partRecord = new mongoose.Schema({
     //
     pallet_tag: { type: String },
     // Date the part was created
-    date_created: { type: Date, default: Date.now() },
-    date_replaced: { type: Date, default: null},
+    date_created: { type: Date, default: new Date() },
+    date_replaced: { type: Date, default: null },
     // This will greatly optimize analytics requests
     next_owner: { type: String }
 });
