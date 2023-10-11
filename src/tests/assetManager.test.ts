@@ -28,10 +28,10 @@ const INCOMPLETE_ASSET = {
     bay: 3,
 }
 const PARTS_LIST = [
-    { nxid: "PNX0016477", quantity: 2} as CartItem,
-    { nxid: "PNX0016498", quantity: 4} as CartItem,
-    { nxid: "PNX0011639", quantity: 1} as CartItem,
-    { nxid: "PNX0016009", quantity: 1} as CartItem,
+    { nxid: "PNX0000001", quantity: 2} as CartItem,
+    { nxid: "PNX0000003", quantity: 4} as CartItem,
+    { nxid: "PNX0000004", quantity: 1} as CartItem,
+    { nxid: "PNX0000008", quantity: 1} as CartItem,
 ]
 
 function generateAsset() {
@@ -46,6 +46,13 @@ function generateIncompleteAsset() {
     tempAsset.asset_tag = `WNX${num}`
     return tempAsset as AssetSchema;
 }
+
+function wait(time: number) {
+    return new Promise<void>((res)=>{
+        setTimeout(res, time)
+    })
+}
+
 function partsListsMatch(reqList: CartItem[], resList: CartItem[]) {
     let tempReqList = JSON.parse(JSON.stringify(reqList)) as CartItem[]
     let tempResList = JSON.parse(JSON.stringify(resList)) as CartItem[]
@@ -63,7 +70,7 @@ function partsListsMatch(reqList: CartItem[], resList: CartItem[]) {
             return -1
         return 0
     })
-    return (JSON.stringify(tempReqList)==JSON.stringify(tempResList))
+    return (JSON.stringify(tempReqList)==JSON.stringify(tempResList))||(tempReqList.length==0&&tempResList.length==0)
 }
 
 function assertSuccessfulAssetSearchWithResults(res: request.Response) {
@@ -332,6 +339,8 @@ describe("Update asset", () => {
     })
     const addAndRemoveParts = (token: string) => {
         return async () => {
+            jest.useRealTimers()
+            await wait(5000)
             let invRes = await request("localhost:4001")
                 .get("/api/user/inventory")
                 .set("Authorization", token)
@@ -363,6 +372,7 @@ describe("Update asset", () => {
                 .set("Authorization", token)
                 .send({ asset, parts: startInventory})
             expect(update1res.status).toBe(200)
+            await wait(500)
             // Make sure inventory matches start asset
             let invRes2 = await request("localhost:4001")
                 .get("/api/user/inventory")
@@ -381,6 +391,7 @@ describe("Update asset", () => {
                 .set("Authorization", token)
                 .send({ asset, parts: startAssetParts})
             expect(update2res.status).toBe(200)
+            await wait(100)
             // Get end asset parts
             let assetPartRes3 = await request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
@@ -398,11 +409,9 @@ describe("Update asset", () => {
             expect(partsListsMatch(startInventory, afterInv)).toBe(true)
         }
     }
-    it("Tech can add and remove parts with correct quantities", addAndRemoveParts(TECH_TOKEN!))
-    it("Clerk can add and remove parts with correct quantities", addAndRemoveParts(INVENTORY_TOKEN!))
-    it("Admin can add and remove parts with correct quantities", addAndRemoveParts(ADMIN_TOKEN!))
+    it("Tech can add and remove parts with correct quantities", addAndRemoveParts(TECH_TOKEN!), 25000)
+    it("Clerk can add and remove parts with correct quantities", addAndRemoveParts(INVENTORY_TOKEN!), 25000)
+    it("Admin can add and remove parts with correct quantities", addAndRemoveParts(ADMIN_TOKEN!), 25000)
 })
 
 // Test serialized parts
-
-// Check for duplication

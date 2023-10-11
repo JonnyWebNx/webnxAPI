@@ -12,7 +12,6 @@ import handleError from "../config/handleError.js";
 import { Request, Response } from "express";
 import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
 import { CallbackError, isValidObjectId } from "mongoose";
-import partRecord from "../model/partRecord.js";
 import { 
     isValidAssetTag,
     cleanseAsset,
@@ -394,7 +393,7 @@ const assetManager = {
             // Find all records associated with asset
             await Promise.all(records.map(async (record) => {
                 // Mark as deleted
-                await partRecord.findByIdAndUpdate(record._id, {next: "deleted"})
+                await PartRecord.findByIdAndUpdate(record._id, {next: "deleted"})
             }))
             // Find asset
             Asset.findOne({asset_tag, next: null}, (err: CallbackError, ass: AssetSchema) => {

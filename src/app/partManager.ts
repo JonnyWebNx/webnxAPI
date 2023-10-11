@@ -852,6 +852,7 @@ const partManager = {
     getUserInventory: async (req: Request, res: Response) => {
         try {
             const { user_id } = req.query.user_id ? req.query : req.user
+            console.log(user_id)
             // Fetch part records
             PartRecord.find({ next: null, owner: user_id ? user_id : req.user.user_id }, async (err: MongooseError, records: PartRecordSchema[]) => {
                 if (err) {

@@ -377,7 +377,6 @@ const palletManager = {
             let parts = sanitizeCartItems(req.body.parts)
             // Get assets on pallet
             let asset_tags = parseAssetTags(req.body.assets)
-            console.log(asset_tags)
             // Check if input is valid
             if(!pallet||!isValidPalletTag(pallet.pallet_tag)||!isLocationValid(pallet.location))
                 return res.status(400).send("Invalid request");
@@ -457,11 +456,11 @@ const palletManager = {
             // Search data
             // Limit
             // Page skip
-            let { searchString, pageSize, pageSkip } = getTextSearchParams(req);
+            let { searchString, pageSize, pageSkip, pageNum } = getTextSearchParams(req);
             // Find parts
             if(searchString == "") {
                 // Count all parts
-                let numPallets = await Pallet.count()
+                let numPallets = await Pallet.count({next: null})
                 // Calc number of pages
                 let numPages = getNumPages(pageSize, numPallets)
                 // Get all parts
@@ -522,7 +521,7 @@ const palletManager = {
     updatePallet: async (req: Request, res: Response) => {
         try {
             // Get data from request body
-            let { pallet, parts, correction, assets } = req.body;
+            let { pallet, parts, correction } = req.body;
             // Get assets on pallet
             let asset_tags = parseAssetTags(req.body.assets)
             // Check if asset is valid
@@ -599,7 +598,6 @@ const palletManager = {
             await addAssetsToPallet(pallet.pallet_tag, asset_tags, req.user.user_id as string, new Date(current_date), pallet.building)
             // Update the asset object and return to user before updating parts records
             let getPallet = JSON.parse(JSON.stringify(await Pallet.findOne({pallet_tag: pallet.pallet_tag, next: null}))) as PalletSchema
-            console.log(getPallet)
             // Check if pallets are similar
             if(!palletsAreSimilar(pallet, getPallet)) {
                 // Pallets are not similar
@@ -671,7 +669,38 @@ const palletManager = {
     },
 
     deletePallet: async (req: Request, res: Response) => {
-
+        try {
+            if(!req.user.roles.includes("admin"))
+                return res.status(403).send("Only admin can delete assets.")
+            const pallet_tag = req.query.pallet_tag as string
+            if (!pallet_tag||!isValidPalletTag(pallet_tag))
+                return res.status(400).send("Invalid request");
+            // Find all parts records associated with pallet tag
+            let records = await PartRecord.find({ pallet_tag, next: null,})   
+            let current_date = Date.now()
+            // Find all records associated with pallet
+            await Promise.all(records.map(async (record) => {
+                // Mark as deleted
+                await PartRecord.findByIdAndUpdate(record._id, {next: "deleted"})
+            }))
+            // Find pallet
+            Pallet.findOne({pallet_tag, next: null}, (err: CallbackError, pall: PalletSchema) => {
+                if(err) {
+                    res.status(500).send("API could not handle your request: "+err);
+                    return;
+                }
+                let pallet = JSON.parse(JSON.stringify(pall))
+                pallet.prev = pallet._id
+                pallet.next = "deleted"
+                pallet.date_created = new Date(current_date)
+                delete pallet._id
+                // Create new iteration of pallet
+                Pallet.create(pallet, callbackHandler.updatePalletAndReturn(res))
+            })
+        } catch(err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: "+err);
+        }
     },
     
     getPalletHistory: async (req: Request, res: Response) => {
