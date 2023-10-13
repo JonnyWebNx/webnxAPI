@@ -6,7 +6,7 @@ import { objectSanitize, stringSanitize } from "../config/sanitize.js";
 import { isValidObjectId, MongooseError } from "mongoose";
 import PartRecord from "../model/partRecord.js";
 import Asset from "../model/asset.js";
-import { getAddedAndRemoved, isValidAssetTag, partRecordsToCartItemsWithInfoAsync, updatePartsAsync, userHasInInventoryAsync } from "./methods/assetMethods.js";
+import { getAddedAndRemoved, isValidAssetTag, partRecordsToCartItems, partRecordsToCartItemsWithInfoAsync, updatePartsAsync, userHasInInventoryAsync } from "./methods/assetMethods.js";
 import { CallbackError } from "mongoose";
 import { sanitizeCartItems } from "./methods/partMethods.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
@@ -675,20 +675,26 @@ const palletManager = {
             const pallet_tag = req.query.pallet_tag as string
             if (!pallet_tag||!isValidPalletTag(pallet_tag))
                 return res.status(400).send("Invalid request");
-            // Find all parts records associated with pallet tag
-            let records = await PartRecord.find({ pallet_tag, next: null,})   
-            let current_date = Date.now()
-            // Find all records associated with pallet
-            await Promise.all(records.map(async (record) => {
-                // Mark as deleted
-                await PartRecord.findByIdAndUpdate(record._id, {next: "deleted"})
-            }))
-            // Find pallet
-            Pallet.findOne({pallet_tag, next: null}, (err: CallbackError, pall: PalletSchema) => {
+            Pallet.findOne({pallet_tag, next: null}, async (err: CallbackError, pall: PalletSchema) => {
                 if(err) {
                     res.status(500).send("API could not handle your request: "+err);
                     return;
                 }
+                // Find all parts records associated with pallet tag
+                let records = await PartRecord.find({ pallet_tag, next: null,})   
+                let current_date = Date.now()
+                let cartItems = partRecordsToCartItems(records)
+                let newInfo = {
+                    next: 'deleted',
+                    building: pall.building,
+                    pallet_tag: pall.pallet_tag,
+                    location: "Pallet",
+                    date_created: current_date,
+                    by: req.user.user_id
+                }
+                // Find all records associated with pallet
+                await updatePartsAsync(newInfo, { pallet_tag, next: null,}, cartItems, false)
+                // Find pallet
                 let pallet = JSON.parse(JSON.stringify(pall))
                 pallet.prev = pallet._id
                 pallet.next = "deleted"

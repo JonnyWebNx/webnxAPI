@@ -527,7 +527,7 @@ describe("Checkout", () => {
         expect(checkinApproval.statusCode).toBe(200)
         // CHECK QUANTITY
         checkIfCheckedIn(cart)
-    })
+    }, 15000)
     it("Checkout serialized part without serial number fails",async () => {
         let search = await request("localhost:4001")
             .get(`/api/part/search?searchString=&pageNum=1&pageSize=50&building=3&location=Parts+Room`)

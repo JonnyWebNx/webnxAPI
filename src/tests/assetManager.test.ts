@@ -47,23 +47,23 @@ function generateIncompleteAsset() {
     return tempAsset as AssetSchema;
 }
 
-function wait(time: number) {
+function wait(ms: number) {
     return new Promise<void>((res)=>{
-        setTimeout(res, time)
+        setTimeout(res, ms)
     })
 }
 
 function partsListsMatch(reqList: CartItem[], resList: CartItem[]) {
     let tempReqList = JSON.parse(JSON.stringify(reqList)) as CartItem[]
     let tempResList = JSON.parse(JSON.stringify(resList)) as CartItem[]
-    tempReqList.sort((e, i) => {
+    tempReqList = tempReqList.sort((e, i) => {
         if(e.nxid > i.nxid )
             return 1
         if(e.nxid < i.nxid)
             return -1
         return 0
     })
-    tempResList.sort((e, i) => {
+    tempResList = tempResList.sort((e, i) => {
         if(e.nxid > i.nxid )
             return 1
         if(e.nxid < i.nxid)
@@ -340,7 +340,6 @@ describe("Update asset", () => {
     const addAndRemoveParts = (token: string) => {
         return async () => {
             jest.useRealTimers()
-            await wait(5000)
             let invRes = await request("localhost:4001")
                 .get("/api/user/inventory")
                 .set("Authorization", token)
@@ -372,7 +371,6 @@ describe("Update asset", () => {
                 .set("Authorization", token)
                 .send({ asset, parts: startInventory})
             expect(update1res.status).toBe(200)
-            await wait(500)
             // Make sure inventory matches start asset
             let invRes2 = await request("localhost:4001")
                 .get("/api/user/inventory")
@@ -391,7 +389,6 @@ describe("Update asset", () => {
                 .set("Authorization", token)
                 .send({ asset, parts: startAssetParts})
             expect(update2res.status).toBe(200)
-            await wait(100)
             // Get end asset parts
             let assetPartRes3 = await request("localhost:4001")
             .get(`/api/asset/parts?asset_tag=${ASSET_TAG}`)
@@ -409,9 +406,9 @@ describe("Update asset", () => {
             expect(partsListsMatch(startInventory, afterInv)).toBe(true)
         }
     }
-    it("Tech can add and remove parts with correct quantities", addAndRemoveParts(TECH_TOKEN!), 25000)
-    it("Clerk can add and remove parts with correct quantities", addAndRemoveParts(INVENTORY_TOKEN!), 25000)
-    it("Admin can add and remove parts with correct quantities", addAndRemoveParts(ADMIN_TOKEN!), 25000)
+    it("Tech can add and remove parts with correct quantities", addAndRemoveParts(TECH_TOKEN!), 10000)
+    it("Clerk can add and remove parts with correct quantities", addAndRemoveParts(INVENTORY_TOKEN!), 10000)
+    it("Admin can add and remove parts with correct quantities", addAndRemoveParts(ADMIN_TOKEN!), 10000)
 })
 
 // Test serialized parts

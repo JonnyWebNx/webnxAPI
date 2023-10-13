@@ -34,7 +34,7 @@ import {
     sanitizeInventoryEntries,
     inventoryEntriesValidAsync,
 } from './methods/partMethods.js';
-import { partRecordsToCartItemsWithInfoAsync, updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync } from './methods/assetMethods.js';
+import { partRecordsToCartItemsWithInfoAsync, updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from './methods/genericMethods.js';
 import { stringSanitize } from '../config/sanitize.js';
 const { UPLOAD_DIRECTORY } = config
@@ -778,26 +778,30 @@ const partManager = {
             if(part==null||part==undefined)
                 return res.status(400).send("Part not found");
             // Delete info
-            await Part.findByIdAndDelete(part?._id);
-            // Find all associated parts records
-            PartRecord.find({
-                nxid,
-                next: null
-            }, (err: MongooseError, parts: PartRecordSchema[]) => {
+            Part.findByIdAndDelete(part?._id, async (err: MongooseError, part: PartSchema) =>{
                 if (err) {
                     // Error - don't return so other records will be deleted
-                    handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                // Delete every part record
-                parts.map(async (part) => {
-                    await PartRecord.findByIdAndUpdate(part._id, { next: 'deleted' })
-                })
+                // Find all parts records associated with asset tag
+                let records = await PartRecord.find({ nxid, next: null,})   
+                let current_date = Date.now()
+                let cartItems = partRecordsToCartItems(records)
+                let newInfo = {
+                    next: 'deleted',
+                    building: req.user.building,
+                    location: "Parts Room",
+                    date_created: current_date,
+                    by: req.user.user_id
+                }
+                // Find all records associated with asset
+                await updatePartsAsync(newInfo, { nxid, next: null,}, cartItems, false)
+                // Delete the part image
+                const targetPath = path.join(UPLOAD_DIRECTORY, 'images/parts', `${nxid}.webp`)
+                if(fs.existsSync(targetPath))
+                    fs.unlinkSync(targetPath)
                 res.status(200).send("Successfully deleted part and records");
-            })
-            const targetPath = path.join(UPLOAD_DIRECTORY, 'images/parts', `${nxid}.webp`)
-            if(fs.existsSync(targetPath))
-                fs.unlinkSync(targetPath)
+            });
             // Success
         } catch (err) {
             // Error
@@ -852,7 +856,6 @@ const partManager = {
     getUserInventory: async (req: Request, res: Response) => {
         try {
             const { user_id } = req.query.user_id ? req.query : req.user
-            console.log(user_id)
             // Fetch part records
             PartRecord.find({ next: null, owner: user_id ? user_id : req.user.user_id }, async (err: MongooseError, records: PartRecordSchema[]) => {
                 if (err) {

@@ -628,7 +628,7 @@ const userManager = {
                         by: user, 
                         date_created: {$gte: startDate, $lte: endDate},
                         asset_tag: { $ne: null },
-                        prev: {$ne: null}
+                        //prev: {$ne: null}
                     }
                 },
                 {
@@ -710,9 +710,14 @@ const userManager = {
                     return 1
                 return -1
             })
-            .filter((a, i, arr)=>{return i===arr.findIndex((b)=>{
+            assetUpdates = assetUpdates
+            .filter((a, i, arr)=>{return i===assetUpdates.findIndex((b)=>{
                 return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag
             })})
+            assetUpdates.map((a)=>{
+                if(a.date.getTime()==1697134965341||a.date.getTime()==1697134965568)
+                    console.log(a.asset_tag+": "+a.date.getTime())
+            })
             let totalUpdates = assetUpdates.length
             
             let returnValue = await Promise.all(assetUpdates.splice(pageSkip, pageSize).map((a)=>{

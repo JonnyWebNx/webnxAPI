@@ -24,7 +24,8 @@ import {
     updatePartsAsync,
     assetsAreSimilar,
     userHasInInventoryAsync,
-    partRecordsToCartItemsWithInfoAsync
+    partRecordsToCartItemsWithInfoAsync,
+    partRecordsToCartItems
 } from "./methods/assetMethods.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { getNumPages, getPageNumAndSize, getTextSearchParams } from "./methods/genericMethods.js";
@@ -387,25 +388,30 @@ const assetManager = {
             const asset_tag = req.query.asset_tag as string
             if (!asset_tag||!isValidAssetTag(asset_tag))
                 return res.status(400).send("Invalid request");
-            // Find all parts records associated with asset tag
-            let records = await PartRecord.find({ asset_tag, next: null,})   
-            let current_date = Date.now()
-            // Find all records associated with asset
-            await Promise.all(records.map(async (record) => {
-                // Mark as deleted
-                await PartRecord.findByIdAndUpdate(record._id, {next: "deleted"})
-            }))
-            // Find asset
-            Asset.findOne({asset_tag, next: null}, (err: CallbackError, ass: AssetSchema) => {
+            Asset.findOne({asset_tag, next: null}, async (err: CallbackError, ass: AssetSchema) => {
                 if(err) {
                     res.status(500).send("API could not handle your request: "+err);
                     return;
                 }
-                let asset = JSON.parse(JSON.stringify(ass)) as AssetSchema
+                // Find all parts records associated with asset tag
+                let records = await PartRecord.find({ asset_tag, next: null,})   
+                let current_date = Date.now()
+                let cartItems = partRecordsToCartItems(records)
+                let newInfo = {
+                    next: 'deleted',
+                    building: ass.building,
+                    asset_tag: ass.asset_tag,
+                    location: "Asset",
+                    date_created: current_date,
+                    by: req.user.user_id
+                }
+                // Find all records associated with asset
+                await updatePartsAsync(newInfo, { asset_tag, next: null,}, cartItems, false)
+                // Find asset
+                let asset = JSON.parse(JSON.stringify(ass))
                 asset.prev = asset._id
                 asset.next = "deleted"
                 asset.date_created = new Date(current_date)
-                asset.prev_pallet = asset.pallet
                 delete asset._id
                 // Create new iteration of asset
                 Asset.create(asset, callbackHandler.updateAssetAndReturn(res))

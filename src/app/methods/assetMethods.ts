@@ -390,7 +390,7 @@ export function returnAsset(res: Response) {
 export function getAddedPartsAssetAsync(asset_tag: string, date: Date) {
     return PartRecord.aggregate([
         {
-            $match: { asset_tag: asset_tag, date_created: date }
+            $match: { asset_tag: asset_tag, date_created: date, next: {$ne: 'deleted'} }
         },
         {
             $group: { 
@@ -467,9 +467,12 @@ export function getAssetEventAsync(asset_tag: string, d: Date) {
         let existing = await getExistingPartsAssetAsync(asset_tag, d)
         // Find current asset iteratio
         let current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, date_replaced: { $gt: d }}) as AssetSchema
-        // 
+        // If most recent iteration of asset
         if(current_asset==null)
-            current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, next: null }) as AssetSchema
+            current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, $or:[
+                {next: null},
+                {next:"deleted"}
+            ]}) as AssetSchema
         // Who updated
         let by = ""
         // Added parts for mapping

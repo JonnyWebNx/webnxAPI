@@ -53,22 +53,20 @@ function wait(time: number) {
 function partsListsMatch(reqList: CartItem[], resList: CartItem[]) {
     let tempReqList = JSON.parse(JSON.stringify(reqList)) as CartItem[]
     let tempResList = JSON.parse(JSON.stringify(resList)) as CartItem[]
-    tempReqList.sort((e, i) => {
+    tempReqList = tempReqList.sort((e, i) => {
         if(e.nxid > i.nxid )
             return 1
         if(e.nxid < i.nxid)
             return -1
         return 0
     })
-    tempResList.sort((e, i) => {
+    tempResList = tempResList.sort((e, i) => {
         if(e.nxid > i.nxid )
             return 1
         if(e.nxid < i.nxid)
             return -1
         return 0
     })
-    console.log(JSON.stringify(tempReqList))
-    console.log(JSON.stringify(tempResList))
     return (JSON.stringify(tempReqList)==JSON.stringify(tempResList))||(tempReqList.length==0&&tempResList.length==0)
 }
 
@@ -370,16 +368,12 @@ describe("Update pallet", () => {
                 .set("Authorization", token)
                 .send({ pallet, parts: startInventory})
             expect(update1res.status).toBe(200)
-            await wait(500)
             // Make sure inventory matches start pallet
             let invRes2 = await request("localhost:4001")
                 .get("/api/user/inventory")
                 .set("Authorization", token)
             expect(invRes2.status).toBe(200)
             expect(partsListsMatch(startPalletParts, invRes2.body.records as CartItem[])).toBe(true)
-            console.log(invRes2.body.records)
-            console.log(startPalletParts)
-            console.log(startInventory)
             // Make sure pallet matches start inventory
             let palletPartRes2 = await request("localhost:4001")
                 .get(`/api/pallet/parts?pallet_tag=${PALLET_TAG}`)
@@ -392,7 +386,6 @@ describe("Update pallet", () => {
                 .set("Authorization", token)
                 .send({ pallet, parts: startPalletParts})
             expect(update2res.status).toBe(200)
-            await wait(500)
             // Get end pallet parts
             let palletPartRes3 = await request("localhost:4001")
                 .get(`/api/pallet/parts?pallet_tag=${PALLET_TAG}`)
@@ -408,14 +401,16 @@ describe("Update pallet", () => {
             // Make sure start and end lists match
             expect(partsListsMatch(startPalletParts, afterPalletPartList)).toBe(true)
             expect(partsListsMatch(startInventory, afterInv)).toBe(true)
-            console.log(startInventory)
-            console.log(afterInv)
             jest.useFakeTimers()
         }
     }
     it("Tech can add and remove parts with correct quantities", addAndRemoveParts(TECH_TOKEN!))
     it("Clerk can add and remove parts with correct quantities", addAndRemoveParts(INVENTORY_TOKEN!))
     it("Admin can add and remove parts with correct quantities", addAndRemoveParts(ADMIN_TOKEN!))
+})
+
+describe("",()=>{
+
 })
 
 // Test serialized parts
