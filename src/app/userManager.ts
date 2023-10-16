@@ -26,15 +26,20 @@ import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
 import { getAssetEventAsync } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate } from './methods/genericMethods.js';
+import { isValidPartID } from './methods/partMethods.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
 
-export function getAllTechsDatesAsync(startDate: Date, endDate: Date) {
+export function getAllTechsDatesAsync(startDate: Date, endDate: Date, nxids?: string[]) {
     return new Promise<Date[]>(async (res)=>{
         let dates = [] as Date[]
         // Get parts added
-        dates = dates.concat(await PartRecord.find({owner: "all", date_created: { $gte: startDate, $lte: endDate}}).distinct("date_created") as Date[])
+        dates = dates.concat(await PartRecord.find({owner: "all", date_created: { $gte: startDate, $lte: endDate},
+            nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
+        }).distinct("date_created") as Date[])
         // Get parts removed
-        dates = dates.concat(await PartRecord.find({owner: "all", date_replaced: { $gte: startDate, $lte: endDate}}).distinct("date_replaced") as Date[])
+        dates = dates.concat(await PartRecord.find({owner: "all", date_replaced: { $gte: startDate, $lte: endDate},
+            nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
+        }).distinct("date_replaced") as Date[])
         // Sort dates
         dates = dates.sort((a: Date, b: Date) => { 
             if (a < b)
@@ -51,10 +56,12 @@ export function getAllTechsDatesAsync(startDate: Date, endDate: Date) {
     })
 }
 
-export function getAddedPartsAllTechsAsync(date: Date) {
+export function getAddedPartsAllTechsAsync(date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
-            $match: { owner: "all", date_created: date }
+            $match: { owner: "all", date_created: date,
+                nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
+            }
         },
         {
             $group: { 
@@ -73,10 +80,12 @@ export function getAddedPartsAllTechsAsync(date: Date) {
     ])
 }
 
-export function getRemovedPartsAllTechsAsync(date: Date) {
+export function getRemovedPartsAllTechsAsync(date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
-            $match: { owner: "all", date_replaced: date }
+            $match: { owner: "all", date_replaced: date,
+                nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
+            }
         },
         {
             $group: { 
@@ -97,13 +106,14 @@ export function getRemovedPartsAllTechsAsync(date: Date) {
     ])
 }
 
-export function getExistingPartsAllTechsAsync(date: Date) {
+export function getExistingPartsAllTechsAsync(date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
             $match: { owner: "all", date_created: { $lt: date }, $or: [
                     {date_replaced: null}, 
                     {date_replaced: { $gt: date }}
-                ]
+                ],
+                nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
             }
         },
         {
@@ -123,11 +133,11 @@ export function getExistingPartsAllTechsAsync(date: Date) {
     ])
 }
 
-export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxid?: string) {
+export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxids?: string[]) {
     return new Promise<Date[]>(async (res)=>{
         let dates = await PartRecord.find({
             // Find new records in data range
-            nxid: nxid ? nxid : { $ne: undefined },
+            nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
             date_created: { $lte: endDate, $gte: startDate },
             $or: [
                 {prev: null},
@@ -162,11 +172,11 @@ export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxid?: st
     })
 }
 
-export function getPartsAddedAsync(date: Date, nxid?: string) {
+export function getPartsAddedAsync(date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
             $match: {
-                nxid: nxid ? nxid : { $ne: undefined },
+                nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
                 date_created: date,
                 prev: null
             }
@@ -187,11 +197,11 @@ export function getPartsAddedAsync(date: Date, nxid?: string) {
         }
     ])
 }
-export function getPartsRemovedAsync(date: Date, nxid?: string) {
+export function getPartsRemovedAsync(date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
             $match: {
-                nxid: nxid ? nxid : { $ne: undefined },
+                nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
                 date_created: date,
                 $expr: {
                     $eq: [
@@ -224,15 +234,17 @@ export function getPartsRemovedAsync(date: Date, nxid?: string) {
     ])
 }
 
-export function getPartEventAsync(date: Date, nxid?: string) {
+export function getPartEventAsync(date: Date, nxids?: string[]) {
     return new Promise<{ date: Date, info: PartRecordSchema, added: CartItem[], removed: CartItem[] }>(async (res)=>{
         // Try to get an added part
-        let filterQ = await PartRecord.findOne({prev: null, date_created: date, nxid: nxid ? nxid : { $ne: undefined }})
+        let filterQ = await PartRecord.findOne({prev: null, date_created: date,
+                nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
+        })
         // If no added part
         if(!filterQ) {
             // Find a removed part
             filterQ = await PartRecord.findOne({date_created: date,
-                nxid: nxid ? nxid : { $ne: undefined },
+                nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
                 $expr: {
                     $eq: [
                         {
@@ -267,19 +279,19 @@ export function getPartEventAsync(date: Date, nxid?: string) {
 
         }
         // Get added parts
-        let added = await getPartsAddedAsync(date, nxid)
+        let added = await getPartsAddedAsync(date, nxids)
         // Get removed parts
-        let removed = await getPartsRemovedAsync(date, nxid)
+        let removed = await getPartsRemovedAsync(date, nxids)
         // Return history event
         res({ date, info: filter, added, removed })
     })
 }
 
-export function getAllTechsEventAsync(date: Date) {
+export function getAllTechsEventAsync(date: Date, nxids?: string[]) {
     return new Promise<{by: string, date: Date, existing: CartItem[], added: CartItem[], removed: CartItem[]}>(async (res)=>{
-        let existing = await getExistingPartsAllTechsAsync(date)
-        let added = await getAddedPartsAllTechsAsync(date)
-        let removed = await getRemovedPartsAllTechsAsync(date)
+        let existing = await getExistingPartsAllTechsAsync(date, nxids)
+        let added = await getAddedPartsAllTechsAsync(date, nxids)
+        let removed = await getRemovedPartsAllTechsAsync(date, nxids)
         let by = ""
         // Get by from added
         if(added.length>0) {
@@ -537,10 +549,12 @@ const userManager = {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let user = req.query.user
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
             PartRecord.aggregate([
                 {
                     // Get checkin queue
-                    $match: { next: { $ne: null }, location: "Check In Queue", by: user ? user : { $ne: null }, date_created: { $lte: endDate, $gte: startDate } } 
+                    $match: { next: { $ne: null }, location: "Check In Queue", by: user ? user : { $ne: null }, date_created: { $lte: endDate, $gte: startDate }, nxid: (nxids.length > 0 ? { $in: nxids } : { $ne: null })}
                 },
                 {
                     // GROUP BY DATE, USER, NXID, AND SERIAL
@@ -945,13 +959,17 @@ const userManager = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req);
-            let dates = await getAllTechsDatesAsync(startDate, endDate)
+
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+
+            let dates = await getAllTechsDatesAsync(startDate, endDate, nxids)
             let totalEvents = dates.length
             dates = dates
                 .splice(pageSkip, pageSize)
             // Get history
             let history = await Promise.all(dates.map((d)=>{
-                return getAllTechsEventAsync(d)
+                return getAllTechsEventAsync(d, nxids)
             }))
             // Calculate num pages
             let pages = getNumPages(pageSize, totalEvents)
@@ -966,18 +984,19 @@ const userManager = {
     },
     getPartCreationAndDeletionHistory: async (req: Request, res: Response) => {
         // Get data from query
-        let nxid = req.query.nxid as string | undefined
+        let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+        nxids = nxids.filter((s)=>isValidPartID(s))
         let { pageSize, pageSkip } = getPageNumAndSize(req);
         let { startDate, endDate } = getStartAndEndDate(req);
         // Get event dates
-        let dates = await getPartEventDatesAsync(startDate, endDate, nxid)
+        let dates = await getPartEventDatesAsync(startDate, endDate, nxids)
         // Total number of events
         let total = dates.length
         // Splice to page skip and size
         dates = dates
             .splice(pageSkip, pageSize)
         // Get history from map
-        let history = await Promise.all(dates.map((d)=>getPartEventAsync(d, nxid)))
+        let history = await Promise.all(dates.map((d)=>getPartEventAsync(d, nxids)))
         // Return data
         res.status(200).json({total, numPages: getNumPages(pageSize, total), events: history})
     },

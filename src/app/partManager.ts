@@ -308,18 +308,21 @@ const partManager = {
     getCheckoutHistory: async (req: Request, res: Response) => {
         try {
             // Get location and user info
-            let { location, user, nxid } = req.query;
+            let { location, user } = req.query;
             // Get kiosks
             let kiosks = await getAllKioskNames()
             // Parse page size and page num
             let { pageSize, pageSkip } = getPageNumAndSize(req)
             // Parse start and end date 
             let { startDate, endDate } = getStartAndEndDate(req)
+
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
             // Flexing the MongoDB aggregation pipeline
             PartRecord.aggregate([
                 {
                     // Get checkin queue
-                    $match: { nxid: nxid ? nxid : { $ne: null}, next: { $ne: null }, location: location ? location : { $in: kiosks }, next_owner: user ? user : { $ne: null },
+                    $match: { nxid: (nxids.length > 0 ? { $in: nxids } : { $ne: null }), next: { $ne: null }, location: location ? location : { $in: kiosks }, next_owner: user ? user : { $ne: null },
                         // Check if next is valid ID
                         $expr: {
                             $and: [
