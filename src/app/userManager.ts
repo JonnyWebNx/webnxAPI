@@ -123,7 +123,7 @@ export function getCheckoutDatesAsync(startDate: Date, endDate: Date, user: stri
                 next: { $ne: null }, 
                 location: location != "" ? location : { $in: kiosks }, 
                 next_owner: user != "" ? user : { $ne: null },
-                    // Check if next is valid ID
+                // Check if next is valid ID
                 $expr: {
                     $and: [
 
@@ -155,7 +155,7 @@ export function getCheckoutDatesAsync(startDate: Date, endDate: Date, user: stri
                 },
                 date_replaced: { $gte: startDate, $lte: endDate } 
             } 
-        ).distinct("date_created") as Date[]
+        ).distinct("date_replaced") as Date[]
         // Sort the dates
         dates = dates.sort((a: Date, b: Date) => { 
             if (a < b)
@@ -177,9 +177,10 @@ export function getCheckoutEventsAsync(dates: Date[], user: string, location: st
                     // Get checkin queue
                     nxid: (nxids&&nxids.length > 0 ? { $in: nxids } : { $ne: null }), 
                     next: { $ne: null }, 
-                    location: location != "" ? location : { $in:  kiosks}, 
+
+                    location: location != "" ? location : { $in: kiosks}, 
                     next_owner: user != "" ? user : { $ne: null },
-                        // Check if next is valid ID
+                    // Check if next is valid ID
                     $expr: {
                         $and: [
 
@@ -447,7 +448,6 @@ export function getPartsRemovedAsync(date: Date, nxids?: string[]) {
                             $convert: {
                                 input: "$next",
                                 to: "objectId",
-                                onError: "bad"
                             }
                         },
                         "bad"
@@ -818,7 +818,7 @@ const userManager = {
             // Get user filter
             let user = req.query.user ? req.query.user as string : ""
             // Get location filter
-            let location = req.query.location? req.query.location as string :""
+            let location = req.query.location ? req.query.location as string : ""
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
@@ -832,7 +832,7 @@ const userManager = {
             dates = dates
                 .splice(pageSkip, pageSize)
             // Get the actual check in events.
-            let checkouts = getCheckoutEventsAsync(dates, user, location, hideOtherParts ? nxids : undefined)
+            let checkouts = await getCheckoutEventsAsync(dates, user, location, hideOtherParts ? nxids : undefined)
             // Return to client
             res.status(200).json({total, checkouts});
         } catch (err) {
@@ -941,10 +941,6 @@ const userManager = {
             .filter((a, i, arr)=>{return i===assetUpdates.findIndex((b)=>{
                 return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag
             })})
-            assetUpdates.map((a)=>{
-                if(a.date.getTime()==1697134965341||a.date.getTime()==1697134965568)
-                    console.log(a.asset_tag+": "+a.date.getTime())
-            })
             let totalUpdates = assetUpdates.length
             
             let returnValue = await Promise.all(assetUpdates.splice(pageSkip, pageSize).map((a)=>{
