@@ -81,7 +81,6 @@ app.post("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), p
 app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "lead", "admin"]), sanitize, partManager.movePartRecords);
 app.post("/api/part/sell", auth, checkRoles(["ebay", "lead", "admin"]), sanitize, partManager.sellOnEbay);
 app.get("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.getCheckinQueue)
-app.get("/api/checkout/history", auth, sanitize, checkRoles(['lead', 'clerk', 'admin']), partManager.getCheckoutHistory)
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
@@ -110,6 +109,7 @@ app.get("/api/user/all", auth, checkRoles(["tech", "kiosk", "clerk", "admin"]), 
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 app.get('/api/user/roles', auth, sanitize, userManager.checkRoles)
 app.get('/api/user/checkins', auth, sanitize, userManager.getUserCheckins)
+app.get("/api/checkout/history", auth, sanitize, checkRoles(['lead', 'clerk', 'admin']), userManager.getUserCheckouts) 
 app.get('/api/user/alltechs', auth, sanitize, userManager.getAllTechsHistory)
 app.get('/api/user/assetsUpdated', auth, sanitize, userManager.getUserAssetUpdates)
 app.get('/api/user/assetsUpdated/noDetails', auth, sanitize, userManager.getUserAssetUpdatesNoDetails)

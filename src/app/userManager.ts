@@ -26,8 +26,246 @@ import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
 import { getAssetEventAsync } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate } from './methods/genericMethods.js';
-import { isValidPartID } from './methods/partMethods.js';
+import { getAllKioskNames, isValidPartID } from './methods/partMethods.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
+
+
+export function getCheckinDatesAsync(startDate: Date, endDate: Date, user_id: string, nxids?: string[]) {
+    return new Promise<Date[]>(async (res)=>{
+        // Get the dates, filter by NXID or user_id if needed
+        let dates = await PartRecord.find(
+            {
+                    next: { $ne: null },
+                    location: "Check In Queue",
+                    by: user_id != "" ? user_id : { $ne: null },
+                    date_created: { $lte: endDate, $gte: startDate },
+                    nxid: (nxids&&nxids.length > 0 ? { $in: nxids } : { $ne: null })
+            }
+        ).distinct("date_created") as Date[]
+        // Sort the dates
+        dates = dates.sort((a: Date, b: Date) => { 
+            if (a < b)
+                return 1
+            return -1
+        })
+        // Return the dates
+        res(dates)
+    })
+}
+
+export function getCheckinEventsAsync(dates: Date[], user_id?: string, nxids?: string[]) {
+    return PartRecord.aggregate([
+        {
+            // Get checkin queue
+            $match: {
+                next: { $ne: null },
+                location: "Check In Queue",
+                by: user_id != "" ? user_id : { $ne: null },
+                date_created: { $in: dates },
+                nxid: (nxids&&nxids.length > 0 ? { $in: nxids } : { $ne: null })}
+        },
+        {
+            // GROUP BY DATE, USER, NXID, AND SERIAL
+            $group: {
+                _id: { date: "$date_created", by: "$by", nxid: "$nxid", serial: "$serial", next_owner: "$next_owner" },
+                // GET QUANTITY
+                quantity: { $sum: 1 } 
+            }
+        },
+        {
+            // GROUP BY DATA AND USER
+            $group: {
+                _id: { date: "$_id.date", by: "$_id.by" },
+                // PUSH NXID, SERIAL, AND QUANTITY to array
+                parts: { 
+                    $push: { 
+                        nxid: "$_id.nxid", 
+                        serial: "$_id.serial", 
+                        // Remove quantity for serialized
+                        quantity: {
+                            $cond: [
+                                {$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"
+                            ]
+                        },  
+                        // IF next owner exists, part was denied
+                        approved: {
+                            $cond: [ 
+                                {$eq: ["$_id.next_owner", "$arbitraryNonExistentField"]}, true, false
+                            ]
+                        }
+                    } 
+                }
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                date: "$_id.date",
+                by: "$_id.by",
+                parts: "$parts"
+            }
+        },
+        {
+            $sort: {
+                "date": -1
+            }
+        },
+    ])
+}
+
+export function getCheckoutDatesAsync(startDate: Date, endDate: Date, user: string, location: string, nxids?: string[]) {
+    return new Promise<Date[]>(async (res)=>{
+        let kiosks = await getAllKioskNames()
+        let dates = await PartRecord.find(
+            {
+                // Get checkin queue
+                nxid: (nxids&&nxids.length > 0 ? { $in: nxids } : { $ne: null }), 
+                next: { $ne: null }, 
+                location: location != "" ? location : { $in: kiosks }, 
+                next_owner: user != "" ? user : { $ne: null },
+                    // Check if next is valid ID
+                $expr: {
+                    $and: [
+
+                        {
+                            $ne: [
+                                {
+                                    $convert: {
+                                        input: "$next",
+                                        to: "objectId",
+                                        onError: "bad"
+                                    }
+                                },
+                                "bad"
+                            ]
+                        },
+                        {
+                            $ne: [
+                                {
+                                    $convert: {
+                                        input: "$next_owner",
+                                        to: "objectId",
+                                        onError: "bad"
+                                    }
+                                },
+                                "bad"
+                            ]
+                        }
+                    ]
+                },
+                date_replaced: { $gte: startDate, $lte: endDate } 
+            } 
+        ).distinct("date_created") as Date[]
+        // Sort the dates
+        dates = dates.sort((a: Date, b: Date) => { 
+            if (a < b)
+                return 1
+            return -1
+        })
+        // Return the dates
+        res(dates)
+    })
+}
+
+export function getCheckoutEventsAsync(dates: Date[], user: string, location: string, nxids?: string[]) {
+    return new Promise(async (res)=>{
+        let kiosks = await getAllKioskNames()
+        let events = await PartRecord.aggregate([
+            {
+                // Get checkin queue
+                $match: { 
+                    // Get checkin queue
+                    nxid: (nxids&&nxids.length > 0 ? { $in: nxids } : { $ne: null }), 
+                    next: { $ne: null }, 
+                    location: location != "" ? location : { $in:  kiosks}, 
+                    next_owner: user != "" ? user : { $ne: null },
+                        // Check if next is valid ID
+                    $expr: {
+                        $and: [
+
+                            {
+                                $ne: [
+                                    {
+                                        $convert: {
+                                            input: "$next",
+                                            to: "objectId",
+                                            onError: "bad"
+                                        }
+                                    },
+                                    "bad"
+                                ]
+                            },
+                            {
+                                $ne: [
+                                    {
+                                        $convert: {
+                                            input: "$next_owner",
+                                            to: "objectId",
+                                            onError: "bad"
+                                        }
+                                    },
+                                    "bad"
+                                ]
+                            }
+                        ]
+                    },
+                    date_replaced: { $in: dates }
+                } 
+            },
+            {
+                $project: {
+                    nxid: 1,
+                    date_replaced: 1,
+                    serial: 1,
+                    location: 1,
+                    owner: {
+                        $convert: {
+                            input: "$next_owner",
+                            to: "objectId"
+                        }
+                    }
+                }
+            },
+            {
+                // GROUP BY DATE, USER, NXID, AND SERIAL
+                $group: {
+                    _id: { date: "$date_replaced", nxid: "$nxid", serial: "$serial", location: "$location", owner: "$owner" },
+                    next: {$push: "$next"},
+                    // GET QUANTITY
+                    quantity: { $sum: 1 } 
+                }
+            },
+            // Group parts on same checkout together
+            {
+                // GROUP BY DATA AND USER
+                $group: {
+                    _id: { date: "$_id.date", location: "$_id.location", owner: "$_id.owner" },
+                    next: { $push: "$next" },
+                    // PUSH NXID, SERIAL, AND QUANTITY to array
+                    // Comparing to undefined or null always returned false, so $arbitraryNonExistentField is used to check if serial exists or not
+                    parts: { $push: { nxid: "$_id.nxid", serial: "$_id.serial", quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]} } },
+                }
+            },
+            // Restructure object
+            {
+                $project: {
+                    _id: 0,
+                    date: "$_id.date",
+                    by:  "$_id.owner",
+                    location: "$_id.location",
+                    parts: "$parts"
+                }
+            },
+            // Sort by date in descending order
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])
+        res(events)
+    })
+}
 
 export function getAllTechsDatesAsync(startDate: Date, endDate: Date, nxids?: string[]) {
     return new Promise<Date[]>(async (res)=>{
@@ -348,7 +586,6 @@ export function getAllTechsEventAsync(date: Date, nxids?: string[]) {
     })
 }
 
-
 // Main object containing functions
 const userManager = {
     // Read
@@ -548,80 +785,24 @@ const userManager = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
-            let user = req.query.user
+            let user = req.query.user ? req.query.user as string : ""
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
-            PartRecord.aggregate([
-                {
-                    // Get checkin queue
-                    $match: { next: { $ne: null }, location: "Check In Queue", by: user ? user : { $ne: null }, date_created: { $lte: endDate, $gte: startDate }, nxid: (nxids.length > 0 ? { $in: nxids } : { $ne: null })}
-                },
-                {
-                    // GROUP BY DATE, USER, NXID, AND SERIAL
-                    $group: {
-                        _id: { date: "$date_created", by: "$by", nxid: "$nxid", serial: "$serial", next_owner: "$next_owner" },
-                        // GET QUANTITY
-                        quantity: { $sum: 1 } 
-                    }
-                },
-                {
-                    // GROUP BY DATA AND USER
-                    $group: {
-                        _id: { date: "$_id.date", by: "$_id.by" },
-                        // PUSH NXID, SERIAL, AND QUANTITY to array
-                        parts: { 
-                            $push: { 
-                                nxid: "$_id.nxid", 
-                                serial: "$_id.serial", 
-                                // Remove quantity for serialized
-                                quantity: {
-                                    $cond: [
-                                        {$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"
-                                    ]
-                                },  
-                                // IF next owner exists, part was denied
-                                approved: {
-                                    $cond: [ 
-                                        {$eq: ["$_id.next_owner", "$arbitraryNonExistentField"]}, true, false
-                                    ]
-                                }
-                            } 
-                        }
-                    }
-                },
-                {
-                    $project: {
-                        _id: 0,
-                        date: "$_id.date",
-                        by: "$_id.by",
-                        parts: "$parts"
-                    }
-                },
-                {
-                    $sort: {
-                        "date": -1
-                    }
-                },
-                {
-                    $group: {
-                        _id: null,
-                        total: {$sum: 1},
-                        checkins: {$push: "$$ROOT"}
-                    }
-                },
-                {
-                    $project: {
-                        _id: 0,
-                        total: 1,
-                        checkins: {$slice: ["$checkins", pageSkip, pageSize]}
-                    }
-                }
-            ]).exec((err, result)=>{
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            // Get the check in dates using filters
+            let dates = await getCheckinDatesAsync(startDate, endDate, user, nxids)
+            // Total number of events
+            let total = dates.length
+            // Splice to page skip and size
+            dates = dates
+                .splice(pageSkip, pageSize)
+            // Get the actual check in events.
+            getCheckinEventsAsync(dates, user, hideOtherParts ? nxids : undefined).exec((err, checkins)=>{
                 if(err) {
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 // Return to client
-                res.status(200).json(result.length&&result.length>0?result[0]:{total: 0, checkins: []});
+                res.status(200).json({total, checkins});
             })
         } catch (err) {
             // Error
@@ -629,6 +810,38 @@ const userManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
+    getUserCheckouts: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            // Get user filter
+            let user = req.query.user ? req.query.user as string : ""
+            // Get location filter
+            let location = req.query.location? req.query.location as string :""
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            // Check if other parts should be hidden
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            // Get the check in dates using filters
+            let dates = await getCheckoutDatesAsync(startDate, endDate, user, location, nxids)
+            // Total number of events
+            let total = dates.length
+            // Splice to page skip and size
+            dates = dates
+                .splice(pageSkip, pageSize)
+            // Get the actual check in events.
+            let checkouts = getCheckoutEventsAsync(dates, user, location, hideOtherParts ? nxids : undefined)
+            // Return to client
+            res.status(200).json({total, checkouts});
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+
 
     getUserAssetUpdates: async (req: Request, res: Response) => {
         try {
@@ -960,6 +1173,7 @@ const userManager = {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req);
 
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
 
@@ -969,7 +1183,7 @@ const userManager = {
                 .splice(pageSkip, pageSize)
             // Get history
             let history = await Promise.all(dates.map((d)=>{
-                return getAllTechsEventAsync(d, nxids)
+                return getAllTechsEventAsync(d, hideOtherParts ? nxids : undefined)
             }))
             // Calculate num pages
             let pages = getNumPages(pageSize, totalEvents)
@@ -988,6 +1202,7 @@ const userManager = {
         nxids = nxids.filter((s)=>isValidPartID(s))
         let { pageSize, pageSkip } = getPageNumAndSize(req);
         let { startDate, endDate } = getStartAndEndDate(req);
+        let hideOtherParts = req.query.hideOthers == "true" ? true : false
         // Get event dates
         let dates = await getPartEventDatesAsync(startDate, endDate, nxids)
         // Total number of events
@@ -996,7 +1211,7 @@ const userManager = {
         dates = dates
             .splice(pageSkip, pageSize)
         // Get history from map
-        let history = await Promise.all(dates.map((d)=>getPartEventAsync(d, nxids)))
+        let history = await Promise.all(dates.map((d)=>getPartEventAsync(d, hideOtherParts ? nxids : undefined)))
         // Return data
         res.status(200).json({total, numPages: getNumPages(pageSize, total), events: history})
     },
