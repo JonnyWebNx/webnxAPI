@@ -44,57 +44,81 @@ server.listen(port, () => {
 //     console.log("Done")
 // })
 // 
-Asset.find({next: { $ne: null} }, async (err: MongooseError, res: AssetSchema[]) => {
-    if(err)
-        return
-    let update_count = 0
-    let delete_count = 0
-    await Promise.all(res.filter((r)=>r.date_replaced!=null).map((r)=>{
-        return new Promise<void>((res)=>{
-            if(r.next==r._id&&r.prev==r._id)
-                Asset.findByIdAndDelete(r._id, {}, (err)=>{
-                    if(err)
-                        console.log(err)
-                    delete_count++
-                    res()
-                })
-            else
-                Asset.findByIdAndUpdate(r.next, { date_created: r.date_replaced }, (err, asset) =>{
-                    if(err)
-                        console.log(err)
-                    if(!asset)
-                        console.log("Asset not found")
-                    update_count++
-                    res()
-                })
-        })
-    }))
-    console.log("Assets updated: "+update_count)
-    console.log("Assets deleted: "+delete_count)
-    console.log("Done")
-})
+// Asset.find({next: { $ne: null} }, async (err: MongooseError, res: AssetSchema[]) => {
+//     if(err)
+//         return
+//     let update_count = 0
+//     let delete_count = 0
+//     await Promise.all(res.filter((r)=>r.date_replaced!=null).map((r)=>{
+//         return new Promise<void>((res)=>{
+//             if(r.next==r._id&&r.prev==r._id)
+//                 Asset.findByIdAndDelete(r._id, {}, (err)=>{
+//                     if(err)
+//                         console.log(err)
+//                     delete_count++
+//                     res()
+//                 })
+//             else
+//                 Asset.findByIdAndUpdate(r.next, { date_created: r.date_replaced }, (err, asset) =>{
+//                     if(err)
+//                         console.log(err)
+//                     if(!asset)
+//                         console.log("Asset not found")
+//                     update_count++
+//                     res()
+//                 })
+//         })
+//     }))
+//     console.log("Assets updated: "+update_count)
+//     console.log("Assets deleted: "+delete_count)
+//     console.log("Done")
+// })
 // 
-PartRecord.find({next: null}, async (err: MongooseError, res: PartRecordSchema[]) => {
-    let orphaned = 0
-    // For all records
-    await Promise.all(res.map((r)=>{
-        return new Promise<string>(async (res)=>{
-            // Set starting value
-            let current_record = r
-            // Check if prev is null
-            while(current_record.prev!=null) {
-                // Find previous
-                let temp = await PartRecord.findById(current_record.prev) as PartRecordSchema
-                // Compare fields
-                if(current_record._id!=temp?.next||current_record.prev!=temp?._id) {
-                    orphaned++
-                }
-                current_record = temp
-            }
-            // Resolve promise
-            res("")
-        })
-    }))
-    if(orphaned>0)
-        handleError("Orphaned records: "+orphaned)
-})
+// PartRecord.find({next: null}, async (err: MongooseError, res: PartRecordSchema[]) => {
+//     let orphaned = 0
+//     // For all records
+//     await Promise.all(res.map((r)=>{
+//         return new Promise<string>(async (res)=>{
+//             // Set starting value
+//             let current_record = r
+//             // Check if prev is null
+//             while(current_record.prev!=null) {
+//                 // Find previous
+//                 let temp = await PartRecord.findById(current_record.prev) as PartRecordSchema
+//                 // Compare fields
+//                 if(current_record._id!=temp?.next||current_record.prev!=temp?._id) {
+//                     orphaned++
+//                 }
+//                 current_record = temp
+//             }
+//             // Resolve promise
+//             res("")
+//         })
+//     }))
+//     if(orphaned>0)
+//         handleError("Orphaned records: "+orphaned)
+// })
+
+// PartRecord.find({next_owner: {$ne: null}}, async (err: MongooseError, res: any[]) => {
+//     let orphaned = 0
+//     console.log(res.length)
+//     // For all records
+//     await Promise.all(res.map((r)=>{
+//         return new Promise<void>(async (res)=>{
+//             let p = await PartRecord.findById(r.next) as any
+//             if(!p) {
+//                 console.log("test")
+//                 PartRecord.findOneAndUpdate(r._id, {next_owner: undefined})
+//                 orphaned++
+//             }
+//             if(p&&(p.owner!=r.next_owner)) {
+//                 console.log(p.owner)
+//                 console.log(r.owner)
+//                 orphaned++
+//             }
+//             // Resolve promise
+//             res()
+//         })
+//     }))
+//     handleError("Broken records: "+orphaned)
+// })

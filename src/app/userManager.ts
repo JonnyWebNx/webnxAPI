@@ -30,14 +30,14 @@ import { getAllKioskNames, isValidPartID } from './methods/partMethods.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
 
 
-export function getCheckinDatesAsync(startDate: Date, endDate: Date, user_id: string, nxids?: string[]) {
+export function getCheckinDatesAsync(startDate: Date, endDate: Date, users: string[] | undefined, nxids: string[] | undefined) {
     return new Promise<Date[]>(async (res)=>{
         // Get the dates, filter by NXID or user_id if needed
         let dates = await PartRecord.find(
             {
                     next: { $ne: null },
                     location: "Check In Queue",
-                    by: user_id != "" ? user_id : { $ne: null },
+                    by: (users&&users.length > 0 ? { $in: users } : { $ne: null }),
                     date_created: { $lte: endDate, $gte: startDate },
                     nxid: (nxids&&nxids.length > 0 ? { $in: nxids } : { $ne: null })
             }
@@ -53,14 +53,14 @@ export function getCheckinDatesAsync(startDate: Date, endDate: Date, user_id: st
     })
 }
 
-export function getCheckinEventsAsync(dates: Date[], user_id?: string, nxids?: string[]) {
+export function getCheckinEventsAsync(dates: Date[], users: string[] | undefined, nxids?: string[]) {
     return PartRecord.aggregate([
         {
             // Get checkin queue
             $match: {
                 next: { $ne: null },
                 location: "Check In Queue",
-                by: user_id != "" ? user_id : { $ne: null },
+                by: (users&&users.length > 0 ? { $in: users } : { $ne: null }),
                 date_created: { $in: dates },
                 nxid: (nxids&&nxids.length > 0 ? { $in: nxids } : { $ne: null })}
         },
@@ -113,7 +113,7 @@ export function getCheckinEventsAsync(dates: Date[], user_id?: string, nxids?: s
     ])
 }
 
-export function getCheckoutDatesAsync(startDate: Date, endDate: Date, user: string, location: string, nxids?: string[]) {
+export function getCheckoutDatesAsync(startDate: Date, endDate: Date, users: string[] | undefined, location: string, nxids: string[] | undefined) {
     return new Promise<Date[]>(async (res)=>{
         let kiosks = await getAllKioskNames()
         let dates = await PartRecord.find(
@@ -122,7 +122,7 @@ export function getCheckoutDatesAsync(startDate: Date, endDate: Date, user: stri
                 nxid: (nxids&&nxids.length > 0 ? { $in: nxids } : { $ne: null }), 
                 next: { $ne: null }, 
                 location: location != "" ? location : { $in: kiosks }, 
-                next_owner: user != "" ? user : { $ne: null },
+                next_owner: (users&&users.length > 0 ? { $in: users } : { $ne: null }), 
                 // Check if next is valid ID
                 $expr: {
                     $and: [
@@ -167,7 +167,7 @@ export function getCheckoutDatesAsync(startDate: Date, endDate: Date, user: stri
     })
 }
 
-export function getCheckoutEventsAsync(dates: Date[], user: string, location: string, nxids?: string[]) {
+export function getCheckoutEventsAsync(dates: Date[], users: string[] | undefined, location: string, nxids: string[] | undefined) {
     return new Promise(async (res)=>{
         let kiosks = await getAllKioskNames()
         let events = await PartRecord.aggregate([
@@ -179,7 +179,7 @@ export function getCheckoutEventsAsync(dates: Date[], user: string, location: st
                     next: { $ne: null }, 
 
                     location: location != "" ? location : { $in: kiosks}, 
-                    next_owner: user != "" ? user : { $ne: null },
+                    next_owner: (users&&users.length > 0 ? { $in: users } : { $ne: null }), 
                     // Check if next is valid ID
                     $expr: {
                         $and: [
@@ -222,7 +222,8 @@ export function getCheckoutEventsAsync(dates: Date[], user: string, location: st
                     owner: {
                         $convert: {
                             input: "$next_owner",
-                            to: "objectId"
+                            to: "objectId",
+                            onError: "ERROR"
                         }
                     }
                 }
@@ -268,16 +269,18 @@ export function getCheckoutEventsAsync(dates: Date[], user: string, location: st
     })
 }
 
-export function getAllTechsDatesAsync(startDate: Date, endDate: Date, nxids?: string[]) {
+export function getAllTechsDatesAsync(startDate: Date, endDate: Date, nxids: string[] | undefined, users: string[] | undefined) {
     return new Promise<Date[]>(async (res)=>{
         let dates = [] as Date[]
         // Get parts added
         dates = dates.concat(await PartRecord.find({owner: "all", date_created: { $gte: startDate, $lte: endDate},
-            nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
+            nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
+            by: (users && users.length > 0 ? { $in: users } : { $ne: null })
         }).distinct("date_created") as Date[])
         // Get parts removed
         dates = dates.concat(await PartRecord.find({owner: "all", date_replaced: { $gte: startDate, $lte: endDate},
-            nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
+            nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
+            next_owner: (users && users.length > 0 ? { $in: users } : { $ne: null }),
         }).distinct("date_replaced") as Date[])
         // Sort dates
         dates = dates.sort((a: Date, b: Date) => { 
@@ -295,7 +298,7 @@ export function getAllTechsDatesAsync(startDate: Date, endDate: Date, nxids?: st
     })
 }
 
-export function getAddedPartsAllTechsAsync(date: Date, nxids?: string[]) {
+export function getAddedPartsAllTechsAsync(date: Date, nxids: string[] | undefined) {
     return PartRecord.aggregate([
         {
             $match: { owner: "all", date_created: date,
@@ -319,7 +322,7 @@ export function getAddedPartsAllTechsAsync(date: Date, nxids?: string[]) {
     ])
 }
 
-export function getRemovedPartsAllTechsAsync(date: Date, nxids?: string[]) {
+export function getRemovedPartsAllTechsAsync(date: Date, nxids: string[] | undefined) {
     return PartRecord.aggregate([
         {
             $match: { owner: "all", date_replaced: date,
@@ -345,14 +348,14 @@ export function getRemovedPartsAllTechsAsync(date: Date, nxids?: string[]) {
     ])
 }
 
-export function getExistingPartsAllTechsAsync(date: Date, nxids?: string[]) {
+export function getExistingPartsAllTechsAsync(date: Date, nxids: string[] | undefined) {
     return PartRecord.aggregate([
         {
             $match: { owner: "all", date_created: { $lt: date }, $or: [
                     {date_replaced: null}, 
                     {date_replaced: { $gt: date }}
                 ],
-                nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
+                nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
             }
         },
         {
@@ -372,11 +375,12 @@ export function getExistingPartsAllTechsAsync(date: Date, nxids?: string[]) {
     ])
 }
 
-export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxids?: string[]) {
+export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxids: string[] | undefined, users: string[] | undefined) {
     return new Promise<Date[]>(async (res)=>{
         let dates = await PartRecord.find({
             // Find new records in data range
             nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
+            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
             date_created: { $lte: endDate, $gte: startDate },
             $or: [
                 {prev: null},
@@ -395,7 +399,6 @@ export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxids?: s
                     }
                 }
             ]
-                
         }).distinct("date_created")
         dates = dates
             .filter((d)=>d!=null)
@@ -448,6 +451,7 @@ export function getPartsRemovedAsync(date: Date, nxids?: string[]) {
                             $convert: {
                                 input: "$next",
                                 to: "objectId",
+                                onError: "bad"
                             }
                         },
                         "bad"
@@ -781,28 +785,28 @@ const userManager = {
         }
     },
 
-    getUserCheckins: async (req: Request, res: Response) => {
+    getCheckinHistory: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
-            let user = req.query.user ? req.query.user as string : ""
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
             let hideOtherParts = req.query.hideOthers == "true" ? true : false
             // Get the check in dates using filters
-            let dates = await getCheckinDatesAsync(startDate, endDate, user, nxids)
+            let dates = await getCheckinDatesAsync(startDate, endDate, users, nxids)
             // Total number of events
             let total = dates.length
             // Splice to page skip and size
             dates = dates
                 .splice(pageSkip, pageSize)
             // Get the actual check in events.
-            getCheckinEventsAsync(dates, user, hideOtherParts ? nxids : undefined).exec((err, checkins)=>{
+            getCheckinEventsAsync(dates, users, hideOtherParts ? nxids : undefined).exec((err, checkins)=>{
                 if(err) {
                     return res.status(500).send("API could not handle your request: " + err);
                 }
                 // Return to client
-                res.status(200).json({total, checkins});
+                res.status(200).json({total, pages: getNumPages(pageSize, total), events: checkins});
             })
         } catch (err) {
             // Error
@@ -811,12 +815,12 @@ const userManager = {
         }
     },
 
-    getUserCheckouts: async (req: Request, res: Response) => {
+    getCheckoutHistory: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             // Get user filter
-            let user = req.query.user ? req.query.user as string : ""
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get location filter
             let location = req.query.location ? req.query.location as string : ""
             // Get part id filters
@@ -825,16 +829,16 @@ const userManager = {
             // Check if other parts should be hidden
             let hideOtherParts = req.query.hideOthers == "true" ? true : false
             // Get the check in dates using filters
-            let dates = await getCheckoutDatesAsync(startDate, endDate, user, location, nxids)
+            let dates = await getCheckoutDatesAsync(startDate, endDate, users, location, nxids)
             // Total number of events
             let total = dates.length
             // Splice to page skip and size
             dates = dates
                 .splice(pageSkip, pageSize)
             // Get the actual check in events.
-            let checkouts = await getCheckoutEventsAsync(dates, user, location, hideOtherParts ? nxids : undefined)
+            let checkouts = await getCheckoutEventsAsync(dates, users, location, hideOtherParts ? nxids : undefined)
             // Return to client
-            res.status(200).json({total, checkouts});
+            res.status(200).json({total, pages: getNumPages(pageSize, total), events: checkouts});
         } catch (err) {
             // Error
             handleError(err)
@@ -843,16 +847,16 @@ const userManager = {
     },
 
 
-    getUserAssetUpdates: async (req: Request, res: Response) => {
+    getAssetUpdates: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
-            let user = req.query.user
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Find added parts
             let assetUpdates = await PartRecord.aggregate([
                 {
                     $match: {
-                        by: user, 
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                         date_created: {$gte: startDate, $lte: endDate},
                         asset_tag: { $ne: null },
                         //prev: {$ne: null}
@@ -860,14 +864,15 @@ const userManager = {
                 },
                 {
                     $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_created" }
+                        _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
                     }
                 },
                 {
                     $project: {
                         _id: 0,
                         asset_tag: "$_id.asset_tag",
-                        date: "$_id.date"
+                        date: "$_id.date",
+                        by: "$_id.by"
                     }
                 },
                 {
@@ -880,21 +885,22 @@ const userManager = {
             assetUpdates = assetUpdates.concat(await PartRecord.aggregate([
                 {
                     $match: {
-                        next_owner: user, 
+                        next_owner: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                         asset_tag: { $ne: null },
                         date_replaced: {$gte: startDate, $lte: endDate},
                     }
                 },
                 {
                     $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_replaced" }
+                        _id: { asset_tag: "$asset_tag", date: "$date_replaced", next_owner: "$next_owner" }
                     }
                 },
                 {
                     $project: {
                         _id: 0,
                         asset_tag: "$_id.asset_tag",
-                        date: "$_id.date"
+                        date: "$_id.date",
+                        by: "$_id.next_owner"
                     }
                 },
                 {
@@ -907,21 +913,22 @@ const userManager = {
             assetUpdates = assetUpdates.concat(await Asset.aggregate([
                 {
                     $match: {
-                        by: user, 
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                         date_created: {$gte: startDate, $lte: endDate},
                         prev: {$ne: null}
                     }
                 },
                 {
                     $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_created" }
+                        _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
                     }
                 },
                 {
                     $project: {
                         _id: 0,
                         asset_tag: "$_id.asset_tag",
-                        date: "$_id.date"
+                        date: "$_id.date",
+                        by: "$_id.by"
                     }
                 },
                 {
@@ -933,13 +940,13 @@ const userManager = {
             // Get all the dates of asset related events
             assetUpdates = assetUpdates
             .sort((a, b)=>{
-                if (a.date < b.date)
+                if (a.date.getTime() < b.date.getTime())
                     return 1
                 return -1
             })
             assetUpdates = assetUpdates
             .filter((a, i, arr)=>{return i===assetUpdates.findIndex((b)=>{
-                return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag
+                return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag&&a.by==b.by
             })})
             let totalUpdates = assetUpdates.length
             
@@ -954,31 +961,33 @@ const userManager = {
         }
     },
 
-    getUserAssetUpdatesNoDetails: async (req: Request, res: Response) => {
+    getAssetUpdatesNoDetails: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
-            let user = req.query.user
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            console.log(users)
             // Find added parts
             let assetUpdates = await PartRecord.aggregate([
                 {
                     $match: {
-                        by: user, 
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                         date_created: {$gte: startDate, $lte: endDate},
                         asset_tag: { $ne: null },
-                        prev: {$ne: null}
+                        // prev: {$ne: null}
                     }
                 },
                 {
                     $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_created" }
+                        _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
                     }
                 },
                 {
                     $project: {
                         _id: 0,
                         asset_tag: "$_id.asset_tag",
-                        date: "$_id.date"
+                        date: "$_id.date",
+                        by: "$_id.by"
                     }
                 },
                 {
@@ -991,21 +1000,22 @@ const userManager = {
             assetUpdates = assetUpdates.concat(await PartRecord.aggregate([
                 {
                     $match: {
-                        next_owner: user, 
+                        next_owner: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                         asset_tag: { $ne: null },
                         date_replaced: {$gte: startDate, $lte: endDate},
                     }
                 },
                 {
                     $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_replaced" }
+                        _id: { asset_tag: "$asset_tag", date: "$date_replaced", next_owner: "$next_owner" }
                     }
                 },
                 {
                     $project: {
                         _id: 0,
                         asset_tag: "$_id.asset_tag",
-                        date: "$_id.date"
+                        date: "$_id.date",
+                        by: "$_id.next_owner"
                     }
                 },
                 {
@@ -1018,21 +1028,22 @@ const userManager = {
             assetUpdates = assetUpdates.concat(await Asset.aggregate([
                 {
                     $match: {
-                        by: user, 
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                         date_created: {$gte: startDate, $lte: endDate},
                         prev: {$ne: null}
                     }
                 },
                 {
                     $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_created" }
+                        _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
                     }
                 },
                 {
                     $project: {
                         _id: 0,
                         asset_tag: "$_id.asset_tag",
-                        date: "$_id.date"
+                        date: "$_id.date",
+                        by: "$_id.by"
                     }
                 },
                 {
@@ -1048,8 +1059,8 @@ const userManager = {
                     return 1
                 return -1
             })
-            .filter((a, i, arr)=>{return i===arr.findIndex((b)=>{
-                return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag
+            .filter((a, i, arr)=>{return i===assetUpdates.findIndex((b)=>{
+                return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag&&a.by==b.by
             })})
             let totalUpdates = assetUpdates.length
             assetUpdates = assetUpdates
@@ -1061,16 +1072,16 @@ const userManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getUserNewAssets: async (req: Request, res: Response) => {
+    getNewAssets: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
-            let user = req.query.user
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             Asset.aggregate([
                 {
                     $match: {
                         $or: [{ prev: null}, {prev: {$exists: false}}],
-                        by: user,
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                         date_created: { $lte: endDate, $gte: startDate }
                     }
                 },
@@ -1114,16 +1125,16 @@ const userManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getUserNewAssetsNoDetails: async (req: Request, res: Response) => {
+    getNewAssetsNoDetails: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
-            let user = req.query.user
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             Asset.aggregate([
                 {
                     $match: {
                         $or: [{ prev: null}, {prev: {$exists: false}}],
-                        by: user,
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                         date_created: { $lte: endDate, $gte: startDate }
                     }
                 },
@@ -1137,7 +1148,7 @@ const userManager = {
                     $group: {
                         _id: null,
                         total: {$sum: 1},
-                        updates: {$push: { asset_tag: "$asset_tag", date: "$date_created"}}
+                        updates: {$push: { asset_tag: "$asset_tag", date: "$date_created", by: "$by"}}
                     }
                 },
                 // Skip to page
@@ -1171,9 +1182,10 @@ const userManager = {
 
             let hideOtherParts = req.query.hideOthers == "true" ? true : false
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
 
-            let dates = await getAllTechsDatesAsync(startDate, endDate, nxids)
+            let dates = await getAllTechsDatesAsync(startDate, endDate, nxids, users)
             let totalEvents = dates.length
             dates = dates
                 .splice(pageSkip, pageSize)
@@ -1195,12 +1207,13 @@ const userManager = {
     getPartCreationAndDeletionHistory: async (req: Request, res: Response) => {
         // Get data from query
         let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+        let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
         nxids = nxids.filter((s)=>isValidPartID(s))
         let { pageSize, pageSkip } = getPageNumAndSize(req);
         let { startDate, endDate } = getStartAndEndDate(req);
         let hideOtherParts = req.query.hideOthers == "true" ? true : false
         // Get event dates
-        let dates = await getPartEventDatesAsync(startDate, endDate, nxids)
+        let dates = await getPartEventDatesAsync(startDate, endDate, nxids, users)
         // Total number of events
         let total = dates.length
         // Splice to page skip and size

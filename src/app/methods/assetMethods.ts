@@ -1,6 +1,6 @@
 import PartRecord from "../../model/partRecord.js"
 import { CartItem, AssetSchema, PartRecordSchema, AssetEvent, PartSchema, InventoryEntry } from "../interfaces.js"
-import mongoose, { CallbackError, ObjectId } from "mongoose"
+import mongoose, { CallbackError, isValidObjectId, ObjectId } from "mongoose"
 import { Response } from "express"
 import handleError from "../../config/handleError.js"
 import { objectSanitize } from "../../config/sanitize.js"
@@ -426,7 +426,8 @@ export function getRemovedPartsAssetAsync(asset_tag: string, date: Date) {
                 nxid: "$_id.nxid",
                 serial: "$_id.serial",
                 next_owner: "$_id.next_owner",
-                quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]}
+                quantity: {$cond: [{$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"]},
+                next: "$next"
             }
         }
     ])
@@ -477,27 +478,56 @@ export function getAssetEventAsync(asset_tag: string, d: Date) {
         let by = ""
         // Added parts for mapping
         let addedParts = [] as CartItem[]
-        if(current_asset&&d.getTime()==current_asset.date_created!.getTime())
-            by = current_asset.by as string
         // Remap removed parts, find by attribute
         if(Array.isArray(added))
             addedParts = added.map((a)=>{
-                if(by==""&&a.by)
+                if(by==""&&a.by) {
                     by = a.by
+                }
                 return { nxid: a.nxid, serial: a.serial, quantity: a.quantity } as CartItem
             })
         let removedParts = [] as CartItem[]
         // Remap removed parts, find by attribute
-        if(Array.isArray(removed))
+        if(Array.isArray(removed)) {
             removedParts = removed.map((a)=>{
                 if(by==""&&a.next_owner) {
                     by = a.next_owner
                 }
                 return { nxid: a.nxid, serial: a.serial, quantity: a.quantity } as CartItem
             })
+        }
         // If no by is found
-        if(current_asset&&current_asset.by&&by=="")
-            by = current_asset.by as string
+        if(current_asset&&current_asset.by&&by=="") {
+            if(current_asset&&d.getTime()==current_asset.date_created!.getTime())
+                by = current_asset.by as string
+            // Check removed parts
+            // If they were deleted in any way, next_owner would not be present
+            // Next record will have to be checked to get an accurate by value
+            if(by=="")
+                for (let r of removed) {
+                    // Loop through all next IDs
+                    for (let n of Array.from((r as any).next as any[])) {
+                        // Find part
+                        let p = await PartRecord.findById(n)
+                        // If part is found
+                        if(p&&!isValidObjectId(p.next)) {
+                            if(p.owner)
+                                by = p.owner as string
+                            else
+                                by = p.by as string
+                            break
+                        }
+                    }
+                    // If by was found, break outer loop
+                    if(by!="")
+                        break
+                }
+            // Final catch all
+            if(by=="") {
+                console.log("FINAL CATCH ALL")
+                by = current_asset.by as string
+            }
+        }
         return res({ date_begin: d, asset_id: current_asset._id, info_updated: ((added.length==0&&removed.length==0)||current_asset.date_created!.getTime() == d.getTime()), existing: existing as CartItem[], added: addedParts, removed: removedParts, by: by } as AssetEvent)
     })
 }

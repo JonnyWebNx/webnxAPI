@@ -57,22 +57,20 @@ app.use(function(req: Request, res: Response, next: NextFunction) {
 // Set up middleware
 // JSON middleware...
 app.use(express.json());
+// Set up static directory for Vue
 app.use('/assets', express.static(path.join(config.ROOT_DIRECTORY, 'static/assets')));
-
+// Set up cors
 app.options('*', cors(corsOptions))
-app.post("/api/auth", auth, isAuth);
+
 
 // ***   Authentication   ***
-//
-// Login
+app.post("/api/auth", auth, isAuth);
 app.post("/api/login", sanitize, login);
-// Register
 app.post("/api/register", sanitize, register);
 app.get("/api/password/reset", sanitize, userManager.sendPasswordResetEmail)
 app.post("/api/password/reset", sanitize, userManager.updatePassword)
 
 // ***   Parts   ***
-//
 app.post("/api/part", auth, checkRoles(["lead", "clerk", "admin"]), sanitize, partManager.createPart);
 app.post("/api/part/add", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.addToInventory);
 app.post("/api/checkout", auth, checkRoles(["kiosk"]), sanitize, partManager.checkout);
@@ -93,7 +91,6 @@ app.get("/api/part/records/id", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 app.get("/api/part/audit", auth, sanitize, checkRoles(["clerk", "admin"]), partManager.auditPart)
-app.get('/api/part/history', auth, sanitize, userManager.getPartCreationAndDeletionHistory)
 app.put("/api/part", auth, checkRoles(["clerk", "admin"]), partManager.updatePartInfo);
 app.put("/images/parts", auth, sanitize, checkRoles(["lead", "clerk", "admin"]), uploadImage, updatePartImage);
 app.delete("/api/part", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deletePart);
@@ -108,20 +105,12 @@ app.get("/api/user", auth, sanitize, userManager.getUser);
 app.get("/api/user/all", auth, checkRoles(["tech", "kiosk", "clerk", "admin"]), userManager.getAllUsers)
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 app.get('/api/user/roles', auth, sanitize, userManager.checkRoles)
-app.get('/api/user/checkins', auth, sanitize, userManager.getUserCheckins)
-app.get("/api/checkout/history", auth, sanitize, checkRoles(['lead', 'clerk', 'admin']), userManager.getUserCheckouts) 
-app.get('/api/user/alltechs', auth, sanitize, userManager.getAllTechsHistory)
-app.get('/api/user/assetsUpdated', auth, sanitize, userManager.getUserAssetUpdates)
-app.get('/api/user/assetsUpdated/noDetails', auth, sanitize, userManager.getUserAssetUpdatesNoDetails)
-app.get('/api/user/newAssets', auth, sanitize, userManager.getUserNewAssets)
-app.get('/api/user/newAssets/noDetails', auth, sanitize, userManager.getUserNewAssetsNoDetails)
 app.put("/api/user", auth, checkRoles(["admin"]), sanitize, userManager.updateUser);
 app.put("/images/users", auth, sanitize, uploadImage, updateUserImage);
 app.delete("/api/user", auth, checkRoles(["admin"]), sanitize, userManager.deleteUser);
 
-// ***    Assets    ****
+// ***    Assets    ***
 app.post("/api/asset", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, assetManager.addUntrackedAsset);
-// app.post("/api/asset/migrate", sanitize, assetManager.addMigratedAsset);
 app.get("/api/asset", auth, sanitize, assetManager.getAssets);
 app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
 app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
@@ -129,6 +118,16 @@ app.get('/api/asset/search', auth, sanitize, assetManager.searchAssets);
 app.get('/api/asset/history', auth, sanitize, assetManager.getAssetHistory);
 app.put("/api/asset", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, assetManager.updateAsset);
 app.delete("/api/asset", auth, checkRoles(["admin"]), sanitize, assetManager.deleteAsset);
+
+// *** History ***
+app.get('/api/history/checkins', auth, sanitize, userManager.getCheckinHistory)
+app.get("/api/history/checkouts", auth, sanitize, checkRoles(['lead', 'clerk', 'admin']), userManager.getCheckoutHistory) 
+app.get('/api/history/alltechs', auth, sanitize, userManager.getAllTechsHistory)
+app.get('/api/history/assetsUpdated', auth, sanitize, userManager.getAssetUpdates)
+app.get('/api/history/assetsUpdated/noDetails', auth, sanitize, userManager.getAssetUpdatesNoDetails)
+app.get('/api/history/newAssets', auth, sanitize, userManager.getNewAssets)
+app.get('/api/history/newAssets/noDetails', auth, sanitize, userManager.getNewAssetsNoDetails)
+app.get('/api/history/part', auth, sanitize, userManager.getPartCreationAndDeletionHistory)
 
 // ***      Pallets     ***
 app.post("/api/pallet", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, palletManager.createPallet);
@@ -139,6 +138,7 @@ app.get('/api/pallet/search', auth, sanitize, palletManager.searchPallets);
 app.get('/api/pallet/history', auth, sanitize, palletManager.getPalletHistory);
 app.put("/api/pallet", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, palletManager.updatePallet);
 app.delete("/api/pallet", auth, checkRoles(["admin"]), sanitize, palletManager.deletePallet);
+
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {
     return res.status(400).send("Invalid request.");

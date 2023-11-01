@@ -203,7 +203,8 @@ export interface CheckInRequest {
 
 export interface AssetUpdate {
     asset_tag: string,
-    date: Date
+    date: Date,
+    by: string
 }
 
 export interface PalletSchema {
