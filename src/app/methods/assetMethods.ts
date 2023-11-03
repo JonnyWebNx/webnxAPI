@@ -387,10 +387,15 @@ export function returnAsset(res: Response) {
     }
 }
 
-export function getAddedPartsAssetAsync(asset_tag: string, date: Date) {
+export function getAddedPartsAssetAsync(asset_tag: string, date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
-            $match: { asset_tag: asset_tag, date_created: date, next: {$ne: 'deleted'} }
+            $match: {
+                asset_tag: asset_tag,
+                date_created: date,
+                next: {$ne: 'deleted'},
+                nxid: nxids ? { $in: nxids } : { $ne: null }
+            }
         },
         {
             $group: { 
@@ -409,10 +414,14 @@ export function getAddedPartsAssetAsync(asset_tag: string, date: Date) {
     ])
 }
 
-export function getRemovedPartsAssetAsync(asset_tag: string, date: Date) {
+export function getRemovedPartsAssetAsync(asset_tag: string, date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
-            $match: { asset_tag: asset_tag, date_replaced: date }
+            $match: {
+                asset_tag: asset_tag,
+                date_replaced: date,
+                nxid: nxids ? { $in: nxids } : { $ne: null }
+            }
         },
         {
             $group: { 
@@ -433,13 +442,16 @@ export function getRemovedPartsAssetAsync(asset_tag: string, date: Date) {
     ])
 }
 
-export function getExistingPartsAssetAsync(asset_tag: string, date: Date) {
+export function getExistingPartsAssetAsync(asset_tag: string, date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
-            $match: { asset_tag: asset_tag, date_created: { $lt: date }, $or: [
+            $match: { 
+                asset_tag: asset_tag,
+                date_created: { $lt: date }, $or: [
                     {date_replaced: null}, 
                     {date_replaced: { $gt: date }}
-                ]
+                ],
+                nxid: nxids ? { $in: nxids } : { $ne: null }
             }
         },
         {
@@ -458,14 +470,14 @@ export function getExistingPartsAssetAsync(asset_tag: string, date: Date) {
     ])
 }
 
-export function getAssetEventAsync(asset_tag: string, d: Date) {
+export function getAssetEventAsync(asset_tag: string, d: Date, nxids?: string[]) {
     return new Promise<AssetEvent>(async (res)=>{
         // Get parts removed from asset
-        let added = await getAddedPartsAssetAsync(asset_tag, d)
+        let added = await getAddedPartsAssetAsync(asset_tag, d, nxids)
         // Get parts added to asset
-        let removed = await getRemovedPartsAssetAsync(asset_tag, d)
+        let removed = await getRemovedPartsAssetAsync(asset_tag, d, nxids)
         // Get parts already on asset
-        let existing = await getExistingPartsAssetAsync(asset_tag, d)
+        let existing = await getExistingPartsAssetAsync(asset_tag, d, nxids)
         // Find current asset iteratio
         let current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, date_replaced: { $gt: d }}) as AssetSchema
         // If most recent iteration of asset

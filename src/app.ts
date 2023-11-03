@@ -128,6 +128,10 @@ app.get('/api/history/assetsUpdated/noDetails', auth, sanitize, userManager.getA
 app.get('/api/history/newAssets', auth, sanitize, userManager.getNewAssets)
 app.get('/api/history/newAssets/noDetails', auth, sanitize, userManager.getNewAssetsNoDetails)
 app.get('/api/history/part', auth, sanitize, userManager.getPartCreationAndDeletionHistory)
+app.get('/api/history/palletsUpdated', auth, sanitize, userManager.getPalletUpdates)
+app.get('/api/history/palletsUpdated/noDetails', auth, sanitize, userManager.getPalletUpdatesNoDetails)
+app.get('/api/history/newPallets', auth, sanitize, userManager.getNewPallets)
+app.get('/api/history/newPallets/noDetails', auth, sanitize, userManager.getNewPalletsNoDetails)
 
 // ***      Pallets     ***
 app.post("/api/pallet", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, palletManager.createPallet);

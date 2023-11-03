@@ -12,7 +12,7 @@ import { sanitizeCartItems } from "./methods/partMethods.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { getNumPages, getPageNumAndSize, getTextSearchParams, objectToRegex } from "./methods/genericMethods.js";
 
-function isValidPalletTag(id: string) {
+export function isValidPalletTag(id: string) {
     return /PAL([0-9]{7})+/.test(id)
 }
 
@@ -124,10 +124,14 @@ function getPalletUpdateDates(pallet_tag: string) {
     })
 }
 
-export function getAddedPartsPallet(pallet_tag: string, date: Date) {
+export function getAddedPartsPallet(pallet_tag: string, date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
-            $match: { pallet_tag, date_created: date }
+            $match: {
+                pallet_tag,
+                date_created: date,
+                nxid: nxids ? { $in: nxids } : { $ne: null }
+            }
         },
         {
             $group: { 
@@ -146,10 +150,14 @@ export function getAddedPartsPallet(pallet_tag: string, date: Date) {
     ])
 }
 
-export function getRemovedPartsPallet(pallet_tag: string, date: Date) {
+export function getRemovedPartsPallet(pallet_tag: string, date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
-            $match: { pallet_tag, date_replaced: date }
+            $match: {
+                pallet_tag,
+                date_replaced: date,
+                nxid: nxids ? { $in: nxids } : { $ne: null }
+            }
         },
         {
             $group: { 
@@ -169,13 +177,17 @@ export function getRemovedPartsPallet(pallet_tag: string, date: Date) {
     ])
 }
 
-export function getExistingPartsPallet(pallet_tag: string, date: Date) {
+export function getExistingPartsPallet(pallet_tag: string, date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
-            $match: { pallet_tag, date_created: { $lt: date }, $or: [
-                    {date_replaced: null}, 
-                    {date_replaced: { $gt: date }}
-                ]
+            $match: {
+                pallet_tag,
+                date_created: { $lt: date },
+                $or: [
+                    { date_replaced: null }, 
+                    { date_replaced: { $gt: date } },
+                ],
+                nxid: nxids ? { $in: nxids } : { $ne: null }
             }
         },
         {
@@ -210,12 +222,14 @@ export function getExistingAssetsPallet(pallet_tag: string, date: Date) {
      })
 }
 
-function getPalletEvent(pallet_tag: string, date: Date) {
+export function getPalletEvent(pallet_tag: string, date: Date, nxids?: string[]) {
     return new Promise<PalletEvent>(async (res)=>{
+        try {
+
         // Get part info
-        let addedParts = await getAddedPartsPallet(pallet_tag, date)
-        let removedParts = await getRemovedPartsPallet(pallet_tag, date)
-        let existingParts = await getExistingPartsPallet(pallet_tag, date)
+        let addedParts = await getAddedPartsPallet(pallet_tag, date, nxids)
+        let removedParts = await getRemovedPartsPallet(pallet_tag, date, nxids)
+        let existingParts = await getExistingPartsPallet(pallet_tag, date, nxids)
         // Get asset info
         let addedAssets = await getAddedAssetsPallet(pallet_tag, date) as AssetSchema
         let removedAssets = await getRemovedAssetsPallet(pallet_tag, date) as AssetSchema
@@ -224,8 +238,13 @@ function getPalletEvent(pallet_tag: string, date: Date) {
         // Get current pallet
         let pallet = await Pallet.findOne({pallet_tag, date_created: { $lte: date }, $or: [
             { date_replaced: { $gt: date } },
-            { date_replaced: null }
+            { date_replaced: null },
         ]})
+        if(pallet==null)
+            pallet = await Pallet.findOne({pallet_tag: pallet_tag, date_created: { $lte: date }, $or:[
+                {next: null},
+                {next:"deleted"}
+            ]})
         // If pallet was updated
         if(pallet&&date.getTime()==pallet.date_created.getTime())
             by = pallet.by
@@ -287,6 +306,12 @@ function getPalletEvent(pallet_tag: string, date: Date) {
             existingAssets,
             by: by 
         } as PalletEvent)
+        }
+        catch(err) {
+            console.log(pallet_tag)
+            console.log(date)
+            throw(err)
+        }
     })
 }
 function addAssetsToPallet(pallet_tag: string, asset_tags: string[], by: string, date: Date, building: number) {

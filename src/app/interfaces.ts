@@ -207,6 +207,14 @@ export interface AssetUpdate {
     by: string
 }
 
+export interface PalletUpdate {
+    pallet_tag: string,
+    date: Date,
+    by: string,
+    prevPallet?: string,
+    nextPallet?: string
+}
+
 export interface PalletSchema {
     _id: Types.ObjectId,
     pallet_tag: string,

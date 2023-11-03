@@ -13,7 +13,7 @@ import bcrypt from 'bcryptjs'
 import User from '../model/user.js'
 import { isValidObjectId, MongooseError } from 'mongoose';
 import type { Request, Response } from 'express'
-import { UserSchema, AssetUpdate, CartItem, PartRecordSchema } from './interfaces.js';
+import { UserSchema, AssetUpdate, CartItem, PartRecordSchema, PalletEvent, PalletUpdate } from './interfaces.js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import handleError from '../config/handleError.js'
@@ -25,10 +25,352 @@ import resetToken from '../model/resetToken.js';
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
 import { getAssetEventAsync } from './methods/assetMethods.js';
+import { getPalletEvent, isValidPalletTag } from './palletManager.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate } from './methods/genericMethods.js';
 import { getAllKioskNames, isValidPartID } from './methods/partMethods.js';
+import Pallet from '../model/pallet.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
 
+
+function getPartsOnNewAsset(startDate: Date, endDate: Date, users: string[], nxids: string[]) {
+    return new Promise<AssetUpdate[]>(async (res)=>{
+        let assetUpdates = await PartRecord.aggregate([
+            {
+                $match: {
+                    by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                    date_created: {$gte: startDate, $lte: endDate},
+                    asset_tag: { $ne: null },
+                    nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null },
+                    prev: null
+                }
+            },
+            {
+                $group: {
+                    _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    asset_tag: "$_id.asset_tag",
+                    date: "$_id.date",
+                    by: "$_id.by"
+                }
+            },
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])  as AssetUpdate[]
+        res(assetUpdates)
+    })
+}
+
+function getPartsOnNewPallet(startDate: Date, endDate: Date, users: string[], nxids: string[]) {
+    return new Promise<PalletUpdate[]>(async (res)=>{
+        let palletUpdates = await PartRecord.aggregate([
+            {
+                $match: {
+                    by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                    date_created: {$gte: startDate, $lte: endDate},
+                    pallet_tag: { $ne: null },
+                    nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null },
+                    prev: null
+                }
+            },
+            {
+                $group: {
+                    _id: { pallet_tag: "$pallet_tag", date: "$date_created", by: "$by" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    pallet_tag: "$_id.pallet_tag",
+                    date: "$_id.date",
+                    by: "$_id.by"
+                }
+            },
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])  as PalletUpdate[]
+        res(palletUpdates)
+    })
+}
+
+function getAssetUpdates(startDate: Date, endDate: Date, users: string[], nxids: string[]) {
+    return new Promise<AssetUpdate[]>(async (res)=>{
+        let assetUpdates = await PartRecord.aggregate([
+            {
+                $match: {
+                    by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                    date_created: {$gte: startDate, $lte: endDate},
+                    asset_tag: { $ne: null },
+                    nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
+                    //prev: {$ne: null}
+                }
+            },
+            {
+                $group: {
+                    _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    asset_tag: "$_id.asset_tag",
+                    date: "$_id.date",
+                    by: "$_id.by"
+                }
+            },
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])  as AssetUpdate[]
+        // Find removed parts
+        assetUpdates = assetUpdates.concat(await PartRecord.aggregate([
+            {
+                $match: {
+                    next_owner: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                    asset_tag: { $ne: null },
+                    date_replaced: {$gte: startDate, $lte: endDate},
+                    nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: { asset_tag: "$asset_tag", date: "$date_replaced", next_owner: "$next_owner" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    asset_tag: "$_id.asset_tag",
+                    date: "$_id.date",
+                    by: "$_id.next_owner"
+                }
+            },
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])  as AssetUpdate[])
+        // Find updated assets
+        if (nxids.length<1)
+            assetUpdates = assetUpdates.concat(await Asset.aggregate([
+                {
+                    $match: {
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                        date_created: {$gte: startDate, $lte: endDate},
+                        prev: {$ne: null},
+                    }
+                },
+                {
+                    $group: {
+                        _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        asset_tag: "$_id.asset_tag",
+                        date: "$_id.date",
+                        by: "$_id.by"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ])  as AssetUpdate[])
+        // Get all the dates of asset related events
+        assetUpdates = assetUpdates
+        .sort((a, b)=>{
+            if (a.date.getTime() < b.date.getTime())
+                return 1
+            return -1
+        })
+        assetUpdates = assetUpdates
+        .filter((a, i, arr)=>{return i===assetUpdates.findIndex((b)=>{
+            return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag&&a.by==b.by
+        })})
+        res(assetUpdates)
+    })
+}
+
+function getPalletUpdates(startDate: Date, endDate: Date, users: string[], nxids: string[]) {
+    return new Promise<PalletUpdate[]>(async (res)=>{
+        let palletUpdates = await PartRecord.aggregate([
+            {
+                $match: {
+                    by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                    date_created: {$gte: startDate, $lte: endDate},
+                    pallet_tag: { $ne: null },
+                    nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
+                    //prev: {$ne: null}
+                }
+            },
+            {
+                $group: {
+                    _id: { pallet_tag: "$pallet_tag", date: "$date_created", by: "$by" }
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    pallet_tag: "$_id.pallet_tag",
+                    date: "$_id.date",
+                    by: "$_id.by"
+                }
+            },
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])  as PalletUpdate[]
+        // Find removed parts
+        palletUpdates = palletUpdates.concat(await PartRecord.aggregate([
+            {
+                $match: {
+                    next_owner: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                    pallet_tag: { $ne: null },
+                    date_replaced: {$gte: startDate, $lte: endDate},
+                    nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: { pallet_tag: "$pallet_tag", date: "$date_replaced", next_owner: "$next_owner" }
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    pallet_tag: "$_id.pallet_tag",
+                    date: "$_id.date",
+                    by: "$_id.next_owner"
+                }
+            },
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])  as PalletUpdate[])
+        // Find updated assets
+        if (nxids.length<1) {
+            palletUpdates = palletUpdates.concat(await Pallet.aggregate([
+                {
+                    $match: {
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                        date_created: {$gte: startDate, $lte: endDate},
+                    }
+                },
+                {
+                    $group: {
+                        _id: { pallet_tag: "$pallet_tag", date: "$date_created", by: "$by" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        pallet_tag: "$_id.pallet_tag",
+                        date: "$_id.date",
+                        by: "$_id.by"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ])  as PalletUpdate[])
+            palletUpdates = palletUpdates.concat(await Asset.aggregate([
+                {
+                    $match: {
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                        date_created: {$gte: startDate, $lte: endDate},
+                        pallet: { $ne: null },
+                    }
+                },
+                {
+                    $group: {
+                        _id: { pallet_tag: "$pallet", prevPallet: "$prevPallet", date: "$date_created", by: "$by" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        pallet_tag: "$_id.pallet_tag",
+                        prevPallet: "$_id.prevPallet",
+                        date: "$_id.date",
+                        by: "$_id.by"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ]))
+            palletUpdates = palletUpdates.concat(await Asset.aggregate([
+                {
+                    $match: {
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                        date_replaced: {$gte: startDate, $lte: endDate},
+                        pallet: { $ne: null },
+                    }
+                },
+                {
+                    $group: {
+                        _id: { pallet_tag: "$pallet", nextPallet: "$nextPallet", date: "$date_replaced", by: "$by" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        pallet_tag: "$_id.pallet_tag",
+                        nextPallet: "$_id.nextPallet",
+                        date: "$_id.date",
+                        by: "$_id.by"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ]))
+        }
+        // Get all the dates of asset related events
+        palletUpdates = palletUpdates.filter((p)=>{
+            if(p.prevPallet&&p.prevPallet==p.pallet_tag)
+                return false
+            if(p.nextPallet&&p.nextPallet==p.pallet_tag)
+                return false
+            return isValidPalletTag(p.pallet_tag)
+        })
+        .sort((a, b)=>{
+            if (a.date.getTime() < b.date.getTime())
+                return 1
+            return -1
+        })
+        palletUpdates = palletUpdates
+        .filter((a, i, arr)=>{return i===palletUpdates.findIndex((b)=>{
+            return b.date.getTime()==a.date.getTime()&&a.pallet_tag==b.pallet_tag&&a.by==b.by
+        })})
+        res(palletUpdates)
+    })
+}
 
 export function getCheckinDatesAsync(startDate: Date, endDate: Date, users: string[] | undefined, nxids: string[] | undefined) {
     return new Promise<Date[]>(async (res)=>{
@@ -379,8 +721,8 @@ export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxids: st
     return new Promise<Date[]>(async (res)=>{
         let dates = await PartRecord.find({
             // Find new records in data range
-            nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
-            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+            nxid: nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null },
+            by: users && users.length > 0 ? { $in: users } : { $ne: null },
             date_created: { $lte: endDate, $gte: startDate },
             $or: [
                 {prev: null},
@@ -846,112 +1188,22 @@ const userManager = {
         }
     },
 
-
     getAssetUpdates: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            // Find added parts
-            let assetUpdates = await PartRecord.aggregate([
-                {
-                    $match: {
-                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                        date_created: {$gte: startDate, $lte: endDate},
-                        asset_tag: { $ne: null },
-                        //prev: {$ne: null}
-                    }
-                },
-                {
-                    $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
-                    }
-                },
-                {
-                    $project: {
-                        _id: 0,
-                        asset_tag: "$_id.asset_tag",
-                        date: "$_id.date",
-                        by: "$_id.by"
-                    }
-                },
-                {
-                    $sort: {
-                        "date": -1
-                    }
-                }
-            ])  as AssetUpdate[]
-            // Find removed parts
-            assetUpdates = assetUpdates.concat(await PartRecord.aggregate([
-                {
-                    $match: {
-                        next_owner: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                        asset_tag: { $ne: null },
-                        date_replaced: {$gte: startDate, $lte: endDate},
-                    }
-                },
-                {
-                    $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_replaced", next_owner: "$next_owner" }
-                    }
-                },
-                {
-                    $project: {
-                        _id: 0,
-                        asset_tag: "$_id.asset_tag",
-                        date: "$_id.date",
-                        by: "$_id.next_owner"
-                    }
-                },
-                {
-                    $sort: {
-                        "date": -1
-                    }
-                }
-            ])  as AssetUpdate[])
-            // Find updated assets
-            assetUpdates = assetUpdates.concat(await Asset.aggregate([
-                {
-                    $match: {
-                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                        date_created: {$gte: startDate, $lte: endDate},
-                        prev: {$ne: null}
-                    }
-                },
-                {
-                    $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
-                    }
-                },
-                {
-                    $project: {
-                        _id: 0,
-                        asset_tag: "$_id.asset_tag",
-                        date: "$_id.date",
-                        by: "$_id.by"
-                    }
-                },
-                {
-                    $sort: {
-                        "date": -1
-                    }
-                }
-            ])  as AssetUpdate[])
-            // Get all the dates of asset related events
-            assetUpdates = assetUpdates
-            .sort((a, b)=>{
-                if (a.date.getTime() < b.date.getTime())
-                    return 1
-                return -1
-            })
-            assetUpdates = assetUpdates
-            .filter((a, i, arr)=>{return i===assetUpdates.findIndex((b)=>{
-                return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag&&a.by==b.by
-            })})
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            let assetUpdates = await getAssetUpdates(startDate, endDate, users, nxids)
+
             let totalUpdates = assetUpdates.length
             
             let returnValue = await Promise.all(assetUpdates.splice(pageSkip, pageSize).map((a)=>{
-                return getAssetEventAsync(a.asset_tag, a.date)
+                return getAssetEventAsync(a.asset_tag, a.date, hideOtherParts ? nxids : undefined)
             }))
             res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
         } catch (err) {
@@ -966,102 +1218,12 @@ const userManager = {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            console.log(users)
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
             // Find added parts
-            let assetUpdates = await PartRecord.aggregate([
-                {
-                    $match: {
-                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                        date_created: {$gte: startDate, $lte: endDate},
-                        asset_tag: { $ne: null },
-                        // prev: {$ne: null}
-                    }
-                },
-                {
-                    $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
-                    }
-                },
-                {
-                    $project: {
-                        _id: 0,
-                        asset_tag: "$_id.asset_tag",
-                        date: "$_id.date",
-                        by: "$_id.by"
-                    }
-                },
-                {
-                    $sort: {
-                        "date": -1
-                    }
-                }
-            ])  as AssetUpdate[]
-            // Find removed parts
-            assetUpdates = assetUpdates.concat(await PartRecord.aggregate([
-                {
-                    $match: {
-                        next_owner: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                        asset_tag: { $ne: null },
-                        date_replaced: {$gte: startDate, $lte: endDate},
-                    }
-                },
-                {
-                    $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_replaced", next_owner: "$next_owner" }
-                    }
-                },
-                {
-                    $project: {
-                        _id: 0,
-                        asset_tag: "$_id.asset_tag",
-                        date: "$_id.date",
-                        by: "$_id.next_owner"
-                    }
-                },
-                {
-                    $sort: {
-                        "date": -1
-                    }
-                }
-            ])  as AssetUpdate[])
-            // Find updated assets
-            assetUpdates = assetUpdates.concat(await Asset.aggregate([
-                {
-                    $match: {
-                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                        date_created: {$gte: startDate, $lte: endDate},
-                        prev: {$ne: null}
-                    }
-                },
-                {
-                    $group: {
-                        _id: { asset_tag: "$asset_tag", date: "$date_created", by: "$by" }
-                    }
-                },
-                {
-                    $project: {
-                        _id: 0,
-                        asset_tag: "$_id.asset_tag",
-                        date: "$_id.date",
-                        by: "$_id.by"
-                    }
-                },
-                {
-                    $sort: {
-                        "date": -1
-                    }
-                }
-            ])  as AssetUpdate[])
+            let assetUpdates = await getAssetUpdates(startDate, endDate, users, nxids)
             // Get all the dates of asset related events
-            assetUpdates = assetUpdates
-            .sort((a, b)=>{
-                if (a.date < b.date)
-                    return 1
-                return -1
-            })
-            .filter((a, i, arr)=>{return i===assetUpdates.findIndex((b)=>{
-                return b.date.getTime()==a.date.getTime()&&a.asset_tag==b.asset_tag&&a.by==b.by
-            })})
             let totalUpdates = assetUpdates.length
             assetUpdates = assetUpdates
             .splice(pageSkip, pageSize)
@@ -1077,48 +1239,70 @@ const userManager = {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            Asset.aggregate([
-                {
-                    $match: {
-                        $or: [{ prev: null}, {prev: {$exists: false}}],
-                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                        date_created: { $lte: endDate, $gte: startDate }
-                    }
-                },
-                {
-                    $sort: {
-                        "date_created": -1
-                    }
-                },
-                // Get total count
-                {
-                    $group: {
-                        _id: null,
-                        total: {$sum: 1},
-                        updates: {$push: { asset_tag: "$asset_tag", date: "$date_created"}}
-                    }
-                },
-                // Skip to page
-                {
-                    $project: {
-                        _id: 0,
-                        total: 1,
-                        updates: {$slice: ["$updates", pageSkip, pageSize]}
-                    }
-                }
-            ]).exec(async (err, result: { total: number, updates: AssetUpdate[]}[])=>{
-                if(err) {
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                if(result.length&&result.length>0) {
-                    let returnValue = await Promise.all(result[0].updates!.map((a: AssetUpdate)=>{
-                        return getAssetEventAsync(a.asset_tag, a.date)
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            if(nxids.length>0) {
+                let updates = await getPartsOnNewAsset(startDate, endDate, users, nxids)
+                updates = await Promise.all(updates.filter((u)=>{
+                    return Asset.exists({asset_tag: u.asset_tag, by: u.by, date_created: u.by, prev: null})
+                }))
+                let total = updates.length
+                if(total>0) {
+                    updates = updates.splice(pageSkip, pageSize)
+                    let returnValue = await Promise.all(updates.map((a: AssetUpdate)=>{
+                        return getAssetEventAsync(a.asset_tag, a.date, hideOtherParts ? nxids : undefined)
                     }))
-                    return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: returnValue});
+                    return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: returnValue});
                 }
                 // Return to client
                 res.status(200).json({total: 0, pages: 1, events: []});
-            })
+            }
+            else {
+                Asset.aggregate([
+                    {
+                        $match: {
+                            $or: [{ prev: null}, {prev: {$exists: false}}],
+                            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                            date_created: { $lte: endDate, $gte: startDate }
+                        }
+                    },
+                    {
+                        $sort: {
+                            "date_created": -1
+                        }
+                    },
+                    // Get total count
+                    {
+                        $group: {
+                            _id: null,
+                            total: {$sum: 1},
+                            updates: {$push: { asset_tag: "$asset_tag", date: "$date_created", by: "$by"}}
+                        }
+                    },
+                    // Skip to page
+                    {
+                        $project: {
+                            _id: 0,
+                            total: 1,
+                            updates: {$slice: ["$updates", pageSkip, pageSize]}
+                        }
+                    }
+                ]).exec(async (err, result: { total: number, updates: AssetUpdate[]}[])=>{
+                    if(err) {
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    if(result.length&&result.length>0) {
+                        let returnValue = await Promise.all(result[0].updates!.map((a: AssetUpdate)=>{
+                            return getAssetEventAsync(a.asset_tag, a.date)
+                        }))
+                        return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: returnValue});
+                    }
+                    // Return to client
+                    res.status(200).json({total: 0, pages: 1, events: []});
+                })
+            }
         } catch (err) {
             // Error
             handleError(err)
@@ -1130,45 +1314,61 @@ const userManager = {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            Asset.aggregate([
-                {
-                    $match: {
-                        $or: [{ prev: null}, {prev: {$exists: false}}],
-                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                        date_created: { $lte: endDate, $gte: startDate }
-                    }
-                },
-                {
-                    $sort: {
-                        "date_created": -1
-                    }
-                },
-                // Get total count
-                {
-                    $group: {
-                        _id: null,
-                        total: {$sum: 1},
-                        updates: {$push: { asset_tag: "$asset_tag", date: "$date_created", by: "$by"}}
-                    }
-                },
-                // Skip to page
-                {
-                    $project: {
-                        _id: 0,
-                        total: 1,
-                        updates: {$slice: ["$updates", pageSkip, pageSize]}
-                    }
-                }
-            ]).exec(async (err, result: { total: number, updates: AssetUpdate[]}[])=>{
-                if(err) {
-                    return res.status(500).send("API could not handle your request: " + err);
-                }
-                if(result.length&&result.length>0) {
-                    return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: result[0].updates});
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            if(nxids.length>0) {
+                let updates = await getPartsOnNewAsset(startDate, endDate, users, nxids)
+                updates = await Promise.all(updates.filter((u)=>{
+                    return Asset.exists({asset_tag: u.asset_tag, by: u.by, date_created: u.by, prev: null})
+                }))
+                if(updates.length&&updates.length>0) {
+                    return res.status(200).json({total: updates.length, pages: getNumPages(pageSize, updates.length),events: updates});
                 }
                 // Return to client
                 res.status(200).json({total: 0, pages: 1, events: []});
-            })
+            }
+            else {
+                Asset.aggregate([
+                    {
+                        $match: {
+                            $or: [{ prev: null}, {prev: {$exists: false}}],
+                            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                            date_created: { $lte: endDate, $gte: startDate }
+                        }
+                    },
+                    {
+                        $sort: {
+                            "date_created": -1
+                        }
+                    },
+                    // Get total count
+                    {
+                        $group: {
+                            _id: null,
+                            total: {$sum: 1},
+                            updates: {$push: { asset_tag: "$asset_tag", date: "$date_created", by: "$by"}}
+                        }
+                    },
+                    // Skip to page
+                    {
+                        $project: {
+                            _id: 0,
+                            total: 1,
+                            updates: {$slice: ["$updates", pageSkip, pageSize]}
+                        }
+                    }
+                ]).exec(async (err, result: { total: number, updates: AssetUpdate[]}[])=>{
+                    if(err) {
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    if(result.length&&result.length>0) {
+                        return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: result[0].updates});
+                    }
+                    // Return to client
+                    res.status(200).json({total: 0, pages: 1, events: []});
+                })
+            }
         } catch (err) {
             // Error
             handleError(err)
@@ -1222,8 +1422,208 @@ const userManager = {
         // Get history from map
         let history = await Promise.all(dates.map((d)=>getPartEventAsync(d, hideOtherParts ? nxids : undefined)))
         // Return data
-        res.status(200).json({total, numPages: getNumPages(pageSize, total), events: history})
+        res.status(200).json({total, pages: getNumPages(pageSize, total), events: history})
     },
-}
 
+    getNewPallets: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            if(nxids.length>0) {
+                // Get all possible updates with new parts
+                let updates = await getPartsOnNewPallet(startDate, endDate, users, nxids)
+                // Filter - Check if pallet was new on part creation
+                updates = await Promise.all(updates.filter((u)=>{
+                    return Pallet.exists({pallet_tag: u.pallet_tag, by: u.by, date_created: u.by, prev: null})
+                }))
+                // Store total
+                let total = updates.length
+                // If there are events
+                if(total>0) {
+                    // Splice to page
+                    updates = updates.splice(pageSkip, pageSize)
+                    // Map to pallet events
+                    let returnValue = await Promise.all(updates.map((a: PalletUpdate)=>{
+                        return getPalletEvent(a.pallet_tag, a.date, hideOtherParts ? nxids : undefined)
+                    }))
+                    return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: returnValue});
+                }
+                // Return to client
+                res.status(200).json({total: 0, pages: 1, events: []});
+            }
+            else {
+                Pallet.aggregate([
+                    {
+                        $match: {
+                            $or: [{ prev: null}, {prev: {$exists: false}}],
+                            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                            date_created: { $lte: endDate, $gte: startDate }
+                        }
+                    },
+                    {
+                        $sort: {
+                            "date_created": -1
+                        }
+                    },
+                    // Get total count
+                    {
+                        $group: {
+                            _id: null,
+                            total: {$sum: 1},
+                            updates: {$push: { pallet_tag: "$pallet_tag", date: "$date_created", by: "$by"}}
+                        }
+                    },
+                    // Skip to page
+                    {
+                        $project: {
+                            _id: 0,
+                            total: 1,
+                            updates: {$slice: ["$updates", pageSkip, pageSize]}
+                        }
+                    }
+                ]).exec(async (err, result: { total: number, updates: PalletUpdate[]}[])=>{
+                    if(err) {
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    if(result.length&&result.length>0) {
+                        let returnValue = await Promise.all(result[0].updates!.map((a: PalletUpdate)=>{
+                            return getPalletEvent(a.pallet_tag, a.date)
+                        }))
+                        return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: returnValue});
+                    }
+                    // Return to client
+                    res.status(200).json({total: 0, pages: 1, events: []});
+                })
+            }
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+
+    getNewPalletsNoDetails: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            if(nxids.length>0) {
+                // Get all possible updates with new parts
+                let updates = await getPartsOnNewPallet(startDate, endDate, users, nxids)
+                // Filter - Check if pallet was new on part creation
+                updates = await Promise.all(updates.filter((u)=>{
+                    return Pallet.exists({pallet_tag: u.pallet_tag, by: u.by, date_created: u.by, prev: null})
+                }))
+                // Store total
+                let total = updates.length
+                return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: updates});
+            }
+            else {
+                Pallet.aggregate([
+                    {
+                        $match: {
+                            $or: [{ prev: null}, {prev: {$exists: false}}],
+                            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                            date_created: { $lte: endDate, $gte: startDate }
+                        }
+                    },
+                    {
+                        $sort: {
+                            "date_created": -1
+                        }
+                    },
+                    // Get total count
+                    {
+                        $group: {
+                            _id: null,
+                            total: {$sum: 1},
+                            updates: {$push: { pallet_tag: "$pallet_tag", date: "$date_created", by: "$by"}}
+                        }
+                    },
+                    // Skip to page
+                    {
+                        $project: {
+                            _id: 0,
+                            total: 1,
+                            updates: {$slice: ["$updates", pageSkip, pageSize]}
+                        }
+                    }
+                ]).exec(async (err, result: { total: number, updates: PalletUpdate[]}[])=>{
+                    if(err) {
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    if(result.length&&result.length>0) {
+                        return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: result[0].updates});
+                    }
+                    // Return to client
+                    res.status(200).json({total: 0, pages: 1, events: []});
+                })
+            }
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+
+
+    getPalletUpdates: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            let palletUpdates = await getPalletUpdates(startDate, endDate, users, nxids)
+
+            let totalUpdates = palletUpdates.length
+            
+            let returnValue = await Promise.all(palletUpdates.splice(pageSkip, pageSize).map((a)=>{
+                return getPalletEvent(a.pallet_tag, a.date, hideOtherParts ? nxids : undefined)
+            }))
+            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+
+    getPalletUpdatesNoDetails: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+
+            let palletUpdates = await getPalletUpdates(startDate, endDate, users, nxids)
+
+            let totalUpdates = palletUpdates.length
+            
+            let returnValue = palletUpdates.splice(pageSkip, pageSize)
+            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+
+
+
+}
 export default userManager
