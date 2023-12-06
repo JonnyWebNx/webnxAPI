@@ -577,7 +577,6 @@ export function returnAssetHistory(pageNum: number, pageSize: number, res: Respo
     return async (err: CallbackError, asset: AssetSchema) => {
         if (err)
             return res.status(500).send("API could not handle your request: " + err);
-
         let dates = await getAssetUpdateDatesAsync(asset.asset_tag!)
         let pageSkip = pageSize * (pageNum - 1)
         let totalEvents = dates.length

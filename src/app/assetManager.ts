@@ -24,7 +24,6 @@ import {
     updatePartsAsync,
     assetsAreSimilar,
     userHasInInventoryAsync,
-    partRecordsToCartItemsWithInfoAsync,
     partRecordsToCartItems
 } from "./methods/assetMethods.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
