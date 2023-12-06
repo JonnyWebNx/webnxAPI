@@ -51,7 +51,7 @@ function returnPalletSearch(res: Response, numPages: number, numPallets: number)
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
-        return res.status(200).json({numPages, numPallets, pallets});
+        return res.status(200).json({pages: numPages, total: numPallets, items: pallets});
     }
 }
 
@@ -674,7 +674,7 @@ const palletManager = {
                     // Return to client
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                let { parts, records } = await partRecordsToCartItemsWithInfoAsync(pRecords)
+                let parts = partRecordsToCartItems(pRecords)
                 // Return to client
                 Asset.find({pallet: pallet_tag, next: null}, (err: CallbackError, assets: AssetSchema[]) => {
                     // If mongoose returns error
@@ -684,7 +684,7 @@ const palletManager = {
                         // Return to client
                         return res.status(500).send("API could not handle your request: " + err);
                     }
-                    res.status(200).json({parts, records, assets})
+                    res.status(200).json({parts, assets})
                 })
             })
         } catch(err) {

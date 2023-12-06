@@ -397,6 +397,6 @@ export function returnPartSearch(numPages: number, numParts: number, req: Reques
             return part
         })
         // Return
-        return res.status(200).json({ numPages, numParts, parts: returnParts});
+        return res.status(200).json({ pages: numPages, total: numParts, items: returnParts});
     }
 }

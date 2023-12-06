@@ -11,7 +11,7 @@ import PartRecord from "../model/partRecord.js";
 import handleError from "../config/handleError.js";
 import { Request, Response } from "express";
 import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
-import { CallbackError, isValidObjectId } from "mongoose";
+import { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { 
     isValidAssetTag,
     cleanseAsset,
@@ -371,7 +371,7 @@ const assetManager = {
                     // Return to client
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                let returnValue = await partRecordsToCartItemsWithInfoAsync(records)
+                let returnValue = partRecordsToCartItems(records)
                 // Return to client
                 res.status(200).json(returnValue)
             })
@@ -439,6 +439,80 @@ const assetManager = {
             else {
                 Asset.findById(id, returnAssetHistory(pageNum, pageSize, res))
             }
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getHighestAssetTag: async (req: Request, res: Response) => {
+        try {
+            Asset.aggregate(
+                [
+                  {
+                    $project: {
+                      _id: 0,
+                      as_num: {
+                        $toInt: {
+                          $substr: ["$asset_tag", 3, 10],
+                        },
+                      },
+                    },
+                  },
+                  {
+                    $group:
+                      /**
+                       * _id: The id of the group.
+                       * fieldN: The first field name.
+                       */
+                      {
+                        _id: "$as_num",
+                      },
+                  },
+                  {
+                    $sort:
+                      /**
+                       * Provide any number of field/order pairs.
+                       */
+                      {
+                        _id: -1,
+                      },
+                  },
+                ]
+                , (err: MongooseError, assets1: AssetSchema) =>{
+                    Asset.find({}, (err: MongooseError, assets: AssetSchema) => {
+                        if(err)
+                            return res.status(500).send("API could not handle your request: " + err);
+                        // Parse and sort numbers
+                        let numbers = assets.map((n: AssetSchema)=>parseInt(n.asset_tag!.slice(3))).sort((a: number,b: number)=>a-b)
+                        let highest = numbers[numbers.length-1]
+                        let highest2 = assets1[0]._id
+                        // Pad and convert to string
+                        let asset_tag = "WNX"+highest.toString().padStart(7, '0')
+
+                        let asset_tag2 = "WNX"+highest2.toString().padStart(7, '0')
+                        // Send response
+                        return res.status(200).send({find: asset_tag, aggregate: asset_tag2});
+                    })
+                })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getNodesOnAsset: async (req: Request, res: Response) => {
+        try {
+            let asset_tag = req.query.asset_tag as string;
+            if(!asset_tag)
+                return res.status(400).send("Invalid request");
+            if(isValidAssetTag(asset_tag)) {
+                Asset.find({parent: asset_tag, next: null}, (err: MongooseError, assets: AssetSchema) => {
+                    if(err)
+                        return res.status(500).send("API could not handle your request: " + err);
+                    res.status(200).json(assets)
+                })
+            }
+            else
+               res.status(200).json([])
         } catch (err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);

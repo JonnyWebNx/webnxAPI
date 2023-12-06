@@ -24,7 +24,7 @@ import crypto from 'crypto'
 import resetToken from '../model/resetToken.js';
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
-import { getAssetEventAsync } from './methods/assetMethods.js';
+import { getAssetEventAsync, isValidAssetTag } from './methods/assetMethods.js';
 import { getPalletEvent, isValidPalletTag } from './palletManager.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate } from './methods/genericMethods.js';
 import { getAllKioskNames, isValidPartID } from './methods/partMethods.js';
@@ -102,14 +102,14 @@ function getPartsOnNewPallet(startDate: Date, endDate: Date, users: string[], nx
     })
 }
 
-function getAssetUpdates(startDate: Date, endDate: Date, users: string[], nxids: string[]) {
+function getAssetUpdates(startDate: Date, endDate: Date, users: string[], nxids: string[], asset_tags: string[]) {
     return new Promise<AssetUpdate[]>(async (res)=>{
         let assetUpdates = await PartRecord.aggregate([
             {
                 $match: {
                     by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                     date_created: {$gte: startDate, $lte: endDate},
-                    asset_tag: { $ne: null },
+                    asset_tag: (asset_tags&&asset_tags.length>0)?{ $in: asset_tags}:{ $ne: null },
                     nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
                     //prev: {$ne: null}
                 }
@@ -138,8 +138,8 @@ function getAssetUpdates(startDate: Date, endDate: Date, users: string[], nxids:
             {
                 $match: {
                     next_owner: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                    asset_tag: { $ne: null },
                     date_replaced: {$gte: startDate, $lte: endDate},
+                    asset_tag: (asset_tags&&asset_tags.length>0)?{ $in: asset_tags}:{ $ne: null },
                     nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
                 }
             },
@@ -167,6 +167,7 @@ function getAssetUpdates(startDate: Date, endDate: Date, users: string[], nxids:
             assetUpdates = assetUpdates.concat(await Asset.aggregate([
                 {
                     $match: {
+                        asset_tag: (asset_tags&&asset_tags.length>0)?{ $in: asset_tags}:{ $ne: null },
                         by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
                         date_created: {$gte: startDate, $lte: endDate},
                         prev: {$ne: null},
@@ -756,6 +757,110 @@ export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxids: st
     })
 }
 
+export function getEbaySales(startDate: Date, endDate: Date, nxids: string[] | undefined, users: string[] | undefined) {
+    return PartRecord.aggregate(
+        [
+            {
+                $match: {
+                    nxid: nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null },
+                    by: users && users.length > 0 ? { $in: users } : { $ne: null },
+                    date_created: { $lte: endDate, $gte: startDate },
+                    next: "sold",
+                },
+            },
+            {
+                $group: {
+                    _id: {
+                        nxid: "$nxid",
+                        serial: "$serial",
+                        date: "$date_created",
+                        order: "$ebay",
+                        by: "$by",
+                    },
+                    quantity: {
+                        $sum: 1,
+                    },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    nxid: "$_id.nxid",
+                    serial: "$_id.serial",
+                    date: "$_id.date",
+                    order: "$_id.order",
+                    by: "$_id.by",
+                    quantity: {
+                        $cond: [
+                            {
+                                $eq: [
+                                    "$_id.serial",
+                                    "$arbitraryNonExistentField",
+                                ],
+                            },
+                            "$quantity",
+                            "$$REMOVE",
+                        ],
+                    },
+                },
+            },
+            {
+                $group: {
+                    _id: {
+                        date: "$date",
+                        order: "$order",
+                        by: "$by",
+                    },
+                    parts: {
+                        $push: {
+                            nxid: "$nxid",
+                            serial: "$serial",
+                            quantity: "$quantity",
+                        },
+                    },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    date: "$_id.date",
+                    order: "$_id.order",
+                    by: "$_id.by",
+                    parts: "$parts",
+                },
+            },
+            {
+                $sort: {
+                    date: -1
+                }
+            }
+        ]
+    )
+}
+
+export function getEbaySalesDates(startDate: Date, endDate: Date, nxids: string[] | undefined, users: string[] | undefined) {
+    return new Promise<Date[]>(async (res)=>{
+        let dates = await PartRecord.find({
+            nxid: nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null },
+            by: users && users.length > 0 ? { $in: users } : { $ne: null },
+            date_created: { $lte: endDate, $gte: startDate },
+            next: "sold",
+        }).distinct("date_created")
+        dates = dates
+            .filter((d)=>d!=null)
+            .map((d)=>d.getTime())
+            .filter((date, index, arr) => arr.indexOf(date) === index && date != null)
+            .map((d)=>new Date(d))
+            .sort((a, b)=>{
+                if (a < b)
+                    return 1
+                return -1
+            })
+        res(dates)
+    })
+}
+
+
 export function getPartsAddedAsync(date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
@@ -781,6 +886,84 @@ export function getPartsAddedAsync(date: Date, nxids?: string[]) {
         }
     ])
 }
+
+export function getEbayEvent(date: Date, nxids: string[] | undefined) {
+    return PartRecord.aggregate(
+        [
+            {
+                $match: {
+                    nxid: nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null },
+                    date_created: date,
+                    next: "sold",
+                },
+            },
+            {
+                $group: {
+                    _id: {
+                        nxid: "$nxid",
+                        serial: "$serial",
+                        date: "$date_created",
+                        order: "$ebay",
+                        by: "$by",
+                    },
+                    quantity: {
+                        $sum: 1,
+                    },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    nxid: "$_id.nxid",
+                    serial: "$_id.serial",
+                    date: "$_id.date",
+                    order: "$_id.order",
+                    by: "$_id.by",
+                    quantity: {
+                        $cond: [
+                            {
+                                $eq: [
+                                    "$_id.serial",
+                                    "$arbitraryNonExistentField",
+                                ],
+                            },
+                            "$quantity",
+                            "$$REMOVE",
+                        ],
+                    },
+                },
+            },
+            {
+                $group: {
+                    _id: {
+                        date: "$date",
+                        order: "$order",
+                        by: "$by",
+                    },
+                    parts: {
+                        $push: {
+                            nxid: "$nxid",
+                            serial: "$serial",
+                            quantity: "$quantity",
+                        },
+                    },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    date: "$_id.date",
+                    order: "$_id.order",
+                    by: "$_id.by",
+                    parts: "$parts",
+                },
+            },
+        ]
+    )
+}
+
+
+
 export function getPartsRemovedAsync(date: Date, nxids?: string[]) {
     return PartRecord.aggregate([
         {
@@ -824,10 +1007,12 @@ export function getPartEventAsync(date: Date, nxids?: string[]) {
         let filterQ = await PartRecord.findOne({prev: null, date_created: date,
                 nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null })
         })
+        let filterQ2 = filterQ
         // If no added part
         if(!filterQ) {
             // Find a removed part
-            filterQ = await PartRecord.findOne({date_created: date,
+            filterQ = await PartRecord.findOne({
+                date_created: date,
                 nxid: (nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null }),
                 $expr: {
                     $eq: [
@@ -842,25 +1027,28 @@ export function getPartEventAsync(date: Date, nxids?: string[]) {
                     ]
                 }
             })
-            // Get previous for filter details
-            if(filterQ&&filterQ.prev)
-                filterQ = await PartRecord.findById(filterQ.prev)
-            else
-                filterQ = {
-                    pallet_tag: "ERROR",
-                    owner: "ERROR",
-                    location: "ERROR",
-                    by: "ERROR"
-                } as any
+            filterQ2 = filterQ
+            if(filterQ?.location!="sold") {
+                // Get previous for filter details
+                if(filterQ&&filterQ.prev)
+                    filterQ2 = await PartRecord.findById(filterQ.prev)
+                else
+                    filterQ = {
+                        pallet_tag: "ERROR",
+                        owner: "ERROR",
+                        location: "ERROR",
+                        by: "ERROR",
+                    } as any
+            }
         }
         // Create filter
         let filter = {
-            pallet_tag: filterQ && filterQ.pallet_tag ? filterQ.pallet_tag : undefined,
-            asset_tag: filterQ && filterQ.asset_tag ? filterQ.asset_tag : undefined,
+            pallet_tag: filterQ2 && filterQ2.pallet_tag ? filterQ2.pallet_tag : undefined,
+            asset_tag: filterQ2 && filterQ2.asset_tag ? filterQ2.asset_tag : undefined,
             owner: filterQ && filterQ.owner ? filterQ.owner : undefined,
-            location: filterQ && filterQ.location ? filterQ.location : undefined,
-            by: filterQ && filterQ.by ? filterQ.by : undefined
-
+            location: filterQ2 && filterQ2.location ? filterQ2.location : undefined,
+            by: filterQ && filterQ.by ? filterQ.by : undefined,
+            ebay: filterQ && filterQ.ebay ? filterQ.ebay : undefined
         }
         // Get added parts
         let added = await getPartsAddedAsync(date, nxids)
@@ -1196,9 +1384,11 @@ const userManager = {
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
-
             let hideOtherParts = req.query.hideOthers == "true" ? true : false
-            let assetUpdates = await getAssetUpdates(startDate, endDate, users, nxids)
+            let asset_tags = Array.isArray(req.query.asset_tags) ? req.query.asset_tags as string[] : [] as string[]
+            asset_tags = asset_tags.filter((s)=>isValidAssetTag(s))
+            // Find added parts
+            let assetUpdates = await getAssetUpdates(startDate, endDate, users, nxids, asset_tags)
 
             let totalUpdates = assetUpdates.length
             
@@ -1221,8 +1411,10 @@ const userManager = {
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
+            let asset_tags = Array.isArray(req.query.asset_tags) ? req.query.asset_tags as string[] : [] as string[]
+            asset_tags = asset_tags.filter((s)=>isValidAssetTag(s))
             // Find added parts
-            let assetUpdates = await getAssetUpdates(startDate, endDate, users, nxids)
+            let assetUpdates = await getAssetUpdates(startDate, endDate, users, nxids, asset_tags)
             // Get all the dates of asset related events
             let totalUpdates = assetUpdates.length
             assetUpdates = assetUpdates
@@ -1622,7 +1814,32 @@ const userManager = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+    
+    getEbaySalesHistory: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            let sales = await getEbaySalesDates(startDate, endDate, nxids, users)
+            let totalUpdates = sales.length
+            let returnValue = await Promise.all(sales.splice(pageSkip, pageSize).map((a)=>{
+                return new Promise<any>(async (res)=>{
+                    let event = await getEbayEvent(a, hideOtherParts?nxids:undefined)
+                    res(event[0])
+                })
+            }))
 
+            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    }
 
 
 }

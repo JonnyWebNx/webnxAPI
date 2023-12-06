@@ -60,7 +60,7 @@ export function returnAssetSearch(res: Response, numPages: number, numAssets: nu
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
-        return res.status(200).json({numPages, numAssets, assets});
+        return res.status(200).json({pages: numPages, total: numAssets, items: assets});
     }
 }
 /**

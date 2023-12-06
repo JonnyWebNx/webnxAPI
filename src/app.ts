@@ -116,10 +116,13 @@ app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
 app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
 app.get('/api/asset/search', auth, sanitize, assetManager.searchAssets);
 app.get('/api/asset/history', auth, sanitize, assetManager.getAssetHistory);
+app.get('/api/asset/nodes', auth, sanitize, assetManager.getNodesOnAsset);
+//app.get('/api/asset/highestTag', sanitize, assetManager.getHighestAssetTag);
 app.put("/api/asset", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, assetManager.updateAsset);
 app.delete("/api/asset", auth, checkRoles(["admin"]), sanitize, assetManager.deleteAsset);
 
 // *** History ***
+app.get("/api/history/sales", auth, sanitize, userManager.getEbaySalesHistory)
 app.get('/api/history/checkins', auth, sanitize, userManager.getCheckinHistory)
 app.get("/api/history/checkouts", auth, sanitize, checkRoles(['lead', 'clerk', 'admin']), userManager.getCheckoutHistory) 
 app.get('/api/history/alltechs', auth, sanitize, userManager.getAllTechsHistory)

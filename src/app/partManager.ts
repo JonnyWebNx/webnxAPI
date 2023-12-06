@@ -734,7 +734,7 @@ const partManager = {
                     handleError(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 }
-                let returnValue = await partRecordsToCartItemsWithInfoAsync(records)
+                let returnValue = partRecordsToCartItems(records)
                 // Send response
                 res.status(200).json(returnValue)
             })
