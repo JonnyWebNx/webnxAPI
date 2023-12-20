@@ -106,7 +106,7 @@ export function cleanseAsset(asset: AssetSchema) {
             newAsset.num_bays = asset.num_bays
             newAsset.bay_type = asset.bay_type
             newAsset.in_rack = asset.in_rack
-            if(newAsset.in_rack==true) {
+            if(newAsset.in_rack==true||newAsset.live) {
                 newAsset.power_port = asset.power_port
                 newAsset.ipmi_port = asset.ipmi_port
                 newAsset.private_port = asset.private_port
