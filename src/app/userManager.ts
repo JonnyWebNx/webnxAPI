@@ -1171,8 +1171,6 @@ const userManager = {
     // Update - id required in query string
     updateUser: async (req: Request, res: Response) => {
         try{
-            if(!req.user.roles.includes("admin"))
-                return res.status(403).send("Invalid permissions")
             // Check database to see if email already exists
             const submittedUser = req.body.user
             var emailExists = await User.findOne({email: submittedUser.email});
@@ -1267,9 +1265,6 @@ const userManager = {
 
     // Delete - id required in query string
     deleteUser: async (req: Request, res: Response) => {
-        // Get user id from query string
-        if(!req.user.roles.includes("admin"))
-            return res.status(403).send("Invalid permissions")
         var userToDelete = req.query.id;
         // Send id to database for deletion
         User.findByIdAndDelete(userToDelete, (err: MongooseError, user: UserSchema) => {

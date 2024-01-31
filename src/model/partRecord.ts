@@ -24,6 +24,12 @@ const partRecord = new mongoose.Schema({
     by: { type: String, required: true },
     //
     pallet_tag: { type: String },
+    // Request where the parts came from
+    part_request: { type: String },
+    // Build kittttt
+    kit_id: { type: String },
+    // Kiosk for the build kit
+    kiosk: { type: String },
     // Date the part was created
     date_created: { type: Date, default: new Date() },
     date_replaced: { type: Date, default: null },

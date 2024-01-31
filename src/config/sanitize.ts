@@ -1,5 +1,7 @@
 // Remove all characters that are associated with MongoDB commands or could escape a query
 export function stringSanitize(text: string, strict: boolean) {
+    if(text==undefined)
+        return text
     text =  text
         .replaceAll("\\", "")
         .replaceAll("$", "")

@@ -7,44 +7,6 @@ import { objectSanitize } from "../../config/sanitize.js"
 import callbackHandler from "../../middleware/callbackHandlers.js"
 import Asset from "../../model/asset.js"
 import Part from "../../model/part.js"
-/**
- * 
- * @param parts 
- * @param asset_tag 
- * @param user_id 
- * @param building 
- * @param date 
- * @returns Promise object for awaits
- */
-export function createPartRecordsOnAssetAsync(parts: CartItem[], asset_tag: string, user_id: any, building: number, date: number) {
-    return Promise.all(parts.map((part) => {
-        if(part.serial) {
-            return PartRecord.create({
-                nxid: part.nxid,
-                building: building,
-                location: "Asset",
-                asset_tag: asset_tag,
-                serial: part.serial,
-                by: user_id,
-                date_created: date
-            })
-        }
-        else {
-            let createPromises = []
-            for (let i = 0; i < part.quantity!; i++) {
-                createPromises.push(PartRecord.create({
-                    nxid: part.nxid,
-                    building: building,
-                    location: "Asset",
-                    asset_tag: asset_tag,
-                    by: user_id,
-                    date_created: date
-                }))
-            }
-            return Promise.all(createPromises)
-        }
-    }))
-}
 
 /**
  *
@@ -153,6 +115,9 @@ export function getAddedAndRemoved(req_parts: CartItem[], current_parts: PartRec
     let serializedExistingParts = [] as CartItem[];
     let unserializedPartsOnRequest = new Map<string, number>();
     let serializedPartsOnRequest = [] as CartItem[];
+
+    // You could probably use partRecordsToCartItemHere and create another method for the loop
+
     // Map existing records to usable data types
     for (let i = 0; i < current_parts.length; i++) {
         if(current_parts[i].serial) {
@@ -179,18 +144,114 @@ export function getAddedAndRemoved(req_parts: CartItem[], current_parts: PartRec
     // If request error
     if(reqError)
         return { added: [], removed: [], error: true}
-    // Parts removed from asset
+    // Parts removed
     let removed = [] as CartItem[]
-    // Parts added to pallet
+    // Parts added
     let added = [] as CartItem[]
-    // Check for serialized parts removed from pallet
-
     // Check for removed serialized parts
     pushDifferenceSerialized(serializedExistingParts, serializedPartsOnRequest, removed)
     // Check for added serialized parts
     pushDifferenceSerialized(serializedPartsOnRequest, serializedExistingParts, added)
-    
+    // Check for removed unserialized parts
+    pushDifferenceUnserialized(unserializedExistingParts, unserializedPartsOnRequest, removed)
+    // Check for added unserialized parts
+    pushDifferenceUnserialized(unserializedPartsOnRequest, unserializedExistingParts, added)
+    // Return data with no error
+    return { added, removed, error: false}
+}
 
+
+// Takes an updated parts list and existing parts list and returns the parts added and removed in the 
+// updated list
+export function getAddedAndRemovedIgnoreSerials(req_parts: CartItem[], current_parts: PartRecordSchema[]) {
+    // Store existing parts in a more usable format
+    let unserializedExistingParts = new Map<string, number>();
+    let unserializedPartsOnRequest = new Map<string, number>();
+
+    // You could probably use partRecordsToCartItemHere and create another method for the loop
+
+    // Map existing records to usable data types
+    for (let i = 0; i < current_parts.length; i++) {
+        unserializedExistingParts.set(current_parts[i].nxid!, unserializedExistingParts.has(current_parts[i].nxid!) ? unserializedExistingParts.get(current_parts[i].nxid!)!+1 : 1);
+    }
+    let reqError = false
+    // Map parts from request 
+    for(let i = 0; i < req_parts.length; i++) {
+        if(req_parts[i].serial) {
+            req_parts[i].quantity = 1
+        }
+        if (req_parts[i].quantity) {
+            unserializedPartsOnRequest.set(req_parts[i].nxid, req_parts[i].quantity!);
+            continue
+        }
+        reqError = true
+        break
+    }
+    // If request error
+    if(reqError)
+        return { added: [], removed: [], error: true}
+    // Parts removed
+    let removed = [] as CartItem[]
+    // Parts added
+    let added = [] as CartItem[]
+    // Check for removed unserialized parts
+    pushDifferenceUnserialized(unserializedExistingParts, unserializedPartsOnRequest, removed)
+    // Check for added unserialized parts
+    pushDifferenceUnserialized(unserializedPartsOnRequest, unserializedExistingParts, added)
+    // Return data with no error
+    return { added, removed, error: false}
+}
+
+// Takes an updated parts list and existing parts list and returns the parts added and removed in the 
+// updated list
+export function getAddedAndRemovedCartItems(req_parts: CartItem[], current_parts: CartItem[]) {
+    // Store existing parts in a more usable format
+    let unserializedExistingParts = new Map<string, number>();
+    let serializedExistingParts = [] as CartItem[];
+    let unserializedPartsOnRequest = new Map<string, number>();
+    let serializedPartsOnRequest = [] as CartItem[];
+    let reqError = false
+    // Map parts from request 
+    for(let i = 0; i < req_parts.length; i++) {
+        if(req_parts[i].serial) {
+            // Push to array
+            serializedPartsOnRequest.push({ nxid: req_parts[i].nxid, serial: req_parts[i].serial });
+            continue
+        }
+        if (req_parts[i].quantity) {
+            unserializedPartsOnRequest.set(req_parts[i].nxid, req_parts[i].quantity!);
+            continue
+        }
+        reqError = true
+        break
+    }
+    // If request error
+    if(reqError)
+        return { added: [], removed: [], error: true}
+    for(let i = 0; i < current_parts.length; i++) {
+        if(current_parts[i].serial) {
+            // Push to array
+            serializedExistingParts.push({ nxid: current_parts[i].nxid, serial: current_parts[i].serial });
+            continue
+        }
+        if (current_parts[i].quantity) {
+            unserializedExistingParts.set(current_parts[i].nxid, current_parts[i].quantity!);
+            continue
+        }
+        reqError = true
+        break
+    }
+    // If request error
+    if(reqError)
+        return { added: [], removed: [], error: true}
+    // Parts removed
+    let removed = [] as CartItem[]
+    // Parts added
+    let added = [] as CartItem[]
+    // Check for removed serialized parts
+    pushDifferenceSerialized(serializedExistingParts, serializedPartsOnRequest, removed)
+    // Check for added serialized parts
+    pushDifferenceSerialized(serializedPartsOnRequest, serializedExistingParts, added)
     // Check for removed unserialized parts
     pushDifferenceUnserialized(unserializedExistingParts, unserializedPartsOnRequest, removed)
     // Check for added unserialized parts
@@ -234,9 +295,9 @@ export function updatePartsAsync(createOptions: PartRecordSchema, searchOptions:
     return Promise.all(arr.map((p)=>{
         return new Promise<void>(async (res)=>{
             // Create Options
-            let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
+            let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema|any
             // Search options
-            let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
+            let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema|any
             sOptions.nxid = p.nxid
             cOptions.nxid = p.nxid
             //Check consumable
@@ -270,6 +331,64 @@ export function updatePartsAsync(createOptions: PartRecordSchema, searchOptions:
                     res()
                 }
                 else {
+                    sOptions.serial = null
+                    let toBeUpdated = await PartRecord.find(sOptions)
+                    if (toBeUpdated.length < p.quantity)
+                        return res()
+                    for (let i = 0; i < p.quantity; i++) {
+                        cOptions.prev = toBeUpdated[i]._id
+                        PartRecord.create(cOptions, callbackHandler.updateRecord)
+                    }
+                    res()
+                }
+            }
+            // No quantity or serial - do nothing
+            res()
+        })
+    }))
+}
+
+export function updatePartsClearSerialsAsync(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: CartItem[], migrated: boolean) {
+    return Promise.all(arr.map((p)=>{
+        return new Promise<void>(async (res)=>{
+            // Create Options
+            let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema|any
+            // Search options
+            let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema|any
+            sOptions.nxid = p.nxid
+            cOptions.nxid = p.nxid
+            //Check consumable
+            let partInfo = await Part.findOne({nxid: p.nxid})
+            if(partInfo&&partInfo.consumable == true)
+                cOptions.next = "consumed"
+            if(p.serial) {
+                // cOptions.serial = p.serial
+                sOptions.serial = p.serial
+                if (migrated) {
+                    // Check if serial already exists
+                    let existing = await PartRecord.findOne({nxid: p.nxid, serial: p.serial, next: null})
+                    // Skip creation - avoid duplication
+                    if(existing)
+                        return res()
+                } else {
+                    // Check if prev exists
+                    let prev = await PartRecord.findOne(sOptions)
+                    if(!prev)
+                        return res()
+                    cOptions.prev = prev._id
+                }
+                PartRecord.create(cOptions, callbackHandler.updateRecord)
+                res()
+            }
+            else if(p.quantity) {
+                if(migrated) {
+                    for (let i = 0; i < p.quantity; i++) {
+                        PartRecord.create(cOptions, callbackHandler.callbackHandleError)
+                    }
+                    res()
+                }
+                else {
+                    sOptions.serial = null
                     let toBeUpdated = await PartRecord.find(sOptions)
                     if (toBeUpdated.length < p.quantity)
                         return res()
@@ -368,14 +487,6 @@ export function assetsAreSimilar(asset1: AssetSchema, asset2: AssetSchema) {
     delete copy2.__v
     // Return results of comparison
     return JSON.stringify(copy1) == JSON.stringify(copy2)
-}
-export function returnAssets(res: Response) {
-    return (err: CallbackError, records: AssetSchema[]) => {
-        if (err)
-            res.status(500).send("API could not handle your request: " + err);
-        else
-            res.status(200).json(records);
-    }
 }
 
 export function returnAsset(res: Response) {
@@ -637,41 +748,4 @@ export function partRecordsToCartItems(records: PartRecordSchema[]) {
         cartItems.push({nxid: nxid, quantity: quantity})
     })
     return cartItems as CartItem[]
-}
-
-export function partRecordsToCartItemsWithInfoAsync(records: PartRecordSchema[]) {
-    return new Promise<{parts: PartSchema[], records: CartItem[]}>(async (res)=>{
-        // Turn records into cart items
-        let cartItems = partRecordsToCartItems(records)
-        // Part info cache
-        let cachedInfo = new Map<string, PartSchema>();
-        // Check all cart items
-        await Promise.all(cartItems.map((item) =>{
-            return new Promise<void>(async (res)=>{
-                // Check if part is cached
-                if (!cachedInfo.has(item.nxid)) {
-                    // Set temp value
-                    cachedInfo.set(item.nxid, {})
-                    // Find part
-                    let part = await Part.findOne({nxid: item.nxid})
-                    // Check if exists
-                    if(part) {
-                        // If part was found, add to cache
-                        cachedInfo.set(item.nxid, part)
-                    }
-                    else {
-                        // Part not found, remove temp value from cache
-                        cachedInfo.delete(item.nxid)
-                    }
-                }
-                res()
-            })
-        }))
-        // Turn map into array
-        let parts = Array.from(cachedInfo, (record) => {
-            return { nxid: record[0], part: record[1]}
-        })
-        // Return
-        res({ parts: parts, records: cartItems})
-    })
 }

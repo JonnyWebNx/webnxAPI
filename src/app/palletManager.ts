@@ -2,13 +2,13 @@ import { PalletSchema, CartItem, AssetSchema, PartRecordSchema, PalletEvent } fr
 import { Request, Response } from "express";
 import handleError from "../config/handleError.js";
 import Pallet from "../model/pallet.js";
-import { objectSanitize, stringSanitize } from "../config/sanitize.js";
+import { objectSanitize } from "../config/sanitize.js";
 import { isValidObjectId, MongooseError } from "mongoose";
 import PartRecord from "../model/partRecord.js";
 import Asset from "../model/asset.js";
-import { getAddedAndRemoved, isValidAssetTag, partRecordsToCartItems, partRecordsToCartItemsWithInfoAsync, updatePartsAsync, userHasInInventoryAsync } from "./methods/assetMethods.js";
+import { getAddedAndRemoved, isValidAssetTag, partRecordsToCartItems, updatePartsAsync, updatePartsClearSerialsAsync, userHasInInventoryAsync } from "./methods/assetMethods.js";
 import { CallbackError } from "mongoose";
-import { sanitizeCartItems } from "./methods/partMethods.js";
+import { cartItemsValidAsync, sanitizeCartItems } from "./methods/partMethods.js";
 import callbackHandler from "../middleware/callbackHandlers.js";
 import { getNumPages, getPageNumAndSize, getTextSearchParams, objectToRegex } from "./methods/genericMethods.js";
 
@@ -571,6 +571,10 @@ const palletManager = {
             // Get part records that are currently on asset
             let existingParts = await PartRecord.find({ pallet_tag: pallet.pallet_tag, next: null})
 
+            parts = sanitizeCartItems(parts)
+            if(!(await cartItemsValidAsync(parts)))
+                return res.status(400).send("Error in updated parts list");
+
             let { added, removed, error } = getAddedAndRemoved(parts, existingParts)
             if(error==true)
                 return res.status(400).send("Error in updated parts list");
@@ -618,7 +622,7 @@ const palletManager = {
             // Update removed parts
             await updatePartsAsync(removedOptions, palletSearchOptions, removed, false)
             // Update added parts
-            await updatePartsAsync(addedOptions, userSearchOptions, added, correction==true)
+            await updatePartsClearSerialsAsync(addedOptions, userSearchOptions, added, correction==true)
             // Add assets to pallet
             await addAssetsToPallet(pallet.pallet_tag, asset_tags, req.user.user_id as string, new Date(current_date), pallet.building)
             // Update the asset object and return to user before updating parts records
@@ -695,8 +699,6 @@ const palletManager = {
 
     deletePallet: async (req: Request, res: Response) => {
         try {
-            if(!req.user.roles.includes("admin"))
-                return res.status(403).send("Only admin can delete assets.")
             const pallet_tag = req.query.pallet_tag as string
             if (!pallet_tag||!isValidPalletTag(pallet_tag))
                 return res.status(400).send("Invalid request");

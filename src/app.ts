@@ -67,18 +67,28 @@ app.options('*', cors(corsOptions))
 app.post("/api/auth", auth, isAuth);
 app.post("/api/login", sanitize, login);
 app.post("/api/register", sanitize, register);
+
 app.get("/api/password/reset", sanitize, userManager.sendPasswordResetEmail)
+
 app.post("/api/password/reset", sanitize, userManager.updatePassword)
 
 // ***   Parts   ***
-app.post("/api/part", auth, checkRoles(["lead", "clerk", "admin"]), sanitize, partManager.createPart);
-app.post("/api/part/add", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.addToInventory);
-app.post("/api/checkout", auth, checkRoles(["kiosk"]), sanitize, partManager.checkout);
-app.post("/api/checkin", auth, checkRoles(["kiosk"]), sanitize, partManager.checkin)
-app.post("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.processCheckinRequest)
-app.post("/api/part/move", auth, checkRoles(["tech", "clerk", "ebay", "lead", "admin"]), sanitize, partManager.movePartRecords);
-app.post("/api/part/sell", auth, checkRoles(["ebay", "lead", "admin"]), sanitize, partManager.sellOnEbay);
-app.get("/api/checkin/queue", auth, sanitize, checkRoles(['clerk', 'admin']), partManager.getCheckinQueue)
+app.post("/api/part", auth, sanitize, checkRoles(["create_parts"]), partManager.createPart);
+app.post("/api/part/add", auth, sanitize, checkRoles(["manage_parts"]), partManager.addToInventory);
+app.post("/api/checkout", auth, sanitize, checkRoles(["is_kiosk"]), partManager.checkout);
+app.post("/api/checkin", auth, sanitize, checkRoles(["is_kiosk"]), partManager.checkin)
+app.post("/api/checkin/queue", auth, sanitize, checkRoles(["process_checkins"]), partManager.processCheckinRequest)
+app.post("/api/part/move", auth, sanitize, checkRoles(["own_parts"]), partManager.movePartRecords);
+app.post("/api/part/request/create", auth, sanitize, checkRoles(["request_parts"]), partManager.createPartRequest)
+app.post("/api/part/request/cancel", auth, sanitize, checkRoles(["request_parts"]), partManager.cancelPartRequest)
+app.post("/api/part/request/fulfill", auth, sanitize, checkRoles(["fulfill_part_requests"]), partManager.fulfillPartRequest)
+app.post("/api/part/sell", auth, sanitize, checkRoles(["sell_on_ebay"]), partManager.sellOnEbay);
+app.post("/api/buildKit", auth, sanitize, checkRoles(["create_build_kit"]), partManager.createBuildKit)
+app.post("/api/buildKit/request", auth, sanitize, checkRoles(["request_build_kit"]), partManager.requestBuildKit)
+app.post("/api/buildKit/request/process", auth, sanitize, checkRoles(["fulfill_part_requests"]), partManager.processBuildKitRequest)
+app.post("/api/buildKit/delete", auth, sanitize, checkRoles(["create_build_kit"]), partManager.deleteBuildKit);
+
+app.get("/api/checkin/queue", auth, sanitize, checkRoles(["process_checkins"]), partManager.getCheckinQueue)
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
@@ -90,61 +100,74 @@ app.get("/api/part/records", auth, sanitize, partManager.getPartRecords);
 app.get("/api/part/records/id", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
-app.get("/api/part/audit", auth, sanitize, checkRoles(["clerk", "admin"]), partManager.auditPart)
-app.put("/api/part", auth, checkRoles(["clerk", "admin"]), partManager.updatePartInfo);
-app.put("/images/parts", auth, sanitize, checkRoles(["lead", "clerk", "admin"]), uploadImage, updatePartImage);
-app.delete("/api/part", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deletePart);
-app.delete("/api/partRecord", auth, checkRoles(["clerk", "admin"]), sanitize, partManager.deleteFromPartsRoom);
+app.get("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.auditPart)
+app.get("/api/part/quantities", auth, sanitize, partManager.getKioskQuanitities)
+app.get("/api/part/requests/active", auth, sanitize, partManager.getActivePartRequests)
+app.get("/api/part/requests/fulfilled", auth, sanitize, partManager.getFulfilledPartRequests)
+app.get("/api/buildKit/search", auth, sanitize, partManager.getBuildKits)
+app.get("/api/buildKit", auth, sanitize, partManager.getBuildKitByID)
 
+app.put("/api/part", auth, sanitize, checkRoles(["manage_parts"]), partManager.updatePartInfo);
+app.put("/images/parts", auth, sanitize, checkRoles(["manage_parts"]), uploadImage, updatePartImage);
+app.put("/api/buildKit", auth, sanitize, partManager.claimBuildKit);
 
+app.delete("/api/part", auth, sanitize, checkRoles(["manage_parts"]), partManager.deletePart);
+app.delete("/api/partRecord", auth, sanitize, checkRoles(["manage_parts"]), partManager.deleteFromPartsRoom);
 // ***   Users   ***
 //
 // Create
 // app.post("/api/user", auth, permissions, sanitize, userManager.createUser);
 app.get("/api/user", auth, sanitize, userManager.getUser);
-app.get("/api/user/all", auth, checkRoles(["tech", "kiosk", "clerk", "admin"]), userManager.getAllUsers)
+app.get("/api/user/all", auth, sanitize, userManager.getAllUsers)
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 app.get('/api/user/roles', auth, sanitize, userManager.checkRoles)
-app.put("/api/user", auth, checkRoles(["admin"]), sanitize, userManager.updateUser);
+
+app.put("/api/user", auth, checkRoles(["manage_users"]), sanitize, userManager.updateUser);
 app.put("/images/users", auth, sanitize, uploadImage, updateUserImage);
-app.delete("/api/user", auth, checkRoles(["admin"]), sanitize, userManager.deleteUser);
+
+app.delete("/api/user", auth, checkRoles(["manage_users"]), sanitize, userManager.deleteUser);
 
 // ***    Assets    ***
-app.post("/api/asset", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, assetManager.addUntrackedAsset);
-app.get("/api/asset", auth, sanitize, assetManager.getAssets);
-app.get("/api/asset/parts", auth, sanitize, assetManager.getPartsOnAsset);
+app.post("/api/asset", auth, sanitize, checkRoles(["edit_assets"]), assetManager.addUntrackedAsset);
+
+app.get("/api/asset", auth, sanitize, checkRoles(["view_assets"]), assetManager.getAssets);
+app.get("/api/asset/parts", auth, sanitize, checkRoles(["view_assets"]), assetManager.getPartsOnAsset);
 app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
-app.get('/api/asset/search', auth, sanitize, assetManager.searchAssets);
-app.get('/api/asset/history', auth, sanitize, assetManager.getAssetHistory);
-app.get('/api/asset/nodes', auth, sanitize, assetManager.getNodesOnAsset);
-//app.get('/api/asset/highestTag', sanitize, assetManager.getHighestAssetTag);
-app.put("/api/asset", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, assetManager.updateAsset);
-app.delete("/api/asset", auth, checkRoles(["admin"]), sanitize, assetManager.deleteAsset);
+app.get('/api/asset/search', auth, sanitize, checkRoles(["view_assets"]), assetManager.searchAssets);
+app.get('/api/asset/history', auth, sanitize, checkRoles(["view_assets", "view_analytics"]), assetManager.getAssetHistory);
+app.get('/api/asset/nodes', auth, sanitize, checkRoles(["view_assets"]), assetManager.getNodesOnAsset);
+app.get('/api/asset/highestTag', sanitize, assetManager.getHighestAssetTag);
+app.put("/api/asset", auth, sanitize, checkRoles(["edit_assets"]), assetManager.updateAsset);
+
+app.delete("/api/asset", auth, sanitize, checkRoles(["correct_assets"]), assetManager.deleteAsset);
 
 // *** History ***
-app.get("/api/history/sales", auth, sanitize, userManager.getEbaySalesHistory)
-app.get('/api/history/checkins', auth, sanitize, userManager.getCheckinHistory)
-app.get("/api/history/checkouts", auth, sanitize, checkRoles(['lead', 'clerk', 'admin']), userManager.getCheckoutHistory) 
-app.get('/api/history/alltechs', auth, sanitize, userManager.getAllTechsHistory)
-app.get('/api/history/assetsUpdated', auth, sanitize, userManager.getAssetUpdates)
-app.get('/api/history/assetsUpdated/noDetails', auth, sanitize, userManager.getAssetUpdatesNoDetails)
-app.get('/api/history/newAssets', auth, sanitize, userManager.getNewAssets)
-app.get('/api/history/newAssets/noDetails', auth, sanitize, userManager.getNewAssetsNoDetails)
-app.get('/api/history/part', auth, sanitize, userManager.getPartCreationAndDeletionHistory)
-app.get('/api/history/palletsUpdated', auth, sanitize, userManager.getPalletUpdates)
-app.get('/api/history/palletsUpdated/noDetails', auth, sanitize, userManager.getPalletUpdatesNoDetails)
-app.get('/api/history/newPallets', auth, sanitize, userManager.getNewPallets)
-app.get('/api/history/newPallets/noDetails', auth, sanitize, userManager.getNewPalletsNoDetails)
+app.get("/api/history/sales", auth, sanitize, checkRoles(["sell_on_ebay", "view_analytics"]), userManager.getEbaySalesHistory)
+app.get('/api/history/checkins', auth, sanitize, checkRoles(["process_checkins", "view_analytics"]), userManager.getCheckinHistory)
+app.get("/api/history/checkouts", auth, sanitize, checkRoles(["process_checkins", "view_analytics"]), userManager.getCheckoutHistory) 
+app.get('/api/history/alltechs', auth, sanitize, checkRoles(["view_analytics"]), userManager.getAllTechsHistory)
+app.get('/api/history/assetsUpdated', auth, sanitize, checkRoles(["view_analytics"]), userManager.getAssetUpdates)
+app.get('/api/history/assetsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), userManager.getAssetUpdatesNoDetails)
+app.get('/api/history/newAssets', auth, sanitize, checkRoles(["view_analytics"]), userManager.getNewAssets)
+app.get('/api/history/newAssets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), userManager.getNewAssetsNoDetails)
+app.get('/api/history/part', auth, sanitize, checkRoles(["view_analytics", "manage_parts"]), userManager.getPartCreationAndDeletionHistory)
+app.get('/api/history/palletsUpdated', auth, sanitize, checkRoles(["view_analytics"]), userManager.getPalletUpdates)
+app.get('/api/history/palletsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), userManager.getPalletUpdatesNoDetails)
+app.get('/api/history/newPallets', auth, sanitize, checkRoles(["view_analytics"]), userManager.getNewPallets)
+app.get('/api/history/newPallets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), userManager.getNewPalletsNoDetails)
 
 // ***      Pallets     ***
-app.post("/api/pallet", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, palletManager.createPallet);
-app.get("/api/pallet", auth, sanitize, palletManager.getPallets);
-app.get("/api/pallet/parts", auth, sanitize, palletManager.getPartsAndAssetsOnPallet);
+app.post("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.createPallet);
+
+app.get("/api/pallet", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPallets);
+app.get("/api/pallet/parts", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPartsAndAssetsOnPallet);
 app.get("/api/pallet/id", auth, sanitize, palletManager.getPalletByID);
-app.get('/api/pallet/search', auth, sanitize, palletManager.searchPallets);
-app.get('/api/pallet/history', auth, sanitize, palletManager.getPalletHistory);
-app.put("/api/pallet", auth, checkRoles(["tech", "clerk", "admin"]), sanitize, palletManager.updatePallet);
-app.delete("/api/pallet", auth, checkRoles(["admin"]), sanitize, palletManager.deletePallet);
+app.get('/api/pallet/search', auth, sanitize, checkRoles(["view_pallets"]), palletManager.searchPallets);
+app.get('/api/pallet/history', auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPalletHistory);
+
+app.put("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.updatePallet);
+
+app.delete("/api/pallet", auth, sanitize, checkRoles(["correct_pallets"]), palletManager.deletePallet);
 
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {

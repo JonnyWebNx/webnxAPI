@@ -1,9 +1,4 @@
-import type { Request } from 'express'
 import { Types } from 'mongoose'
-
-export interface NXRequest extends Request {
-    user: ReqUser
-}
 
 export interface ResetToken {
     userId: string | Types.ObjectId,
@@ -14,7 +9,6 @@ export interface ResetToken {
 export interface ReqUser {
     user_id: string | Types.ObjectId,
     email: string,
-    roles: string[],
     building: number
 }
 
@@ -118,6 +112,8 @@ export interface PartRecordSchema {
     location?: string,
     asset_tag?: string,
     pallet_tag?: string,
+    part_request?: string,
+    kit_name?: string,
     serial?: string,
     owner?: string | Types.ObjectId,
     ebay?: string,
@@ -133,14 +129,6 @@ export interface CartItem {
     serial?: string,
     location?: string,
     building?: number
-}
-
-// Contains all part data
-export interface LoadedCartItem {
-    part: PartSchema,
-    quantity?: number,
-    serials?: string[],
-    serial?: string
 }
 
 export interface InventoryEntry {
@@ -195,12 +183,6 @@ export interface CheckInQueuePart extends CartItem {
   newLocation?: string
 }
 
-export interface CheckInRequest {
-  date: Date,
-  by: string,
-  parts: CheckInQueuePart[]
-}
-
 export interface AssetUpdate {
     asset_tag: string,
     date: Date,
@@ -228,13 +210,29 @@ export interface PalletSchema {
     next: string|null | Types.ObjectId,
 }
 
-export interface PartEvent {
-    by: string,
-    location: string,
-    date: Date,
-    next?: string,
-    prev?: string,
-    asset_tag?: string,
-    pallet_tag?: string,
-    parts: CartItem[]
+export interface PartRequestSchema {
+    _id?: Types.ObjectId,
+    requested_by: string,
+    building: number,
+    parts: CartItem[],
+    date_created: Date,
+    date_fulfilled?: Date,
+    fullfilled_by?: string,
+    cancelled?: boolean
+    build_kit_id?: string,
+}
+
+export interface BuildKitSchema {
+    _id?: Types.ObjectId,
+    kit_name: string,
+    building: number,
+    claimed_parts?: CartItem[],
+    date_created: Date,
+    date_claimed?: Date
+    created_by: string,
+    requested_by?: string,
+    claimed_by?: string,
+    notes: string,
+    deleted: boolean,
+    kiosk: string
 }

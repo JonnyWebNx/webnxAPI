@@ -4,7 +4,7 @@ import User from "../model/user.js";
 import handleError from "../config/handleError.js";
 import { Request, Response } from "express";
 import config from '../config.js'
-import { PartQuery, UserSchema } from './interfaces.js';
+import { UserSchema } from './interfaces.js';
 const { JWT_SECRET, JWT_EXPIRES_IN} = config
 
 interface TokenUser extends UserSchema {
@@ -30,9 +30,9 @@ const login = async (req: Request, res: Response):Promise<void> => {
             }
             // Create token if password correct
             let token = ""
-            let tokenData = { user_id: user._id, email, roles: user.roles, building: user.building }
+            let tokenData = { user_id: user._id, email, building: user.building }
             // No expiry time for kiosk
-            if (user.roles?.includes("kiosk")) {
+            if (user.roles?.includes("is_kiosk")||user.roles?.includes("persist_login")) {
                 token = jwt.sign(
                     tokenData,
                     JWT_SECRET!

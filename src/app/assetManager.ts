@@ -10,13 +10,12 @@ import Asset from "../model/asset.js";
 import PartRecord from "../model/partRecord.js";
 import handleError from "../config/handleError.js";
 import { Request, Response } from "express";
-import { AssetSchema, CartItem, PartRecordSchema } from "./interfaces.js";
+import { AssetSchema, PartRecordSchema } from "./interfaces.js";
 import { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { 
     isValidAssetTag,
     cleanseAsset,
     findExistingSerial,
-    createPartRecordsOnAssetAsync,
     returnAsset,
     returnAssetHistory,
     returnAssetSearch,
@@ -34,13 +33,8 @@ const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {
         try {
             // Get asset from request
-            let asset = req.body.asset as AssetSchema
-            let parts = req.body.parts as CartItem[]
-            // Return if user is kiosk
-            if(req.user.roles.includes("kiosk")) {
-
-                return res.status(401).send("Kiosk cannot create assets")
-            }
+            let asset = cleanseAsset(req.body.asset)
+            let parts = sanitizeCartItems(req.body.parts)
             // Check for required fields
             if (!(asset.asset_tag&&asset.asset_type)||!isValidAssetTag(asset.asset_tag)) {
                 // Send response if request is invalid
@@ -60,25 +54,38 @@ const assetManager = {
             asset.prev = null;
             asset.next = null;
             delete asset.migrated;
-
-            asset = cleanseAsset(asset)
-
+            // If asset has a parent, check if it exists
             if(asset.parent&&asset.parent!='') {
                 let parentChassis = await Asset.findOne({asset_tag: asset.parent, next: null})
                 if(parentChassis==null)
                     return res.status(400).send(`Node chassis not found`);
             }
-
             // Set sentinel value
             let existingSerial = await findExistingSerial(parts)
             // If serial already exists, return error
             if(existingSerial!="")
                 return res.status(400).send(`Serial number ${existingSerial} already in inventory`);
-            
-            // Create part records
-            await createPartRecordsOnAssetAsync(parts, asset.asset_tag!, req.user.user_id, asset.building!, dateCreated)
             // Create a new asset
-            Asset.create(asset, returnAsset(res));
+            Asset.create(asset, async (err: MongooseError, newAsset: AssetSchema) => {
+                if(err) {
+                    handleError(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                }
+                let date = newAsset.date_created
+                // Create all part records
+                let createOptions = {
+                    building: newAsset.building,
+                    location: "Asset",
+                    asset_tag: newAsset.asset_tag,
+                    by: req.user.user_id,
+                    date_created: date,
+                    prev: null,
+                    next: null
+                }
+                await updatePartsAsync(createOptions, {}, parts, true)
+                // Create/update all assets on pallet
+                res.status(200).send("Success");
+            });
         } catch (err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);
@@ -382,8 +389,6 @@ const assetManager = {
 
     deleteAsset: async (req: Request, res: Response) => {
         try {
-            if(!req.user.roles.includes("admin"))
-                return res.status(403).send("Only admin can delete assets.")
             const asset_tag = req.query.asset_tag as string
             if (!asset_tag||!isValidAssetTag(asset_tag))
                 return res.status(400).send("Invalid request");

@@ -1,7 +1,7 @@
 import { CartItem, PartSchema, PartRecordSchema, UserSchema, InventoryEntry } from "../interfaces.js"
 import { CallbackError } from "mongoose"
 import Part from "../../model/part.js"
-import { getAddedAndRemoved } from "./assetMethods.js"
+import { getAddedAndRemoved, getAddedAndRemovedIgnoreSerials } from "./assetMethods.js"
 import PartRecord from "../../model/partRecord.js"
 import { objectSanitize } from "../../config/sanitize.js"
 import User from "../../model/user.js"
@@ -81,7 +81,7 @@ export function cleansePart(part: PartSchema) {
 
 export function getKiosksAsync(building: number) {
     return new Promise<UserSchema[]>(async (res)=>{
-        let kioskUsers = await User.find({roles: ['kiosk'], building: building})
+        let kioskUsers = await User.find({roles: ['is_kiosk'], building: building})
         res(kioskUsers)
     })
 }
@@ -96,7 +96,7 @@ export function getKioskNamesAsync(building: number) {
 
 export function getAllKiosksAsync() {
     return new Promise<UserSchema[]>(async (res)=>{
-        let kioskUsers = await User.find({roles: ['kiosk']})
+        let kioskUsers = await User.find({roles: ['is_kiosk']})
         res(kioskUsers)
     })
 }
@@ -251,7 +251,10 @@ export function cartItemsValidAsync(cartItems: CartItem[]) {
                     // Make sure serial is string and not empty
                     ||(item.serial&&(typeof(item.serial)!="string"||item.serial==""))
                     // Make sure serialized parts have serial and unserialized do not
-                    ||((part.serialized==true&&!item.serial)||(part.serialized==false&&item.serial))
+                    // Old:
+                    //||((part.serialized==true&&!item.serial)||(part.serialized==false&&item.serial))
+                    // New:
+                    ||(part.serialized==false&&item.serial)
                 ) {
                     valid = false
                 }
@@ -270,7 +273,7 @@ export function kioskHasInInventoryAsync(kioskName: string, building: number, in
             if(err)
                 return res(false)
             // Any parts "added" would not already be in users inventory
-            let { added, error } = getAddedAndRemoved(inventory, userInventoryRecords)
+            let { added, error } = getAddedAndRemovedIgnoreSerials(inventory, userInventoryRecords)
             // If function encounters error
             if(error)
                 return res(false)
@@ -337,7 +340,15 @@ export function returnPartSearch(numPages: number, numParts: number, req: Reques
             return res.status(500).send("API could not handle your request: " + err);
         }
         // Map for all parts
-        let kioskNames = await getKioskNamesAsync(req.user.building)
+        let kioskNames = [] as string[]
+        let user = await User.findById(req.user.user_id)
+        if(user&&user.roles?.includes("is_kiosk")) {
+            let u = await User.findById(req.user.user_id)
+            kioskNames.push(u?.first_name + " " + u?.last_name)
+        }
+        else {
+            kioskNames =  await getKioskNamesAsync(req.user.building)
+        }
         let { building, location } = req.query;
         // Get a list of nxids
         let nxids = [] as string[]
@@ -351,6 +362,25 @@ export function returnPartSearch(numPages: number, numParts: number, req: Reques
                 $match:{
                     nxid: { $in: nxids },
                     next: null,
+                    // This will enable build kits counting towards search quantities
+                    // $or: [
+                    //     {
+                    //         location: location ? location : { $in: kioskNames }
+                    //     },
+                    //     // Evil ternary shit
+                    //     (req.user.roles.includes('kiosk') ?
+                    //         // If User is a kiosk
+                    //         {
+                    //             location: 'Build Kit',
+                    //             kiosk: req.user.user_id
+                    //         }
+                    //         :
+                    //         // If User is not a kiosk
+                    //         {
+                    //             location: 'Build Kit'
+                    //         }
+                    //     )
+                    // ],
                     location: location ? location : {$in: kioskNames},
                     building: isNaN(parseInt(building as string)) ? req.user.building : parseInt(building as string)
                 }
