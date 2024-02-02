@@ -340,7 +340,7 @@ const partManager = {
                 PartRequest.findByIdAndUpdate(request_id, {
                     fulfilled_by: req.user.user_id,
                     date_fulfilled: current_date,
-                    fulfilled_list: cartItems,
+                    fulfilled_list: [],
                     clerk_notes: notes
                 }, (err: MongooseError, request: PartRequestSchema) =>{
                     if(err)
