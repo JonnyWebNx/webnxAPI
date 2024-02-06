@@ -81,7 +81,7 @@ export function cleansePart(part: PartSchema) {
 
 export function getKiosksAsync(building: number) {
     return new Promise<UserSchema[]>(async (res)=>{
-        let kioskUsers = await User.find({roles: ['is_kiosk'], building: building})
+        let kioskUsers = await User.find({roles: 'is_kiosk', building: building})
         res(kioskUsers)
     })
 }
@@ -96,7 +96,7 @@ export function getKioskNamesAsync(building: number) {
 
 export function getAllKiosksAsync() {
     return new Promise<UserSchema[]>(async (res)=>{
-        let kioskUsers = await User.find({roles: ['is_kiosk']})
+        let kioskUsers = await User.find({roles: 'is_kiosk'})
         res(kioskUsers)
     })
 }
