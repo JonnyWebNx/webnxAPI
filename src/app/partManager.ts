@@ -176,6 +176,7 @@ const partManager = {
             PartRequest.create({
                 requested_by: req.user.user_id,
                 building: req.user.building,
+                date_created: Date.now(),
                 parts,
                 tech_notes: notes
                 
