@@ -416,6 +416,10 @@ export function updatePartsAddSerialsAsync(createOptions: PartRecordSchema, sear
             cOptions.nxid = p.nxid
             sOptions.serial = undefined
             let toBeUpdated = await PartRecord.find(sOptions)
+            //Check consumable
+            let partInfo = await Part.findOne({nxid: p.nxid})
+            if(partInfo&&partInfo.consumable == true)
+                cOptions.next = "consumed"
             for (let i = 0; i < p.unserialized; i++) {
                 // Check if part will have new serial
                 if(p.newSerials&&p.newSerials[i]) {
