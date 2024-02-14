@@ -172,6 +172,7 @@ app.delete("/api/pallet", auth, sanitize, checkRoles(["correct_pallets"]), palle
 
 app.get("/api/notifications/publicKey", auth, sanitize, notifs.publicKey);
 app.post("/api/notifications/register", auth, sanitize, notifs.register);
+app.post("/api/notifications/send", auth, sanitize, notifs.sendNotification);
 
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {
