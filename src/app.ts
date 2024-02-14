@@ -26,6 +26,7 @@ import partManager from './app/partManager.js'
 import userManager from './app/userManager.js';
 import assetManager from './app/assetManager.js'
 import palletManager from './app/palletManager.js';
+import notifs from './app/notifs.js';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance
@@ -168,6 +169,9 @@ app.get('/api/pallet/history', auth, sanitize, checkRoles(["view_pallets"]), pal
 app.put("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.updatePallet);
 
 app.delete("/api/pallet", auth, sanitize, checkRoles(["correct_pallets"]), palletManager.deletePallet);
+
+app.get("/api/notifications/publicKey", auth, sanitize, notifs.publicKey);
+app.post("/api/notifications/register", auth, sanitize, notifs.register);
 
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {

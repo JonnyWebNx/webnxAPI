@@ -39,9 +39,7 @@ import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams
 import { stringSanitize } from '../config/sanitize.js';
 import PartRequest from '../model/partRequest.js';
 import BuildKit from '../model/buildKit.js';
-import { after } from 'node:test';
 const { UPLOAD_DIRECTORY } = config
-
 
 const partManager = {
     // Create
@@ -492,16 +490,23 @@ const partManager = {
 
 
     getBuildKitByID: async (req: Request, res: Response) => {
-        let {id} = req.query
-        BuildKit.findById(id, async (err: CallbackError, kit: BuildKitSchema) => {
-            if(err)
-                return res.status(500).send("API could not handle your request: " + err);
-            let records = await PartRecord.find({kit_id: id, next: null})
-            let items = partRecordsToCartItems(records)
-            let returnKit = JSON.parse(JSON.stringify(kit))
-            returnKit.parts = items
-            res.status(200).json(returnKit)
-        })
+        try {
+            let {id} = req.query
+            BuildKit.findById(id, async (err: CallbackError, kit: BuildKitSchema) => {
+                if(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                let records = await PartRecord.find({kit_id: id, next: null})
+                let items = partRecordsToCartItems(records)
+                let returnKit = JSON.parse(JSON.stringify(kit))
+                returnKit.parts = items
+                res.status(200).json(returnKit)
+            })
+        }
+        catch (err) {
+            // Error
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
     },
 
     createBuildKit: async (req: Request, res: Response) => {
@@ -530,8 +535,6 @@ const partManager = {
             listMap.forEach((v, k)=>{
                 list.push({kiosk: k, parts: v})
             })
-            // save a copy for later
-            let listCopy = JSON.parse(JSON.stringify(list))
             // Convert request parts to cart items
             for(let entry of list) {
                 for(let p of entry.parts) {
@@ -711,47 +714,54 @@ const partManager = {
     },
 
     requestBuildKit: async (req: Request, res: Response) => {
-        // Get kit id
-        let kit_id = stringSanitize(req.body.kit_id, true)
-        // Check if empty
-        if(!kit_id)
-            return res.status(400).send(`Kit id not present in request.`)
-        // Find kit by id
-        let kit = await BuildKit.findById(kit_id)
-        // Check if kit was found
-        if(!kit)
-            return res.status(400).send(`Kit not found`)
-        // Check if kit was claimed or deleted
-        if(kit.date_claimed||kit.deleted)
-            return res.status(400).send(`Kit has already been claimed or deleted`)
-        // Check if kit has already been requested
-        let existingRequest = await PartRequest.findOne({build_kit_id: kit_id, denied: {$ne: true}, cancelled: {$ne: true}})
-        if(existingRequest)
-            return res.status(400).send(`An active request already exists for this kit.`)
-        let current_date = Date.now()
-        BuildKit.findByIdAndUpdate(kit_id, {
-            requested_by: req.user.user_id,
-            date_requested: current_date
-        }, (err: CallbackError, kit1: BuildKitSchema) => {
-            // Error
-            if(err)
-                return res.status(500).send("API could not handle your request: " + err);
-            // Create the part request
-            PartRequest.create({
-                build_kit_id: kit_id,
+        try {
+            // Get kit id
+            let kit_id = stringSanitize(req.body.kit_id, true)
+            // Check if empty
+            if(!kit_id)
+                return res.status(400).send(`Kit id not present in request.`)
+            // Find kit by id
+            let kit = await BuildKit.findById(kit_id)
+            // Check if kit was found
+            if(!kit)
+                return res.status(400).send(`Kit not found`)
+            // Check if kit was claimed or deleted
+            if(kit.date_claimed||kit.deleted)
+                return res.status(400).send(`Kit has already been claimed or deleted`)
+            // Check if kit has already been requested
+            let existingRequest = await PartRequest.findOne({build_kit_id: kit_id, denied: {$ne: true}, cancelled: {$ne: true}})
+            if(existingRequest)
+                return res.status(400).send(`An active request already exists for this kit.`)
+            let current_date = Date.now()
+            BuildKit.findByIdAndUpdate(kit_id, {
                 requested_by: req.user.user_id,
-                building: req.user.building,
-                parts: [],
-                tech_notes: "",
-                date_created: current_date
-            }, (err: CallbackError, req1: PartRequestSchema) => {
+                date_requested: current_date
+            }, (err: CallbackError, kit1: BuildKitSchema) => {
                 // Error
                 if(err)
                     return res.status(500).send("API could not handle your request: " + err);
-                // Send success
-                res.status(200).send("Kit requested.")
+                // Create the part request
+                PartRequest.create({
+                    build_kit_id: kit_id,
+                    requested_by: req.user.user_id,
+                    building: req.user.building,
+                    parts: [],
+                    tech_notes: "",
+                    date_created: current_date
+                }, (err: CallbackError, req1: PartRequestSchema) => {
+                    // Error
+                    if(err)
+                        return res.status(500).send("API could not handle your request: " + err);
+                    // Send success
+                    res.status(200).send("Kit requested.")
+                })
             })
-        })
+        }
+        catch (err) {
+            // Error
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
     },
 
     claimBuildKit: async (req: Request, res: Response) => {
@@ -839,7 +849,6 @@ const partManager = {
                 return res.status(400).send(`Kit cannot be deleted`)
             let current_date = Date.now();
             // save a copy for later
-            let listCopy = JSON.parse(JSON.stringify(list))
             let kiosks = await getAllKioskNames()
             // Cart items to check against the kit later
             let cartItems = [] as CartItem[]
@@ -1243,7 +1252,7 @@ const partManager = {
     searchParts: async (req: Request, res: Response) => {
         try {
             // Get search string and page info
-            let { pageSize, pageSkip, searchString } = getTextSearchParams(req)
+            let { pageSize, pageSkip, searchString, sort } = getTextSearchParams(req)
             // If search string is empty
             if(searchString == "") {
                 // Count all parts
@@ -1253,7 +1262,7 @@ const partManager = {
                 // Get all parts
                 Part.find({})
                     // Sort by NXID
-                    .sort({ nxid: 1 })
+                    .sort(sort)
                     // Skip - gets requested page number
                     .skip(pageSkip)
                     // Limit - returns only enough elements to fill page
@@ -1279,7 +1288,7 @@ const partManager = {
                     }
                 },
                 {
-                    $sort: { relevance: -1 }
+                    $sort: sort
                 },
                 {
                     $project: { relevance: 0 }

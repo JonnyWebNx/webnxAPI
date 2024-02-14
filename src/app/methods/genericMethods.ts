@@ -16,6 +16,20 @@ export function getPageNumAndSize(req: Request) {
     return { pageNum, pageSize, pageSkip }
 }
 
+export function getSearchSort(req: Request) {
+    let sortBy = req.query.sortBy as string
+    let sortDir = parseInt(req.query.sortDir as string)
+    let sort = { relevance: -1 } as any
+    if(sortBy) {
+        if(!(sortDir==1||sortDir==-1)) {
+            sortDir = 1
+        }
+        sort = {}
+        sort[sortBy] = sortDir
+    }
+    return sort
+}
+
 export function getSearchString(req: Request) {
     let searchString = req.query.searchString as string
     if(searchString==undefined||(typeof(searchString)!="string"))
@@ -27,8 +41,9 @@ export function getTextSearchParams(req: Request) {
     // Parse from query string
     let { pageNum, pageSize, pageSkip } = getPageNumAndSize(req)
     let searchString = getSearchString(req)
+    let sort = getSearchSort(req)
     // Return parsed ints
-    return { pageNum, pageSize, searchString, pageSkip }
+    return { pageNum, pageSize, searchString, pageSkip, sort }
 }
 
 export function getStartAndEndDate(req: Request) {
