@@ -6,6 +6,8 @@ const notifs = {
         res.status(200).send(config.VAPID_PUBLIC_KEY)
     },
     register: async (req: Request, res: Response) => {
+        console.log(req.body)
+        res.status(200).send("SUCCESS")
     },
     sendNotification: async (req: Request, res: Response) => {
     },

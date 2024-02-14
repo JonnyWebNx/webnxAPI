@@ -21,6 +21,7 @@ import handleError from './config/handleError.js';
 import { MongooseError } from 'mongoose';
 // import handleError from './config/handleError.js';
 // import callbackHandler from './middleware/callbackHandlers.js';
+import webPush from 'web-push';
 
 // Hand off requests to app
 const server = http.createServer(app);
@@ -34,6 +35,13 @@ server.listen(port, () => {
     "\x1b[0m",`\nServer running on port ${config.PORT}`);
 });
 
+if (!config.VAPID_PUBLIC_KEY || !config.VAPID_PRIVATE_KEY) {
+  console.log(
+    "You must set the VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY " +
+      "environment variables. You can use the following ones:"
+  );
+  console.log(webPush.generateVAPIDKeys());
+}
 // PartRecord.find({owner: {$ne: undefined}}, async (err: MongooseError, res: PartRecordSchema[]) => {
 //     if(err)
 //         return
