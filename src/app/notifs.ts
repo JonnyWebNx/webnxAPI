@@ -24,6 +24,7 @@ const notifs = {
             res.status(200).send("Success")
         })
         .catch((err)=>{
+            console.log(err)
             res.status(500).send(err)
         })
 
