@@ -11,7 +11,7 @@ const notifs = {
         res.status(200).send("SUCCESS")
     },
     sendNotification: async (req: Request, res: Response) => {
-        webPush.sendNotification(req.body.subscription, "payload", {
+        webPush.sendNotification(JSON.parse(req.body.subscription), "payload", {
             TTL: 0,
             urgency: "high",
             vapidDetails: {
