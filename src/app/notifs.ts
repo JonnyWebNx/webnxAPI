@@ -20,7 +20,8 @@ const notifs = {
                 privateKey: config.VAPID_PRIVATE_KEY!
             }
         })
-        .then(()=>{
+        .then((val)=>{
+            console.log(val)
             res.status(200).send("Success")
         })
         .catch((err)=>{
