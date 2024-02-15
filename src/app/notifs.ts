@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import config from '../config.js'
-import webPush, { supportedUrgency } from 'web-push'
+import webPush from 'web-push'
 
 const notifs = {
     publicKey: async (req: Request, res: Response) => {
@@ -15,7 +15,7 @@ const notifs = {
             TTL: 0,
             urgency: "high",
             vapidDetails: {
-                subject: "https://cameronmckay.xyz",
+                subject: `mailto:${config.DEV_EMAIL}`,
                 publicKey: config.VAPID_PUBLIC_KEY!,
                 privateKey: config.VAPID_PRIVATE_KEY!
             }
