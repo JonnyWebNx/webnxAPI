@@ -17,12 +17,12 @@ const notifs = {
             console.log(req.body)
             res.status(200).send("SUCCESS")
         } catch (err) {
-            throw(err)
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
     sendNotification: async (req: Request, res: Response) => {
+        console.log(req.body.subscription)
         webPush.sendNotification(req.body.subscription, "payload", {
             TTL: 0,
             urgency: "high",
