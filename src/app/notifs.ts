@@ -3,6 +3,9 @@ import config from '../config.js'
 import webPush, { PushSubscription } from 'web-push'
 import handleError from "../config/handleError.js";
 import User from "../model/user.js";
+import { sendNotificationToGroup, sendNotificationToUser } from "./methods/notificationMethods.js";
+import { notEqual } from "assert";
+import { NotificationTypes } from "./interfaces.js";
 
 const notifs = {
     publicKey: async (req: Request, res: Response) => {
@@ -67,25 +70,19 @@ const notifs = {
         }
     },
     sendNotification: async (req: Request, res: Response) => {
-        console.log(req.body.subscription)
-        webPush.sendNotification(req.body.subscription, "payload", {
-            TTL: 0,
-            urgency: "high",
-            vapidDetails: {
-                subject: `mailto:${config.DEV_EMAIL}`,
-                publicKey: config.VAPID_PUBLIC_KEY!,
-                privateKey: config.VAPID_PRIVATE_KEY!
+        try {
+            let { user, role, type, text } = req.body
+            if(user) {
+                await sendNotificationToUser(user as string, type as NotificationTypes, text as string)
             }
-        })
-        .then((val)=>{
-            console.log(val)
-            res.status(200).send("Success")
-        })
-        .catch((err)=>{
-            console.log(err)
-            res.status(500).send(err)
-        })
-
+            else if(role) {
+                await sendNotificationToGroup(role as string, type as NotificationTypes, text as string)
+            }
+            res.status(200).send("SUCCESS")
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
     },
 }
 
