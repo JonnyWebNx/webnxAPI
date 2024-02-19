@@ -1,4 +1,5 @@
 import { Types } from 'mongoose'
+import { PushSubscription } from 'web-push';
 
 export interface ResetToken {
     userId: string | Types.ObjectId,
@@ -141,6 +142,7 @@ export interface InventoryEntry {
 // User schema
 export interface UserSchema {
     roles?: string[],
+    subscriptions?: PushSubscription[],
     date_created?: Date,
     email?: string,
     first_name?: string,
@@ -235,4 +237,20 @@ export interface BuildKitSchema {
     notes: string,
     deleted: boolean,
     kiosk: string
+}
+
+export enum NotificationTypes {
+  Warning = "Warning",
+  Error = "Error",
+  Info = "Info",
+  Alert = "Alert",
+}
+
+export interface NotificationSchema {
+    user: string,
+    type: NotificationTypes,
+    text: string,
+    date: Date,
+    date_read?: Date,
+    link?: string,
 }
