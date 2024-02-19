@@ -42,6 +42,15 @@ export async function sendNotificationToUser(
                         privateKey: config.VAPID_PRIVATE_KEY!
                     }
                 })
+                .catch(()=>{
+                    return User.updateMany({}, {
+                        $pull: {
+                            subscriptions: {
+                                endpoint: sub.endpoint
+                            }
+                        }
+                    })
+                })
             })
         )
     })
