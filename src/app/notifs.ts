@@ -43,9 +43,7 @@ const notifs = {
             User.updateMany({}, {
                 $pull: {
                     subscriptions: {
-                        $elemMatch: {
-                            endpoint: subscription.endpoint
-                        }
+                        endpoint: subscription.endpoint
                     }
                 }
             })
