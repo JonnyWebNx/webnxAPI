@@ -68,7 +68,7 @@ export async function sendNotificationToGroup(
 ) {
     let date = new Date()
     // Find all users with the role
-    return User.find({role})
+    return User.find({roles: role})
     .then((users: UserSchema[]) => {
         // For every user
         return Promise.all(users.map((u)=>{
