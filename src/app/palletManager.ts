@@ -97,31 +97,28 @@ function palletsAreSimilar(pallet1: PalletSchema, pallet2: PalletSchema) {
     return JSON.stringify(copy1) == JSON.stringify(copy2)
 }
 
-function getPalletUpdateDates(pallet_tag: string) {
-    return new Promise<Date[]>(async(res)=>{
-        let dates = [] as Date[]
-        // Get all the dates of asset related events
-        dates = dates.concat(await PartRecord.find({pallet_tag}).distinct("date_created") as Date[])
-        dates = dates.concat(await PartRecord.find({pallet_tag}).distinct("date_replaced") as Date[])
-        dates = dates.concat(await Asset.find({pallet: pallet_tag, prevPallet: { $ne: pallet_tag }}).distinct("date_created") as Date[])
-        dates = dates.concat(await Asset.find({pallet: pallet_tag, nextPallet: { $ne: pallet_tag }}).distinct("date_replaced") as Date[])
-        dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_created") as Date[])
-        dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_replaced") as Date[])
-        // Get rid of duplicates
-        // Sort
-        dates = dates.sort((a: Date, b: Date) => { 
-            if (a < b)
-                return 1
-            return -1
-        })
-        // Get rid of duplicates
-        dates = dates
-            .filter((d)=>d!=null)
-            .map((d)=>d.getTime())
-            .filter((date, index, arr) => arr.indexOf(date) === index && date != null)
-            .map((d)=>new Date(d))
-        res(dates)
+async function getPalletUpdateDates(pallet_tag: string) {
+    let dates = [] as Date[]
+    // Get all the dates of asset related events
+    dates = dates.concat(await PartRecord.find({pallet_tag}).distinct("date_created") as Date[])
+    dates = dates.concat(await PartRecord.find({pallet_tag}).distinct("date_replaced") as Date[])
+    dates = dates.concat(await Asset.find({pallet: pallet_tag, prevPallet: { $ne: pallet_tag }}).distinct("date_created") as Date[])
+    dates = dates.concat(await Asset.find({pallet: pallet_tag, nextPallet: { $ne: pallet_tag }}).distinct("date_replaced") as Date[])
+    dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_created") as Date[])
+    dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_replaced") as Date[])
+    // Get rid of duplicates
+    // Sort
+    dates = dates.sort((a: Date, b: Date) => { 
+        if (a < b)
+            return 1
+        return -1
     })
+    // Get rid of duplicates
+    return dates
+        .filter((d)=>d!=null)
+        .map((d)=>d.getTime())
+        .filter((date, index, arr) => arr.indexOf(date) === index && date != null)
+        .map((d)=>new Date(d))
 }
 
 export function getAddedPartsPallet(pallet_tag: string, date: Date, nxids?: string[]) {
@@ -222,10 +219,8 @@ export function getExistingAssetsPallet(pallet_tag: string, date: Date) {
      })
 }
 
-export function getPalletEvent(pallet_tag: string, date: Date, nxids?: string[]) {
-    return new Promise<PalletEvent>(async (res)=>{
-        try {
-
+export async function getPalletEvent(pallet_tag: string, date: Date, nxids?: string[]) {
+    try {
         // Get part info
         let addedParts = await getAddedPartsPallet(pallet_tag, date, nxids)
         let removedParts = await getRemovedPartsPallet(pallet_tag, date, nxids)
@@ -294,7 +289,7 @@ export function getPalletEvent(pallet_tag: string, date: Date, nxids?: string[])
         // Fallback
         if(by==""&&pallet)
             by = pallet.by
-        res({ 
+        return { 
             date_begin: date, 
             pallet_id: pallet!._id, 
             info_updated: (pallet!.date_created!.getTime() == date.getTime()), 
@@ -305,57 +300,53 @@ export function getPalletEvent(pallet_tag: string, date: Date, nxids?: string[])
             removedAssets,
             existingAssets,
             by: by 
-        } as PalletEvent)
-        }
-        catch(err) {
-            console.log(pallet_tag)
-            console.log(date)
-            throw(err)
-        }
-    })
+        } as PalletEvent
+    }
+    catch(err) {
+        console.log(pallet_tag)
+        console.log(date)
+        throw(err)
+    }
 }
 function addAssetsToPallet(pallet_tag: string, asset_tags: string[], by: string, date: Date, building: number) {
-    return Promise.all(asset_tags.map((a)=>{
-        return new Promise<void>(async (res)=>{
-            // Return if invalid asset tag
-            if(!isValidAssetTag(a))
-                return res()
-            // Check if asset already exists
-            let existingAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: a, next: null}))) as AssetSchema
-            // If asset already exists
-            if(existingAsset) {
-                existingAsset.prev = existingAsset._id
-                delete existingAsset.date_updated
-            }
-            else {
-                // Create new empty asset
-                existingAsset = {
-                    asset_tag: a,
-                    prev: null,
-                    next: null,
-                    migrated: true
-                } as AssetSchema
-            }
-            // Delete any locatin details
-            delete existingAsset.public_port;
-            delete existingAsset.private_port;
-            delete existingAsset.ipmi_port;
-            delete existingAsset.power_port;
-            delete existingAsset.sid;
-            delete existingAsset._id
-            existingAsset.in_rack = false
-            existingAsset.by = by
-            // Copy pallet information
-            existingAsset.building = building
-            existingAsset.prev_pallet = existingAsset.pallet
-            existingAsset.pallet = pallet_tag
-            existingAsset.date_created = date
-            if(existingAsset.prev!=null)
-                Asset.create(existingAsset, callbackHandler.updateAsset)
-            else
-                Asset.create(existingAsset, callbackHandler.callbackHandleError)
-            res()
-        })
+    return Promise.all(asset_tags.map(async (a)=>{
+        // Return if invalid asset tag
+        if(!isValidAssetTag(a))
+            return
+        // Check if asset already exists
+        let existingAsset = JSON.parse(JSON.stringify(await Asset.findOne({asset_tag: a, next: null}))) as AssetSchema
+        // If asset already exists
+        if(existingAsset) {
+            existingAsset.prev = existingAsset._id
+            delete existingAsset.date_updated
+        }
+        else {
+            // Create new empty asset
+            existingAsset = {
+                asset_tag: a,
+                prev: null,
+                next: null,
+                migrated: true
+            } as AssetSchema
+        }
+        // Delete any locatin details
+        delete existingAsset.public_port;
+        delete existingAsset.private_port;
+        delete existingAsset.ipmi_port;
+        delete existingAsset.power_port;
+        delete existingAsset.sid;
+        delete existingAsset._id
+        existingAsset.in_rack = false
+        existingAsset.by = by
+        // Copy pallet information
+        existingAsset.building = building
+        existingAsset.prev_pallet = existingAsset.pallet
+        existingAsset.pallet = pallet_tag
+        existingAsset.date_created = date
+        if(existingAsset.prev!=null)
+            Asset.create(existingAsset, callbackHandler.updateAsset)
+        else
+            Asset.create(existingAsset, callbackHandler.callbackHandleError)
     }))
 }
 
@@ -382,14 +373,13 @@ function returnPalletHistory(pageNum: number, pageSize: number, res: Response) {
 
 function parseAssetTags(tag_list: string) {
     let assets = tag_list && typeof(tag_list)=="string" ? tag_list as string : ""
-    let asset_tags = assets.split('\n')
+    return assets.split('\n')
         // Filters out blank lines
         .filter((t: string) => t != '')
         // Gets rid of duplicates
         .filter((t: string, i: number, arr: string[]) => i == arr.indexOf(t))
         .map((t: string) => t.replace(/[, ]+/g, " ").trim())
         .filter((t: string)=>isValidAssetTag(t)) as string[];
-    return asset_tags
 }
 
 const palletManager = {

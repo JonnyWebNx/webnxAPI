@@ -12,7 +12,7 @@ import Asset from '../model/asset.js'
 import User from "../model/user.js";
 import handleError from "../config/handleError.js";
 import callbackHandler from '../middleware/callbackHandlers.js'
-import { AssetSchema, BuildKitSchema, CartItem, CheckInQueuePart, InventoryEntry, PartRecordSchema, PartRequestSchema, UserSchema } from "./interfaces.js";
+import { AssetSchema, BuildKitSchema, CartItem, CheckInQueuePart, InventoryEntry, NotificationTypes, PartRecordSchema, PartRequestSchema, UserSchema } from "./interfaces.js";
 import mongoose, { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
@@ -39,6 +39,7 @@ import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams
 import { stringSanitize } from '../config/sanitize.js';
 import PartRequest from '../model/partRequest.js';
 import BuildKit from '../model/buildKit.js';
+import { sendNotificationToGroup } from './methods/notificationMethods.js';
 const { UPLOAD_DIRECTORY } = config
 
 const partManager = {
@@ -178,10 +179,15 @@ const partManager = {
                 parts,
                 tech_notes: notes
                 
-            }, (err: CallbackError, request: PartRequestSchema) => {
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
+            })
+            .then(()=>{
+                return sendNotificationToGroup('fulfill_part_requests', NotificationTypes.Alert, "There is a new part request.", "/clerk/partRequests")
+            })
+            .then(() => {
                 res.status(200).send("Success")
+            })
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: " + err);
             })
         }
         catch (err) {
@@ -432,14 +438,12 @@ const partManager = {
             // Check if submission matches part request ✅
             list = list.filter((i: {kiosk: string, parts: InventoryEntry[]})=>i.kiosk!="Rejected")
             // Go through every entry and make sure kiosk has inv
-            let kioskHasInventory = await Promise.all(list.map((item: {kiosk: string, parts: InventoryEntry[]})=>{
-                return new Promise<any>(async (res)=>{
-                    let temp = item.parts.map((p)=>{
-                        return { nxid: p.nxid, quantity: p.unserialized } as CartItem
-                    })
-                    let has = await kioskHasInInventoryAsync(item.kiosk, req.user.building, temp)
-                    res({ has, item})
+            let kioskHasInventory = await Promise.all(list.map(async (item: {kiosk: string, parts: InventoryEntry[]})=>{
+                let temp = item.parts.map((p)=>{
+                    return { nxid: p.nxid, quantity: p.unserialized } as CartItem
                 })
+                let has = await kioskHasInInventoryAsync(item.kiosk, req.user.building, temp)
+                return { has, item}
             }))
             // Check if any returned false
             for(let r of kioskHasInventory) {
@@ -550,14 +554,12 @@ const partManager = {
             // Check if submission matches part request ✅
             list = list.filter((i: {kiosk: string, parts: InventoryEntry[]})=>i.kiosk!="Unsorted")
             // Go through every entry and make sure kiosk has inv
-            let kioskHasInventory = await Promise.all(list.map((item: {kiosk: string, parts: InventoryEntry[]})=>{
-                return new Promise<any>(async (res)=>{
-                    let temp = item.parts.map((p)=>{
-                        return { nxid: p.nxid, quantity: p.unserialized } as CartItem
-                    })
-                    let has = await kioskHasInInventoryAsync(item.kiosk, req.user.building, temp)
-                    res({ has, item})
+            let kioskHasInventory = await Promise.all(list.map(async (item: {kiosk: string, parts: InventoryEntry[]})=>{
+                let temp = item.parts.map((p)=>{
+                    return { nxid: p.nxid, quantity: p.unserialized } as CartItem
                 })
+                let has = await kioskHasInInventoryAsync(item.kiosk, req.user.building, temp)
+                return { has, item}
             }))
             // Check if any returned false
             for(let r of kioskHasInventory) {
@@ -613,13 +615,11 @@ const partManager = {
                 return async (err: CallbackError, results: BuildKitSchema[]) => {
                     if(err)
                         return res.status(500).send("API could not handle your request: " + err);
-                    let kitsWithParts = await Promise.all(results.map((k)=>{
-                        return new Promise(async (res)=>{
-                            let returnKit = JSON.parse(JSON.stringify(k))
-                            let parts = await loadPartsOnBuildKit(returnKit._id)
-                            returnKit.parts = parts
-                            res(returnKit)
-                        })
+                    let kitsWithParts = await Promise.all(results.map(async (k)=>{
+                        let returnKit = JSON.parse(JSON.stringify(k))
+                        let parts = await loadPartsOnBuildKit(returnKit._id)
+                        returnKit.parts = parts
+                        return returnKit
                     }))
                     res.status(200).json({ pages: numPages, total: numKits, items: kitsWithParts});
                 }
@@ -638,11 +638,9 @@ const partManager = {
                 })
                 return { regexKeywords: searchOptions, relevanceScore: relevanceConditions }
             }
-            function loadPartsOnBuildKit(kit_id: string) {
-                return new Promise<CartItem[]>(async (res) => {
-                    let records = await PartRecord.find({kit_id})
-                    res(partRecordsToCartItems(records))
-                })
+            async function loadPartsOnBuildKit(kit_id: string) {
+                let records = await PartRecord.find({kit_id})
+                return partRecordsToCartItems(records)
             }
             // Get search string and page info
             let { pageSize, pageSkip, searchString } = getTextSearchParams(req)
@@ -1181,65 +1179,62 @@ const partManager = {
             // Get current date for updates
             let current_date = Date.now()
             // Find part records in request
-            await Promise.all(parts.map((p)=>{
-                return new Promise(async (res)=>{
-                    // Check if serialized
-                    let searchOptions = {
-                        nxid: p.nxid, 
-                        next: null, 
-                        location: "Check In Queue", 
-                        date_created: date,
-                        building: req.user.building,
-                        by: by,
-                        serial: p.serial
-                    }
-                    let approvedOptions = {
-                        nxid: p.nxid,
-                        next: null,
-                        location: p.newLocation,
-                        // Clear serial when checked in
-                        // serial: p.serial,
-                        building: req.user.building,
-                        by: req.user.user_id,
-                        date_created: current_date,
-                    } as PartRecordSchema
-                    let deniedOptions = {
-                        nxid: p.nxid,
-                        owner: by,
-                        location: "Tech Inventory",
-                        serial: p.serial,
-                        building: req.user.building,
-                        by: req.user.user_id,
-                        next: null,
-                        date_created: current_date,
-                    } as PartRecordSchema
-                    if(p.serial) {
-                        // Find one
-                        let partToUpdate = await PartRecord.findOne(searchOptions)
-                        approvedOptions.prev = partToUpdate!._id
-                        deniedOptions.prev = partToUpdate!._id
-                        // Create new iteration
-                        // If not approved
-                        if(p.approved==true)
-                            PartRecord.create(approvedOptions, callbackHandler.updateRecord)
-                        else
-                            PartRecord.create(deniedOptions, callbackHandler.updateRecord)
-                        return res("")
-                    }
-                    // Find all matching records
-                    let partsToUpdate = await PartRecord.find(searchOptions)
-                    // Update all approved records
-                    for (let i = 0; i < p.approvedCount!; i++) {
-                        approvedOptions.prev = partsToUpdate[i]._id
+            await Promise.all(parts.map(async (p)=>{
+                // Check if serialized
+                let searchOptions = {
+                    nxid: p.nxid, 
+                    next: null, 
+                    location: "Check In Queue", 
+                    date_created: date,
+                    building: req.user.building,
+                    by: by,
+                    serial: p.serial
+                }
+                let approvedOptions = {
+                    nxid: p.nxid,
+                    next: null,
+                    location: p.newLocation,
+                    // Clear serial when checked in
+                    // serial: p.serial,
+                    building: req.user.building,
+                    by: req.user.user_id,
+                    date_created: current_date,
+                } as PartRecordSchema
+                let deniedOptions = {
+                    nxid: p.nxid,
+                    owner: by,
+                    location: "Tech Inventory",
+                    serial: p.serial,
+                    building: req.user.building,
+                    by: req.user.user_id,
+                    next: null,
+                    date_created: current_date,
+                } as PartRecordSchema
+                if(p.serial) {
+                    // Find one
+                    let partToUpdate = await PartRecord.findOne(searchOptions)
+                    approvedOptions.prev = partToUpdate!._id
+                    deniedOptions.prev = partToUpdate!._id
+                    // Create new iteration
+                    // If not approved
+                    if(p.approved==true)
                         PartRecord.create(approvedOptions, callbackHandler.updateRecord)
-                    }
-                    // Update unapproved records
-                    for (let i = p.approvedCount!; i < p.quantity!; i++) {
-                        deniedOptions.prev = partsToUpdate[i]._id
+                    else
                         PartRecord.create(deniedOptions, callbackHandler.updateRecord)
-                    }
-                    return res("")
-                })
+                    return
+                }
+                // Find all matching records
+                let partsToUpdate = await PartRecord.find(searchOptions)
+                // Update all approved records
+                for (let i = 0; i < p.approvedCount!; i++) {
+                    approvedOptions.prev = partsToUpdate[i]._id
+                    PartRecord.create(approvedOptions, callbackHandler.updateRecord)
+                }
+                // Update unapproved records
+                for (let i = p.approvedCount!; i < p.quantity!; i++) {
+                    deniedOptions.prev = partsToUpdate[i]._id
+                    PartRecord.create(deniedOptions, callbackHandler.updateRecord)
+                }
             }))
             res.status(200).send("Success.");
         } catch (err) {

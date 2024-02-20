@@ -1,11 +1,12 @@
 import { Request, Response } from "express";
 import config from '../config.js'
-import webPush, { PushSubscription } from 'web-push'
+import { PushSubscription } from 'web-push'
 import handleError from "../config/handleError.js";
 import User from "../model/user.js";
 import { sendNotificationToGroup, sendNotificationToUser } from "./methods/notificationMethods.js";
-import { notEqual } from "assert";
-import { NotificationTypes } from "./interfaces.js";
+import { NotificationSchema, NotificationTypes } from "./interfaces.js";
+import Notification from "../model/notification.js";
+import { getNumPages, getPageNumAndSize } from "./methods/genericMethods.js";
 
 const notifs = {
     publicKey: async (req: Request, res: Response) => {
@@ -84,6 +85,51 @@ const notifs = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
+    getUnreadNotifications: async (req: Request, res: Response) => {
+        try {
+            // Get all unread notifications
+            Notification.find({user: req.user.user_id, date_read: null})
+            // Return to user
+            .then((notifs: NotificationSchema[])=>{
+                res.status(200).json(notifs)
+            })
+            // Error
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getPastNotifications: async (req: Request, res: Response) => {
+        try {
+            // Calculate the page skip
+            let { pageSize, pageSkip } = getPageNumAndSize(req)
+            // Find the notifications
+            Notification.find({user: req.user.user_id, date_read: {$ne: null}})
+            // Sort by date descending
+            .sort({date: -1})
+            // Results:
+            .then((notifs: NotificationSchema[])=>{
+                // Store the total number
+                let total = notifs.length
+                // Send response
+                res.status(200).json({
+                    total,
+                    pages: getNumPages(pageSize, total),
+                    notifications: notifs.splice(pageSkip, pageSize)
+                })
+            })
+            // If error occurs
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    }
 }
 
 export default notifs;
