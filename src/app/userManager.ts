@@ -202,35 +202,35 @@ async function getAssetUpdates(startDate: Date, endDate: Date, users: string[], 
 }
 
 function getPalletUpdates(startDate: Date, endDate: Date, users: string[], nxids: string[]) {
-     return PartRecord.aggregate([
-            {
-                $match: {
-                    by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                    date_created: {$gte: startDate, $lte: endDate},
-                    pallet_tag: { $ne: null },
-                    nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
-                    //prev: {$ne: null}
-                }
-            },
-            {
-                $group: {
-                    _id: { pallet_tag: "$pallet_tag", date: "$date_created", by: "$by" }
-                }
-            },
-            {
-                $project: {
-                    _id: 1,
-                    pallet_tag: "$_id.pallet_tag",
-                    date: "$_id.date",
-                    by: "$_id.by"
-                }
-            },
-            {
-                $sort: {
-                    "date": -1
-                }
+    return PartRecord.aggregate([
+        {
+            $match: {
+                by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                date_created: {$gte: startDate, $lte: endDate},
+                pallet_tag: { $ne: null },
+                nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
+                //prev: {$ne: null}
             }
-        ])
+        },
+        {
+            $group: {
+                _id: { pallet_tag: "$pallet_tag", date: "$date_created", by: "$by" }
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                pallet_tag: "$_id.pallet_tag",
+                date: "$_id.date",
+                by: "$_id.by"
+            }
+        },
+        {
+            $sort: {
+                "date": -1
+            }
+        }
+    ])
     .then(async (palletUpdates: PalletUpdate[]) => {
         // Find removed parts
         return palletUpdates.concat(await PartRecord.aggregate([

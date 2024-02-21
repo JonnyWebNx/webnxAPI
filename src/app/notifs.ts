@@ -7,6 +7,7 @@ import { sendNotificationToGroup, sendNotificationToUser } from "./methods/notif
 import { NotificationSchema, NotificationTypes } from "./interfaces.js";
 import Notification from "../model/notification.js";
 import { getNumPages, getPageNumAndSize } from "./methods/genericMethods.js";
+import { isValidObjectId } from "mongoose";
 
 const notifs = {
     publicKey: async (req: Request, res: Response) => {
@@ -89,6 +90,7 @@ const notifs = {
         try {
             // Get all unread notifications
             Notification.find({user: req.user.user_id, date_read: null})
+            .sort({date: -1})
             // Return to user
             .then((notifs: NotificationSchema[])=>{
                 res.status(200).json(notifs)
@@ -105,7 +107,8 @@ const notifs = {
     getPastNotifications: async (req: Request, res: Response) => {
         try {
             // Calculate the page skip
-            let { pageSize, pageSkip } = getPageNumAndSize(req)
+            let skip = parseInt(req.query.skip as string)
+            let pageSize = parseInt(req.query.pageSize as string)
             // Find the notifications
             Notification.find({user: req.user.user_id, date_read: {$ne: null}})
             // Sort by date descending
@@ -117,9 +120,29 @@ const notifs = {
                 // Send response
                 res.status(200).json({
                     total,
-                    pages: getNumPages(pageSize, total),
-                    notifications: notifs.splice(pageSkip, pageSize)
+                    notifications: notifs.splice(skip, pageSize)
                 })
+            })
+            // If error occurs
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    markAsRead: async (req: Request, res: Response) => {
+        try {
+            let { _id } = req.body
+            if(!isValidObjectId(_id))
+                res.status(400).send("Invalid object ID.");
+            let date = new Date()
+            Notification.findOneAndUpdate({_id, user: req.user.user_id}, {date_read: date})
+            // Results:
+            .then(()=>{
+                // Send response
+                res.status(200).send("Success")
             })
             // If error occurs
             .catch((err)=>{
