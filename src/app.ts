@@ -177,6 +177,7 @@ app.get("/api/notifications", auth, sanitize, notifs.getPastNotifications);
 app.post("/api/notifications/register", auth, sanitize, notifs.register);
 app.post("/api/notifications/send", auth, sanitize, notifs.sendNotification);
 app.post("/api/notifications/markRead", auth, sanitize, notifs.markAsRead);
+app.post("/api/notifications/markRead/all", auth, sanitize, notifs.markAllAsRead);
 
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {

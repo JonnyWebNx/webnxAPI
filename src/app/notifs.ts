@@ -6,7 +6,6 @@ import User from "../model/user.js";
 import { sendNotificationToGroup, sendNotificationToUser } from "./methods/notificationMethods.js";
 import { NotificationSchema, NotificationTypes } from "./interfaces.js";
 import Notification from "../model/notification.js";
-import { getNumPages, getPageNumAndSize } from "./methods/genericMethods.js";
 import { isValidObjectId } from "mongoose";
 
 const notifs = {
@@ -122,6 +121,24 @@ const notifs = {
                     total,
                     notifications: notifs.splice(skip, pageSize)
                 })
+            })
+            // If error occurs
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    markAllAsRead: async (req: Request, res: Response) => {
+        try {
+            let date = new Date()
+            Notification.updateMany({user: req.user.user_id, date_read: null}, {date_read: date})
+            // Results:
+            .then(()=>{
+                // Send response
+                res.status(200).send("Success")
             })
             // If error occurs
             .catch((err)=>{
