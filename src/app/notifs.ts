@@ -92,7 +92,7 @@ const notifs = {
                 await pushPayloadToUser(user, {text:"Test user payload"})
             }
             else if(role) {
-                await pushPayloadToRole(user, {text:"Test user payload"})
+                await pushPayloadToRole(role, {text:"Test user payload"})
             }
             res.status(200).send("SUCCESS")
         } catch (err) {
