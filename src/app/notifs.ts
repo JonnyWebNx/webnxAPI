@@ -3,7 +3,7 @@ import config from '../config.js'
 import { PushSubscription } from 'web-push'
 import handleError from "../config/handleError.js";
 import User from "../model/user.js";
-import { sendNotificationToGroup, sendNotificationToUser } from "./methods/notificationMethods.js";
+import { pushPayloadToRole, pushPayloadToUser, sendNotificationToGroup, sendNotificationToUser } from "./methods/notificationMethods.js";
 import { NotificationSchema, NotificationTypes } from "./interfaces.js";
 import Notification from "../model/notification.js";
 import { isValidObjectId } from "mongoose";
@@ -78,6 +78,21 @@ const notifs = {
             }
             else if(role) {
                 await sendNotificationToGroup(role as string, type as NotificationTypes, text as string)
+            }
+            res.status(200).send("SUCCESS")
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    sendPayload: async (req: Request, res: Response) => {
+        try {
+            let { user, role } = req.body
+            if(user) {
+                await pushPayloadToUser(user, {text:"Test user payload"})
+            }
+            else if(role) {
+                await pushPayloadToRole(user, {text:"Test user payload"})
             }
             res.status(200).send("SUCCESS")
         } catch (err) {

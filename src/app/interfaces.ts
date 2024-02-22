@@ -239,11 +239,21 @@ export interface BuildKitSchema {
     kiosk: string
 }
 
+export enum PushTypes {
+    Notification = "Notification",
+    Payload = "Payload",
+}
+
 export enum NotificationTypes {
   Warning = "Warning",
   Error = "Error",
   Info = "Info",
   Alert = "Alert",
+}
+
+export interface Push {
+    type: PushTypes
+    payload: NotificationSchema | any
 }
 
 export interface NotificationSchema {
@@ -252,5 +262,6 @@ export interface NotificationSchema {
     text: string,
     date: Date,
     date_read?: Date,
+    title?: string,
     link?: string,
 }

@@ -7,7 +7,8 @@ const notificationSchema = new mongoose.Schema({
     text: { type: String, required: true },
     date: { type: Date, required: true },
     date_read: { type: Date },
-    link: { type: String }
+    link: { type: String },
+    title: { type: String }
 });
 
 export default mongoose.model<NotificationSchema>("notification", notificationSchema);
