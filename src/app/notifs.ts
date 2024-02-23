@@ -150,6 +150,9 @@ const notifs = {
         try {
             let date = new Date()
             Notification.updateMany({user: req.user.user_id, date_read: null}, {date_read: date})
+            .then(()=>{
+                return pushPayloadToUser(req.user.user_id as string, {type: "notificationUpdate"})
+            })
             // Results:
             .then(()=>{
                 // Send response
@@ -171,6 +174,9 @@ const notifs = {
                 res.status(400).send("Invalid object ID.");
             let date = new Date()
             Notification.findOneAndUpdate({_id, user: req.user.user_id}, {date_read: date})
+            .then(()=>{
+                return pushPayloadToUser(req.user.user_id as string, {type: "notificationUpdate"})
+            })
             // Results:
             .then(()=>{
                 // Send response
