@@ -180,7 +180,6 @@ app.post("/api/notifications/markRead", auth, sanitize, notifs.markAsRead);
 app.post("/api/notifications/markRead/all", auth, sanitize, notifs.markAllAsRead);
 app.post("/api/notifications/payload/send", auth, sanitize, checkRoles(['debug']), notifs.sendPayload);
 
-
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {
     return res.status(400).send("Invalid request.");
