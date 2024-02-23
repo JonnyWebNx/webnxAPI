@@ -27,6 +27,7 @@ import userManager from './app/userManager.js';
 import assetManager from './app/assetManager.js'
 import palletManager from './app/palletManager.js';
 import notifs from './app/notifs.js';
+import { warn } from 'node:console';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance
@@ -179,6 +180,7 @@ app.post("/api/notifications/send", auth, sanitize, checkRoles(['debug']), notif
 app.post("/api/notifications/markRead", auth, sanitize, notifs.markAsRead);
 app.post("/api/notifications/markRead/all", auth, sanitize, notifs.markAllAsRead);
 app.post("/api/notifications/payload/send", auth, sanitize, checkRoles(['debug']), notifs.sendPayload);
+
 
 // Catch all - BAD REQUEST
 app.post("/api/*", async (req, res) => {
