@@ -39,7 +39,7 @@ import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams
 import { stringSanitize } from '../config/sanitize.js';
 import PartRequest from '../model/partRequest.js';
 import BuildKit from '../model/buildKit.js';
-import { sendNotificationToGroup } from './methods/notificationMethods.js';
+import { pushPayloadToRole, sendNotificationToGroup, sendNotificationToUser } from './methods/notificationMethods.js';
 const { UPLOAD_DIRECTORY } = config
 
 const partManager = {
@@ -267,20 +267,26 @@ const partManager = {
                         cancelled: true,
                         date_fulfilled: Date.now(),
                         fulfilled_by: req.user.user_id
-                    }, 
-                    (err: MongooseError, request: PartRequestSchema)=>{
-                        if(err)
-                            return res.status(500).send("API could not handle your request: " + err);
-                        if(!request)
-                            return res.status(400).send("Request not found")
-                        if(request.build_kit_id)
-                            BuildKit.findByIdAndUpdate(request?.build_kit_id, {
-                                requested_by: null,
-                                date_requested: null
-                            }, callbackHandler.callbackHandleError)
-                        res.status(200).send("Success")
                     }
                 )
+                .then(async (request)=>{
+                    if(!request)
+                        return res.status(400).send("Request not found")
+                    await pushPayloadToRole('fulfill_part_request', {
+                        type: 'partRequestRemoved',
+                        id: request._id
+                    })
+                    await sendNotificationToGroup('fulfill_part_request', NotificationTypes.Alert, "A part request has been cancelled.", undefined, "")
+                    if(request.build_kit_id)
+                        await BuildKit.findByIdAndUpdate(request?.build_kit_id, {
+                            requested_by: null,
+                            date_requested: null
+                        }, callbackHandler.callbackHandleError)
+                    res.status(200).send("Success")
+                })
+                .catch((err)=>{
+                    return res.status(500).send("API could not handle your request: " + err);
+                })
             else
                 res.status(400).send("Part request not found.");
         }
@@ -331,44 +337,67 @@ const partManager = {
             // Turn into cart items
             let cartItems = partRecordsToCartItems(records)
             // Find the build kit and update it
-            BuildKit.findByIdAndUpdate(request?.build_kit_id, {
+            BuildKit.findByIdAndUpdate(request.build_kit_id, {
                 date_claimed: current_date,
                 claimed_parts: cartItems,
                 claimed_by: request?.requested_by
-            }, async (err: CallbackError, kit: BuildKitSchema) => {
-                // Error
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                // Update the parts
-                await updatePartsAsync(createOptions, searchOptions, cartItems, false)
-                // Update part request
-                PartRequest.findByIdAndUpdate(request_id, {
+            })
+            .then(()=>{
+                return updatePartsAsync(createOptions, searchOptions, cartItems, false)
+            })
+            .then(()=>{
+                return PartRequest.findByIdAndUpdate(request_id, {
                     fulfilled_by: req.user.user_id,
                     date_fulfilled: current_date,
                     fulfilled_list: [],
                     clerk_notes: notes
-                }, (err: MongooseError, request: PartRequestSchema) =>{
-                    if(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    res.status(200).send("Success")
                 })
+            })
+            .then(async (request)=>{
+                await pushPayloadToRole('fulfill_part_request', {
+                    type: 'partRequestRemoved',
+                    id: request!._id
+                })
+                return request
+            })
+            .then((request)=>{
+                return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been approved.", "/partRequests/fulfilled")
+            })
+            .then(()=>{
+                res.status(200).send("Success")
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
             })
         }
         else {
             BuildKit.findByIdAndUpdate(request?.build_kit_id, {
                 requested_by: null,
                 date_requested: null,
-            }, async (err: CallbackError, kit: BuildKitSchema) => {
-                PartRequest.findByIdAndUpdate(request_id, {
+            })
+            .then(()=>{
+                return PartRequest.findByIdAndUpdate(request_id, {
                     fulfilled_by: req.user.user_id,
                     date_fulfilled: current_date,
                     clerk_notes: notes,
                     denied: true
-                }, (err: MongooseError, request: PartRequestSchema) =>{
-                    if(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    res.status(200).send("Success")
                 })
+            })
+            .then(async (request)=>{
+                await pushPayloadToRole('fulfill_part_request', {
+                    type: 'partRequestRemoved',
+                    id: request!._id
+                })
+                return request
+            })
+            .then((request)=>{
+                return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been denied.", "/partRequests/fulfilled")
+            })
+            .then(()=>{
+                res.status(200).send("Success")
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
             })
         }
     },
@@ -397,10 +426,22 @@ const partManager = {
                     date_fulfilled: current_date,
                     clerk_notes: notes,
                     denied: true
-                }, (err: MongooseError, request: PartRequestSchema) =>{
-                    if(err)
-                        return res.status(500).send("API could not handle your request: " + err);
+                })
+                .then(async (request)=>{
+                    await pushPayloadToRole('fulfill_part_request', {
+                        type: 'partRequestRemoved',
+                        id: request!._id
+                    })
+                    return request
+                })
+                .then((request)=>{
+                    return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been denied.", "/partRequests/fulfilled")
+                })
+                .then(()=>{
                     res.status(200).send("Success")
+                })
+                .catch((err)=>{
+                    res.status(500).send("API could not handle your request: " + err);
                 })
                 return
             }
@@ -475,10 +516,22 @@ const partManager = {
                 date_fulfilled: current_date,
                 fulfilled_list: listCopy,
                 clerk_notes: notes
-            }, (err: MongooseError, request: PartRequestSchema) =>{
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
+            })
+            .then(async (request)=>{
+                await pushPayloadToRole('fulfill_part_request', {
+                    type: 'partRequestRemoved',
+                    id: request!._id
+                })
+                return request
+            })
+            .then((request)=>{
+                return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been approved.", "/partRequests/fulfilled")
+            })
+            .then(()=>{
                 res.status(200).send("Success")
+            })
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: " + err);
             })
         }
         catch (err) {
@@ -918,7 +971,16 @@ const partManager = {
                         date_fulfilled: current_date,
                         clerk_notes: "Build kit was deleted.",
                         denied: true
-                    }, callbackHandler.callbackHandleError)
+                    })
+                    .then(()=>{
+                        return pushPayloadToRole('fulfill_part_request', {
+                            type: 'partRequestRemoved',
+                            id: pr._id
+                        })
+                    })
+                    .catch(()=>{
+                        handleError(err)
+                    })
                 }
                 res.status(200).send("Success")
             })
