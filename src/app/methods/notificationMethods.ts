@@ -125,6 +125,7 @@ export async function pushPayloadToUser(
                     }
                 })
                 .catch(()=>{
+                    console.log("Error 1")
                     return User.updateMany({}, {
                         $pull: {
                             subscriptions: {
@@ -137,6 +138,7 @@ export async function pushPayloadToUser(
         )
     })
     .catch((err)=>{
+        console.log("Error 2")
         handleError(err)
         throw(err)
     })
