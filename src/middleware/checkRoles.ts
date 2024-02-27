@@ -1,4 +1,4 @@
-import { UserSchema } from '../app/interfaces.js'
+import { UserSchema } from '../interfaces.js'
 import User from '../model/user.js'
 import { Request, Response, NextFunction } from 'express';
 import { MongooseError } from 'mongoose';

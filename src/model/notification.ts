@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { NotificationSchema } from "../app/interfaces.js";
+import { NotificationSchema } from "../interfaces.js";
 
 const notificationSchema = new mongoose.Schema({
     user: { type: String, required: true },

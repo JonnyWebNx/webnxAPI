@@ -22,7 +22,7 @@ const port = config.PORT;
 
 // Open API_PORT for listening
 server.listen(port, () => {
-  console.clear()
+  //console.clear()
   console.log("\x1b[32m", "\x1b[1m",`\nWebNX API by Cameron McKay`,"\u001b[35m",`\nVersion ${LIB_VERSION}`,
   "\x1b[0m",`\nServer running on port ${config.PORT}`);
 });

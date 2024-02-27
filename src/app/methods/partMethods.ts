@@ -1,12 +1,12 @@
-import { CartItem, PartSchema, PartRecordSchema, UserSchema, InventoryEntry } from "../interfaces.js"
+import { CartItem, PartSchema, PartRecordSchema, UserSchema, InventoryEntry } from "../../interfaces.js"
 import { CallbackError } from "mongoose"
 import Part from "../../model/part.js"
-import { getAddedAndRemoved, getAddedAndRemovedIgnoreSerials } from "./assetMethods.js"
+import { getAddedAndRemovedIgnoreSerials } from "./assetMethods.js"
 import PartRecord from "../../model/partRecord.js"
-import { objectSanitize } from "../../config/sanitize.js"
+import { objectSanitize } from "../../util/sanitize.js"
 import User from "../../model/user.js"
 import { Request, Response } from "express"
-import handleError from "../../config/handleError.js"
+import handleError from "../../util/handleError.js"
 
 export function cleansePart(part: PartSchema) {
     let newPart = {} as PartSchema

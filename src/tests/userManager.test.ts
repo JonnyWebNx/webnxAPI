@@ -1,6 +1,6 @@
 import request from 'supertest'
 import config from "../config"
-import { UserSchema } from '../app/interfaces'
+import { UserSchema } from '../interfaces'
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 const USER_ID = "634e3e4a6c5d3490babcdc21"
 const EXAMPLE_USER = {

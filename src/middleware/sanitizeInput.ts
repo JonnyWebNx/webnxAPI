@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import { objectSanitize } from "../config/sanitize.js";
+import { objectSanitize } from "../util/sanitize.js";
 
-const sanitizeInput = (req: Request, res: Response, next: NextFunction) => {
+const sanitizeInput = (req: Request, _: Response, next: NextFunction) => {
     req.query = objectSanitize(req.query, false);
     req.body = objectSanitize(req.body, false);
     next();

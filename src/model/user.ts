@@ -9,7 +9,7 @@
  */
 import mongoose from "mongoose";
 import { PushSubscription } from "web-push";
-import { UserSchema } from "../app/interfaces.js";
+import { UserSchema } from "../interfaces.js";
 
 const userSchema = new mongoose.Schema({
     first_name: { type: String, required: true, default: null },

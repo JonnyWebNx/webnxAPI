@@ -10,13 +10,12 @@ import Part from '../model/part.js'
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
 import User from "../model/user.js";
-import handleError from "../config/handleError.js";
-import callbackHandler from '../middleware/callbackHandlers.js'
-import { AssetSchema, BuildKitSchema, CartItem, CheckInQueuePart, InventoryEntry, NotificationTypes, PartRecordSchema, PartRequestSchema, UserSchema } from "./interfaces.js";
+import handleError from "../util/handleError.js";
+import callbackHandler from '../util/callbackHandlers.js'
+import { AssetSchema, BuildKitSchema, CartItem, CheckInQueuePart, InventoryEntry, NotificationTypes, PartRecordSchema, PartRequestSchema, UserSchema, PartSchema } from "../interfaces.js";
 import mongoose, { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
-import { PartSchema } from "./interfaces.js";
 import config from '../config.js'
 import fs from 'fs';
 import {
@@ -36,7 +35,7 @@ import {
 } from './methods/partMethods.js';
 import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsClearSerialsAsync } from './methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from './methods/genericMethods.js';
-import { stringSanitize } from '../config/sanitize.js';
+import { stringSanitize } from '../util/sanitize.js';
 import PartRequest from '../model/partRequest.js';
 import BuildKit from '../model/buildKit.js';
 import { pushPayloadToRole, sendNotificationToGroup, sendNotificationToUser } from './methods/notificationMethods.js';
@@ -541,10 +540,10 @@ const partManager = {
         }
     },
 
-    createBuildTemplate: async (req: Request, res: Response) => {
-
-    },
-
+//     createBuildTemplate: async (req: Request, res: Response) => {
+// 
+//     },
+// 
 
     getBuildKitByID: async (req: Request, res: Response) => {
         try {
@@ -664,7 +663,7 @@ const partManager = {
 
     getBuildKits: async (req: Request, res: Response) => {
         try {
-            function returnKitSearch(numPages: number, numKits: number, req: Request, res: Response) {
+            function returnKitSearch(numPages: number, numKits: number, _: Request, res: Response) {
                 return async (err: CallbackError, results: BuildKitSchema[]) => {
                     if(err)
                         return res.status(500).send("API could not handle your request: " + err);
@@ -787,7 +786,7 @@ const partManager = {
             BuildKit.findByIdAndUpdate(kit_id, {
                 requested_by: req.user.user_id,
                 date_requested: current_date
-            }, (err: CallbackError, kit1: BuildKitSchema) => {
+            }, (err: CallbackError, _: BuildKitSchema) => {
                 // Error
                 if(err)
                     return res.status(500).send("API could not handle your request: " + err);
@@ -799,7 +798,7 @@ const partManager = {
                     parts: [],
                     tech_notes: "",
                     date_created: current_date
-                }, (err: CallbackError, req1: PartRequestSchema) => {
+                }, (err: CallbackError, _: PartRequestSchema) => {
                     // Error
                     if(err)
                         return res.status(500).send("API could not handle your request: " + err);
@@ -867,7 +866,7 @@ const partManager = {
                 date_claimed: current_date,
                 claimed_parts: cartItems,
                 claimed_by: owner
-            }, async (err: CallbackError, kit: BuildKitSchema) => {
+            }, async (err: CallbackError, _: BuildKitSchema) => {
                 // Error
                 if(err)
                     return res.status(500).send("API could not handle your request: " + err);
@@ -961,7 +960,7 @@ const partManager = {
                 deleted_by: req.user.user_id,
                 deleted_parts: list,
                 date_deleted: current_date,
-            }, async (err: MongooseError, kit: BuildKitSchema) =>{
+            }, async (err: MongooseError, _: BuildKitSchema) =>{
                 if(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 let partRequests = await PartRequest.find({build_kit_id: kit_id})
@@ -1495,7 +1494,7 @@ const partManager = {
             if(part==null||part==undefined)
                 return res.status(400).send("Part not found");
             // Delete info
-            Part.findByIdAndDelete(part?._id, async (err: MongooseError, part: PartSchema) =>{
+            Part.findByIdAndDelete(part?._id, async (err: MongooseError, _: PartSchema) =>{
                 if (err) {
                     // Error - don't return so other records will be deleted
                     return res.status(500).send("API could not handle your request: " + err);
@@ -1889,7 +1888,7 @@ const partManager = {
                 // Get date for updates
                 let current_date = Date.now()
                 // Filter records to quantity and update
-                await Promise.all(oldRecords.filter((p,i)=>new_quantity>i).map(async(rec)=>{
+                await Promise.all(oldRecords.filter((_,i)=>new_quantity>i).map(async(rec)=>{
                     // Create new record
                     let new_record = JSON.parse(JSON.stringify(rec))
                     new_record.prev = new_record._id
@@ -1948,7 +1947,7 @@ const partManager = {
         }
     },
 
-    nextSequentialNXID: async (req: Request, res: Response) => {
+    nextSequentialNXID: async (_: Request, res: Response) => {
         // Basic binary search
         function findMissingNumber(arr: number[]) {
             // Initialize boundaries
@@ -1997,7 +1996,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    mergeParts: async (req: Request, res: Response) => {
+    mergeParts: async (_: Request, res: Response) => {
         try {
 
         } catch(err) {

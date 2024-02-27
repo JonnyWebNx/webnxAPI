@@ -1,10 +1,10 @@
 import { Request, Response } from "express";
 import config from '../config.js'
 import { PushSubscription } from 'web-push'
-import handleError from "../config/handleError.js";
+import handleError from "../util/handleError.js";
 import User from "../model/user.js";
 import { pushPayloadToRole, pushPayloadToUser, sendNotificationToGroup, sendNotificationToUser } from "./methods/notificationMethods.js";
-import { NotificationSchema, NotificationTypes } from "./interfaces.js";
+import { NotificationSchema, NotificationTypes } from "../interfaces.js";
 import Notification from "../model/notification.js";
 import { isValidObjectId } from "mongoose";
 

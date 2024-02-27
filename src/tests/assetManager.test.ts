@@ -1,7 +1,7 @@
 import request from 'supertest'
 import config from "../config"
 import { jest } from '@jest/globals'
-import { AssetSchema, CartItem } from "../app/interfaces"
+import { AssetSchema, CartItem } from "../interfaces"
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 const ASSET_TAG = "WNX0017884"
 // const ASSET_MONGO_ID = "63a3701b9d12bfd7c59e4854"

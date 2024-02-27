@@ -1,8 +1,8 @@
-import { NotificationSchema, NotificationTypes, PushTypes, UserSchema } from "../interfaces.js";
+import { NotificationSchema, NotificationTypes, PushTypes, UserSchema } from "../../interfaces.js";
 import Notification from "../../model/notification.js";
 import User from "../../model/user.js";
 import config from '../../config.js'
-import handleError from "../../config/handleError.js";
+import handleError from "../../util/handleError.js";
 import webPush, { PushSubscription } from 'web-push'
 
 async function createNotification(

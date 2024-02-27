@@ -1,7 +1,7 @@
 import { CallbackError, MongooseError } from 'mongoose'
-import handleError from '../config/handleError.js'
+import handleError from '../util/handleError.js'
 import PartRecord from '../model/partRecord.js'
-import { PartRecordSchema, AssetSchema, PalletSchema } from '../app/interfaces.js'
+import { PartRecordSchema, AssetSchema, PalletSchema } from '../interfaces.js'
 import Asset from '../model/asset.js'
 import Pallet from '../model/pallet.js'
 import { Response } from 'express'
@@ -11,7 +11,7 @@ const callbackHandler = {
         if (err) {
             return handleError(err)
         }
-        PartRecord.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_owner: record.owner }, (err: MongooseError, record: PartRecordSchema) => {
+        PartRecord.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_owner: record.owner }, (err: MongooseError, _: PartRecordSchema) => {
             if (err) {
                 return handleError(err)
             }
@@ -22,7 +22,7 @@ const callbackHandler = {
             return handleError(err)
         }
         if(record.prev!=null)
-            Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, rec: AssetSchema) => {
+            Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, _: AssetSchema) => {
             if (err) {
                 return handleError(err)
             }
@@ -35,7 +35,7 @@ const callbackHandler = {
                 return handleError(err)
             }
             if(record.prev!=null)
-                Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, rec: AssetSchema) => {
+                Asset.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, _: AssetSchema) => {
                     if (err) {
                         res.status(500).send("API could not handle your request: "+err);
                         return handleError(err)
@@ -53,7 +53,7 @@ const callbackHandler = {
                 return handleError(err)
             }
             if(record.prev!=null)
-                Pallet.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, rec: PalletSchema) => {
+                Pallet.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, _: PalletSchema) => {
                     if (err) {
                         res.status(500).send("API could not handle your request: "+err);
                         return handleError(err)
@@ -64,7 +64,7 @@ const callbackHandler = {
                 res.status(200).send("Success")
         }
     },
-    callbackHandleError: (err: CallbackError, record: any) => {
+    callbackHandleError: (err: CallbackError, _: any) => {
         if (err) {
             return handleError(err)
         }

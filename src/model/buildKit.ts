@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { BuildKitSchema, CartItem } from "../app/interfaces.js";
+import { BuildKitSchema, CartItem } from "../interfaces.js";
 
 const buildKit = new mongoose.Schema({
     // ID of the user who requested parts

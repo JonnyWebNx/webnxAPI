@@ -1,10 +1,10 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import User from "../model/user.js";
-import handleError from "../config/handleError.js";
+import handleError from "../util/handleError.js";
 import { Request, Response } from "express";
 import config from '../config.js'
-import { UserSchema } from './interfaces.js';
+import { UserSchema } from '../interfaces.js';
 const { JWT_SECRET, JWT_EXPIRES_IN} = config
 
 interface TokenUser extends UserSchema {

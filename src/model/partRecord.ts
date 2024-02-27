@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { PartRecordSchema } from "../app/interfaces.js";
+import { PartRecordSchema } from "../interfaces.js";
 
 const partRecord = new mongoose.Schema({
     // NXID of the associated part

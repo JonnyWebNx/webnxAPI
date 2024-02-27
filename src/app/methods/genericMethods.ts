@@ -1,6 +1,6 @@
 import { Request } from "express";
-import { PartQuery } from "../interfaces.js";
-import { stringSanitize } from "../../config/sanitize.js";
+import { PartQuery } from "../../interfaces.js";
+import { stringSanitize } from "../../util/sanitize.js";
 export function getPageNumAndSize(req: Request) {
     // Parse from query string
     let pageNum = parseInt(req.query.pageNum as string)

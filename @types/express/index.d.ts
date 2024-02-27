@@ -1,4 +1,4 @@
-import { ReqUser } from "../../src/app/interfaces.js";
+import { ReqUser } from "../../src/interfaces.js";
 
 export {}
 

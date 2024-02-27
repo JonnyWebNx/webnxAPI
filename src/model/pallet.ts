@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { PalletSchema } from "../app/interfaces.js";
+import { PalletSchema } from "../interfaces.js";
 
 const palletSchema = new mongoose.Schema({
     pallet_tag: { type: String, required: true },
