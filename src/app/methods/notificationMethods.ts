@@ -111,6 +111,7 @@ export async function pushPayloadToUser(
                 user_object.subscriptions! : 
                 [] as PushSubscription[]
             ).map(async (sub: PushSubscription)=>{
+                console.log("Payload sent to: "+user_object?.first_name+" "+user_object?.last_name)
                 return webPush.sendNotification(sub, JSON.stringify({
                     type: PushTypes.Payload,
                     payload
@@ -147,8 +148,10 @@ export async function pushPayloadToRole(
 ) {
     return User.find({roles: role})
     .then((users: UserSchema[]) => {
+        console.log("Get all users")
         // For every user
         return Promise.all(users.map((u)=>{
+            console.log("User: "+u.first_name+" "+u.last_name)
             // Create the notification
             return pushPayloadToUser(u._id, payload)
         }))
