@@ -154,6 +154,7 @@ export async function pushPayloadToRole(
         // For every user
         return Promise.all(users.map((u)=>{
             console.log("User: "+u.first_name+" "+u.last_name)
+            console.log(payload)
             // Create the notification
             return pushPayloadToUser(u._id, payload)
         }))
