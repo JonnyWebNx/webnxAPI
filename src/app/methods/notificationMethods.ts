@@ -21,7 +21,7 @@ async function createNotification(
         date,
         title
     })
-    .then((notif: NotificationSchema) => {
+    .then(() => {
         return User.findById(user)
     })
     .then((user_object: UserSchema | null)=>{
@@ -29,7 +29,7 @@ async function createNotification(
             (user_object&&user_object.subscriptions ? 
                 user_object.subscriptions! : 
                 [] as PushSubscription[]
-            ).map((sub: PushSubscription)=>{
+            ).map(async (sub: PushSubscription)=>{
                 return webPush.sendNotification(sub, JSON.stringify({
                     type: PushTypes.Notification,
                     payload: {

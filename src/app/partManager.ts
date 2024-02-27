@@ -271,11 +271,11 @@ const partManager = {
                 .then(async (request)=>{
                     if(!request)
                         return res.status(400).send("Request not found")
-                    await pushPayloadToRole('fulfill_part_request', {
+                    await pushPayloadToRole('fulfill_part_requests', {
                         type: 'partRequestRemoved',
                         id: request._id
                     })
-                    await sendNotificationToGroup('fulfill_part_request', NotificationTypes.Alert, "A part request has been cancelled.", undefined, "")
+                    await sendNotificationToGroup('fulfill_part_requests', NotificationTypes.Alert, "A part request has been cancelled.", undefined, "")
                     if(request.build_kit_id)
                         await BuildKit.findByIdAndUpdate(request?.build_kit_id, {
                             requested_by: null,
@@ -353,7 +353,7 @@ const partManager = {
                 })
             })
             .then(async (request)=>{
-                await pushPayloadToRole('fulfill_part_request', {
+                await pushPayloadToRole('fulfill_part_requests', {
                     type: 'partRequestRemoved',
                     id: request!._id
                 })
@@ -383,7 +383,7 @@ const partManager = {
                 })
             })
             .then(async (request)=>{
-                await pushPayloadToRole('fulfill_part_request', {
+                await pushPayloadToRole('fulfill_part_requests', {
                     type: 'partRequestRemoved',
                     id: request!._id
                 })
@@ -427,7 +427,7 @@ const partManager = {
                     denied: true
                 })
                 .then(async (request)=>{
-                    await pushPayloadToRole('fulfill_part_request', {
+                    await pushPayloadToRole('fulfill_part_requests', {
                         type: 'partRequestRemoved',
                         id: request!._id
                     })
@@ -517,7 +517,7 @@ const partManager = {
                 clerk_notes: notes
             })
             .then(async (request)=>{
-                await pushPayloadToRole('fulfill_part_request', {
+                await pushPayloadToRole('fulfill_part_requests', {
                     type: 'partRequestRemoved',
                     id: request!._id
                 })
@@ -972,7 +972,7 @@ const partManager = {
                         denied: true
                     })
                     .then(()=>{
-                        return pushPayloadToRole('fulfill_part_request', {
+                        return pushPayloadToRole('fulfill_part_requests', {
                             type: 'partRequestRemoved',
                             id: pr._id
                         })
