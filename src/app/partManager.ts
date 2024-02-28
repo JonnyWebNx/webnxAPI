@@ -275,7 +275,7 @@ const partManager = {
                         type: 'partRequestRemoved',
                         id: request._id
                     })
-                    await sendNotificationToGroup('fulfill_part_requests', NotificationTypes.Alert, "A part request has been cancelled.", undefined, "")
+                    await sendNotificationToGroup('fulfill_part_requests', NotificationTypes.Alert, "A part request has been cancelled.")
                     if(request.build_kit_id)
                         await BuildKit.findByIdAndUpdate(request?.build_kit_id, {
                             requested_by: null,
