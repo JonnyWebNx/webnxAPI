@@ -24,10 +24,10 @@ import {
     assetsAreSimilar,
     userHasInInventoryAsync,
     partRecordsToCartItems
-} from "./methods/assetMethods.js";
+} from "../methods/assetMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
-import { getNumPages, getPageNumAndSize, getTextSearchParams } from "./methods/genericMethods.js";
-import { cartItemsValidAsync, sanitizeCartItems } from "./methods/partMethods.js";
+import { getNumPages, getPageNumAndSize, getTextSearchParams } from "../methods/genericMethods.js";
+import { cartItemsValidAsync, sanitizeCartItems } from "../methods/partMethods.js";
 
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {

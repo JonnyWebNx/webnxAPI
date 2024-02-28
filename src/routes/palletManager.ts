@@ -5,12 +5,12 @@ import Pallet from "../model/pallet.js";
 import { isValidObjectId } from "mongoose";
 import PartRecord from "../model/partRecord.js";
 import Asset from "../model/asset.js";
-import { getAddedAndRemoved, partRecordsToCartItems, updatePartsAsync, updatePartsClearSerialsAsync, userHasInInventoryAsync } from "./methods/assetMethods.js";
+import { getAddedAndRemoved, partRecordsToCartItems, updatePartsAsync, updatePartsClearSerialsAsync, userHasInInventoryAsync } from "../methods/assetMethods.js";
 import { CallbackError } from "mongoose";
-import { cartItemsValidAsync, sanitizeCartItems } from "./methods/partMethods.js";
+import { cartItemsValidAsync, sanitizeCartItems } from "../methods/partMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
-import { getNumPages, getPageNumAndSize, getTextSearchParams, objectToRegex } from "./methods/genericMethods.js";
-import { addAssetsToPallet, cleansePallet, getPalletSearchRegex, isLocationValid, isValidPalletTag, palletsAreSimilar, parseAssetTags, returnPallet, returnPalletHistory, returnPalletSearch } from "./methods/palletMethods.js";
+import { getNumPages, getPageNumAndSize, getTextSearchParams, objectToRegex } from "../methods/genericMethods.js";
+import { addAssetsToPallet, cleansePallet, getPalletSearchRegex, isLocationValid, isValidPalletTag, palletsAreSimilar, parseAssetTags, returnPallet, returnPalletHistory, returnPalletSearch } from "../methods/palletMethods.js";
 
 
 const palletManager = {

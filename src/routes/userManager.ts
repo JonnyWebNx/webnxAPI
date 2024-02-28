@@ -213,6 +213,5 @@ const userManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-
 }
 export default userManager

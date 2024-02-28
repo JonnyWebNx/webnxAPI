@@ -1,9 +1,9 @@
-import PartRecord from '../../model/partRecord.js'
-import Asset from '../../model/asset.js'
+import PartRecord from '../model/partRecord.js'
+import Asset from '../model/asset.js'
 import { isValidPalletTag } from './palletMethods.js';
 import { getAllKioskNames } from './partMethods.js';
-import Pallet from '../../model/pallet.js';
-import { AssetUpdate, PalletUpdate } from '../../interfaces.js'
+import Pallet from '../model/pallet.js';
+import { AssetUpdate, PalletUpdate } from '../interfaces.js'
 import { isValidObjectId } from 'mongoose';
 
 export async function getPartsOnNewAsset(startDate: Date, endDate: Date, users: string[], nxids: string[]) {

@@ -1,13 +1,13 @@
-import { getNumPages, getPageNumAndSize, getStartAndEndDate } from './methods/genericMethods.js';
-import { getAssetEventAsync, isValidAssetTag } from './methods/assetMethods.js';
+import { getNumPages, getPageNumAndSize, getStartAndEndDate } from '../methods/genericMethods.js';
+import { getAssetEventAsync, isValidAssetTag } from '../methods/assetMethods.js';
 import { Request, Response } from 'express';
-import { isValidPartID } from './methods/partMethods.js';
-import { getAllTechsDatesAsync, getAllTechsEventAsync, getAssetUpdates, getCheckinDatesAsync, getCheckinEventsAsync, getCheckoutDatesAsync, getCheckoutEventsAsync, getEbayEvent, getEbaySalesDates, getPalletUpdates, getPartEventAsync, getPartEventDatesAsync, getPartsOnNewAsset, getPartsOnNewPallet } from './methods/analyticsMethods.js';
+import { isValidPartID } from '../methods/partMethods.js';
+import { getAllTechsDatesAsync, getAllTechsEventAsync, getAssetUpdates, getCheckinDatesAsync, getCheckinEventsAsync, getCheckoutDatesAsync, getCheckoutEventsAsync, getEbayEvent, getEbaySalesDates, getPalletUpdates, getPartEventAsync, getPartEventDatesAsync, getPartsOnNewAsset, getPartsOnNewPallet } from '../methods/analyticsMethods.js';
 import handleError from '../util/handleError.js';
 import Asset from '../model/asset.js';
 import Pallet from '../model/pallet.js';
 import { AssetUpdate, PalletUpdate } from '../interfaces.js';
-import { getPalletEvent } from './methods/palletMethods.js';
+import { getPalletEvent } from '../methods/palletMethods.js';
 
 const analytics = {
     getCheckinHistory: async (req: Request, res: Response) => {

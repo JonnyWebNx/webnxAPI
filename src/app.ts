@@ -14,20 +14,20 @@ import express, { NextFunction, Request, Response } from 'express'
 import cors, { CorsOptions } from 'cors'
 import path from 'node:path'
 // authorization modules
-import login from './app/login.js'
-import register from './app/register.js'
+import login from './routes/login.js'
+import register from './routes/register.js'
 import auth from './middleware/auth.js'
 import isAuth from './middleware/isAuth.js'
 import checkRoles from './middleware/checkRoles.js'
 import sanitize from './middleware/sanitizeInput.js';
 import { updatePartImage, uploadImage, updateUserImage } from './util/uploadFile.js';
 // Database modules
-import partManager from './app/partManager.js'
-import userManager from './app/userManager.js';
-import assetManager from './app/assetManager.js'
-import palletManager from './app/palletManager.js';
-import notifs from './app/notifs.js';
-import analytics from './app/analytics.js';
+import partManager from './routes/partManager.js'
+import userManager from './routes/userManager.js';
+import assetManager from './routes/assetManager.js'
+import palletManager from './routes/palletManager.js';
+import notifs from './routes/notifs.js';
+import analytics from './routes/analytics.js';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance

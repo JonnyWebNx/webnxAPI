@@ -1,12 +1,12 @@
-import PartRecord from "../../model/partRecord.js"
-import { CartItem, AssetSchema, PartRecordSchema, AssetEvent, InventoryEntry } from "../../interfaces.js"
+import PartRecord from "../model/partRecord.js"
+import { CartItem, AssetSchema, PartRecordSchema, AssetEvent, InventoryEntry } from "../interfaces.js"
 import mongoose, { CallbackError, isValidObjectId } from "mongoose"
 import { Response } from "express"
-import handleError from "../../util/handleError.js"
-import { objectSanitize } from "../../util/sanitize.js"
-import callbackHandler from "../../util/callbackHandlers.js"
-import Asset from "../../model/asset.js"
-import Part from "../../model/part.js"
+import handleError from "../util/handleError.js"
+import { objectSanitize } from "../util/sanitize.js"
+import callbackHandler from "../util/callbackHandlers.js"
+import Asset from "../model/asset.js"
+import Part from "../model/part.js"
 
 /**
  *

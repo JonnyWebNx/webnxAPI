@@ -32,13 +32,13 @@ import {
     sanitizeInventoryEntries,
     inventoryEntriesValidAsync,
     combineAndRemoveDuplicateCartItems,
-} from './methods/partMethods.js';
-import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsClearSerialsAsync } from './methods/assetMethods.js';
-import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from './methods/genericMethods.js';
+} from '../methods/partMethods.js';
+import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsClearSerialsAsync } from '../methods/assetMethods.js';
+import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from '../methods/genericMethods.js';
 import { stringSanitize } from '../util/sanitize.js';
 import PartRequest from '../model/partRequest.js';
 import BuildKit from '../model/buildKit.js';
-import { pushPayloadToRole, sendNotificationToGroup, sendNotificationToUser } from './methods/notificationMethods.js';
+import { pushPayloadToRole, sendNotificationToGroup, sendNotificationToUser } from '../methods/notificationMethods.js';
 const { UPLOAD_DIRECTORY } = config
 
 const partManager = {
