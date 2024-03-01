@@ -1298,7 +1298,7 @@ const partManager = {
                     PartRecord.create(deniedOptions, callbackHandler.updateRecord)
                 }
             }))
-            await pushPayloadToRole('process_checkins', { date, by })
+            await pushPayloadToRole('process_checkins', { type:"checkinProcessed", date, by })
             res.status(200).send("Success.");
         } catch (err) {
             // Error
