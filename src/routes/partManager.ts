@@ -1127,6 +1127,7 @@ const partManager = {
                 owner: user_id,
             }
             await updatePartsAsync(createOptions, searchOptions, inventory, false)
+            await sendNotificationToGroup('process_checkins', NotificationTypes.Alert, "There is a new check in request.", "/clerk/checkin")
             // Success
             res.status(200).send("Successfully checked in.")
         }
@@ -1297,6 +1298,7 @@ const partManager = {
                     PartRecord.create(deniedOptions, callbackHandler.updateRecord)
                 }
             }))
+            await pushPayloadToRole('process_checkins', { date, by })
             res.status(200).send("Success.");
         } catch (err) {
             // Error
