@@ -1,7 +1,7 @@
 import User from '../model/user.js'
 import bcrypt from 'bcryptjs'
 import jwt from "jsonwebtoken";
-import handleError from "../config/handleError.js";
+import handleError from "../util/handleError.js";
 import { Request, Response } from "express";
 import config from '../config.js'
 const { JWT_EXPIRES_IN, JWT_SECRET} = config
@@ -50,7 +50,7 @@ const register = async (req: Request, res: Response) => {
         // Save user token 
         user.token = token;
         // Get rid of mongoose garbage and delete password
-        let { password: pass, _doc: returnUser } = user
+        let { _doc: returnUser } = user
         delete returnUser.password
         return res.status(200).send(returnUser);
     } catch (err) {

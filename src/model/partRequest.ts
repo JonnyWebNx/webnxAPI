@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { CartItem, PartRequestSchema } from "../app/interfaces.js";
+import { CartItem, PartRequestSchema } from "../interfaces.js";
 
 const partRequest = new mongoose.Schema({
     // ID of the user who requested parts

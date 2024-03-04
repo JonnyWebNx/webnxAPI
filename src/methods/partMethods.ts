@@ -1,12 +1,12 @@
 import { CartItem, PartSchema, PartRecordSchema, UserSchema, InventoryEntry } from "../interfaces.js"
 import { CallbackError } from "mongoose"
-import Part from "../../model/part.js"
-import { getAddedAndRemoved, getAddedAndRemovedIgnoreSerials } from "./assetMethods.js"
-import PartRecord from "../../model/partRecord.js"
-import { objectSanitize } from "../../config/sanitize.js"
-import User from "../../model/user.js"
+import Part from "../model/part.js"
+import { getAddedAndRemovedIgnoreSerials } from "./assetMethods.js"
+import PartRecord from "../model/partRecord.js"
+import { objectSanitize } from "../util/sanitize.js"
+import User from "../model/user.js"
 import { Request, Response } from "express"
-import handleError from "../../config/handleError.js"
+import handleError from "../util/handleError.js"
 
 export function cleansePart(part: PartSchema) {
     let newPart = {} as PartSchema
@@ -79,34 +79,22 @@ export function cleansePart(part: PartSchema) {
     return objectSanitize(newPart, false) as PartSchema
 }
 
-export function getKiosksAsync(building: number) {
-    return new Promise<UserSchema[]>(async (res)=>{
-        let kioskUsers = await User.find({roles: 'is_kiosk', building: building})
-        res(kioskUsers)
-    })
+export async function getKiosksAsync(building: number) {
+    return await User.find({roles: 'is_kiosk', building: building}) as UserSchema[]
 }
 
-export function getKioskNamesAsync(building: number) {
-    return new Promise<string[]>(async (res)=>{
-        let kioskUsers = await getKiosksAsync(building)
-        let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
-        res(kioskNames)
-    })
+export async function getKioskNamesAsync(building: number) {
+    let kioskUsers = await getKiosksAsync(building)
+    return kioskUsers.map((k)=>k.first_name + " " + k.last_name);
 }
 
-export function getAllKiosksAsync() {
-    return new Promise<UserSchema[]>(async (res)=>{
-        let kioskUsers = await User.find({roles: 'is_kiosk'})
-        res(kioskUsers)
-    })
+export async function getAllKiosksAsync() {
+    return await User.find({roles: 'is_kiosk'}) as UserSchema[]
 }
 
-export function getAllKioskNames() {
-    return new Promise<string[]>(async (res)=>{
-        let kioskUsers = await getAllKiosksAsync()
-        let kioskNames = kioskUsers.map((k)=>k.first_name + " " + k.last_name);
-        res(kioskNames)
-    })
+export async function getAllKioskNames() {
+    let kioskUsers = await getAllKiosksAsync()
+    return kioskUsers.map((k)=>k.first_name + " " + k.last_name);
 }
 
 export function isValidPartID(id: string|undefined) {
@@ -197,7 +185,7 @@ export function sanitizeInventoryEntry(entry: InventoryEntry) {
 }
 
 export function sanitizeInventoryEntries(invEntries: InventoryEntry[]) {
-    invEntries = invEntries
+    return invEntries
     // Sanitize each remaining item
     .map((item) => {
         return sanitizeInventoryEntry(item)
@@ -206,81 +194,70 @@ export function sanitizeInventoryEntries(invEntries: InventoryEntry[]) {
     .filter((item, index, arr)=>{
         return (index == arr.findIndex((val)=>val.nxid==item.nxid)&&item.nxid!='')
     })
-    return invEntries
 }
 
-export function inventoryEntriesValidAsync(invEntries: InventoryEntry[]) {
-    return new Promise<boolean>(async (res)=>{
-        // Run all requests concurrently
-        let valid = true
-        await Promise.all(invEntries.map((item)=>{
-            return new Promise<void>(async (resolve)=>{
-                let part = await Part.findOne({nxid: item.nxid}) as PartSchema
-                if(
-                    !part
-                    // Make sure item does not have quantity AND serial
-                    ||!Array.isArray(item.serials)
-                    // Make sure quantity is a number
-                    ||isNaN(item.unserialized)
-                    // Make sure serial is string and not empty
-                    ||!Array.isArray(item.newSerials)
-                    // Make sure serialized parts have serial and unserialized do not
-                ) {
-                    valid = false
-                }
-                resolve()
-            })
-        }))
-        res(valid)
-    })
+export async function inventoryEntriesValidAsync(invEntries: InventoryEntry[]) {
+    // Run all requests concurrently
+    let valid = true
+    await Promise.all(invEntries.map(async (item)=>{
+        let part = await Part.findOne({nxid: item.nxid}) as PartSchema
+        if(
+            !part
+            // Make sure item does not have quantity AND serial
+            ||!Array.isArray(item.serials)
+            // Make sure quantity is a number
+            ||isNaN(item.unserialized)
+            // Make sure serial is string and not empty
+            ||!Array.isArray(item.newSerials)
+            // Make sure serialized parts have serial and unserialized do not
+        ) {
+            valid = false
+        }
+    }))
+    return valid
 }
 
-export function cartItemsValidAsync(cartItems: CartItem[]) {
-    return new Promise<boolean>(async (res)=>{
-        // Run all requests concurrently
-        let valid = true
-        await Promise.all(cartItems.map((item)=>{
-            return new Promise<void>(async (resolve)=>{
-                let part = await Part.findOne({nxid: item.nxid}) as PartSchema
-                if(
-                    !part||
-                    // Make sure item does not have quantity AND serial
-                    !((item.serial&&!item.quantity)||(!item.serial&&item.quantity))
-                    // Make sure quantity is a number
-                    ||(item.quantity&&isNaN(item.quantity))
-                    // Make sure serial is string and not empty
-                    ||(item.serial&&(typeof(item.serial)!="string"||item.serial==""))
-                    // Make sure serialized parts have serial and unserialized do not
-                    // Old:
-                    //||((part.serialized==true&&!item.serial)||(part.serialized==false&&item.serial))
-                    // New:
-                    ||(part.serialized==false&&item.serial)
-                ) {
-                    valid = false
-                }
-                resolve()
-            })
-        }))
-        res(valid)
-    })
+export async function cartItemsValidAsync(cartItems: CartItem[]) {
+    // Run all requests concurrently
+    let valid = true
+    await Promise.all(cartItems.map(async (item)=>{
+        let part = await Part.findOne({nxid: item.nxid}) as PartSchema
+        if(
+            !part||
+            // Make sure item does not have quantity AND serial
+            !((item.serial&&!item.quantity)||(!item.serial&&item.quantity))
+            // Make sure quantity is a number
+            ||(item.quantity&&isNaN(item.quantity))
+            // Make sure serial is string and not empty
+            ||(item.serial&&(typeof(item.serial)!="string"||item.serial==""))
+            // Make sure serialized parts have serial and unserialized do not
+            // Old:
+            //||((part.serialized==true&&!item.serial)||(part.serialized==false&&item.serial))
+            // New:
+            ||(part.serialized==false&&item.serial)
+        ) {
+            valid = false
+        }
+    }))
+    return valid
 }
 
-export function kioskHasInInventoryAsync(kioskName: string, building: number, inventory: CartItem[]) {
-    return new Promise<boolean>((res)=>{
-        let nxids = inventory.map((i)=>i.nxid).filter((i, index, arr)=>arr.indexOf(i)==index)
-        PartRecord.find({nxid: { $in: nxids }, location: kioskName, next: null, building}, (err: CallbackError, userInventoryRecords: PartRecordSchema[])=>{
-            // If error, user likely does not exist
-            if(err)
-                return res(false)
-            // Any parts "added" would not already be in users inventory
+export async function kioskHasInInventoryAsync(kioskName: string, building: number, inventory: CartItem[]) {
+    // Filter out the part IDs
+    let nxids = inventory.map((i)=>i.nxid).filter((i, index, arr)=>arr.indexOf(i)==index)
+    // Find the parts
+    return PartRecord.find({nxid: { $in: nxids }, location: kioskName, next: null, building})
+        .then((userInventoryRecords: PartRecordSchema[])=>{
             let { added, error } = getAddedAndRemovedIgnoreSerials(inventory, userInventoryRecords)
             // If function encounters error
             if(error)
-                return res(false)
+                return false
             // If added has no members, we can assume the user has all the parts listed in their inventory
-            res(added.length==0)
+            return added.length==0
         })
-    })
+        .catch(()=>{
+            return false
+        })
 }
 
 

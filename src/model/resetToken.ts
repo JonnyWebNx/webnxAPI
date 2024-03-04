@@ -8,7 +8,7 @@
  * 
  */
 import mongoose from "mongoose";
-import { ResetToken } from "../app/interfaces.js";
+import { ResetToken } from "../interfaces.js";
 
 const resetToken = new mongoose.Schema({
     userId: { type: String, required: true },

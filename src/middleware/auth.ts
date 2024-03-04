@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken'
-import { ReqUser } from '../app/interfaces.js';
+import { ReqUser } from '../interfaces.js';
 import { Request, Response, NextFunction } from 'express';
 import config from '../config.js'
 const { JWT_SECRET } = config

@@ -8,9 +8,9 @@
 */
 import Asset from "../model/asset.js";
 import PartRecord from "../model/partRecord.js";
-import handleError from "../config/handleError.js";
+import handleError from "../util/handleError.js";
 import { Request, Response } from "express";
-import { AssetSchema, PartRecordSchema } from "./interfaces.js";
+import { AssetSchema, PartRecordSchema } from "../interfaces.js";
 import { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { 
     isValidAssetTag,
@@ -24,10 +24,10 @@ import {
     assetsAreSimilar,
     userHasInInventoryAsync,
     partRecordsToCartItems
-} from "./methods/assetMethods.js";
-import callbackHandler from "../middleware/callbackHandlers.js";
-import { getNumPages, getPageNumAndSize, getTextSearchParams } from "./methods/genericMethods.js";
-import { cartItemsValidAsync, sanitizeCartItems } from "./methods/partMethods.js";
+} from "../methods/assetMethods.js";
+import callbackHandler from "../util/callbackHandlers.js";
+import { getNumPages, getPageNumAndSize, getTextSearchParams } from "../methods/genericMethods.js";
+import { cartItemsValidAsync, sanitizeCartItems } from "../methods/partMethods.js";
 
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {

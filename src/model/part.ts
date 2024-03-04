@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { PartSchema } from "../app/interfaces.js";
+import { PartSchema } from "../interfaces.js";
 
 const partSchema = new mongoose.Schema({
     nxid: { type: String, required: true, unique: true },

@@ -8,7 +8,8 @@
  * 
  */
 import mongoose from "mongoose";
-import { UserSchema } from "../app/interfaces.js";
+import { PushSubscription } from "web-push";
+import { UserSchema } from "../interfaces.js";
 
 const userSchema = new mongoose.Schema({
     first_name: { type: String, required: true, default: null },
@@ -16,7 +17,8 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     building: { type: Number, required: true},
-    roles: { type: Array<String>, default: ["tech"] },
+    roles: { type: Array<String> },
+    subscriptions: { type: Array<PushSubscription> },
     enabled: { type: Boolean, default: false },
     date_created: { type: Date, default: Date.now() },
     token: { type: String },

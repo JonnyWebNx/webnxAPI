@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { AssetSchema } from "../app/interfaces.js";
+import { AssetSchema } from "../interfaces.js";
 
 const asset = new mongoose.Schema({
     // NXID of the associated part

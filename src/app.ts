@@ -9,23 +9,25 @@
  */
 // Import npm modules
 import config from './config.js';
-import database from './config/database.js'
+import database from './util/database.js'
 import express, { NextFunction, Request, Response } from 'express'
 import cors, { CorsOptions } from 'cors'
 import path from 'node:path'
 // authorization modules
-import login from './app/login.js'
-import register from './app/register.js'
+import login from './routes/login.js'
+import register from './routes/register.js'
 import auth from './middleware/auth.js'
-import isAuth from './app/isAuth.js'
+import isAuth from './middleware/isAuth.js'
 import checkRoles from './middleware/checkRoles.js'
 import sanitize from './middleware/sanitizeInput.js';
-import { updatePartImage, uploadImage, updateUserImage } from './config/uploadFile.js';
+import { updatePartImage, uploadImage, updateUserImage } from './util/uploadFile.js';
 // Database modules
-import partManager from './app/partManager.js'
-import userManager from './app/userManager.js';
-import assetManager from './app/assetManager.js'
-import palletManager from './app/palletManager.js';
+import partManager from './routes/partManager.js'
+import userManager from './routes/userManager.js';
+import assetManager from './routes/assetManager.js'
+import palletManager from './routes/palletManager.js';
+import notifs from './routes/notifs.js';
+import analytics from './routes/analytics.js';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance
@@ -142,19 +144,19 @@ app.put("/api/asset", auth, sanitize, checkRoles(["edit_assets"]), assetManager.
 app.delete("/api/asset", auth, sanitize, checkRoles(["correct_assets"]), assetManager.deleteAsset);
 
 // *** History ***
-app.get("/api/history/sales", auth, sanitize, checkRoles(["sell_on_ebay", "view_analytics"]), userManager.getEbaySalesHistory)
-app.get('/api/history/checkins', auth, sanitize, checkRoles(["process_checkins", "view_analytics"]), userManager.getCheckinHistory)
-app.get("/api/history/checkouts", auth, sanitize, checkRoles(["process_checkins", "view_analytics"]), userManager.getCheckoutHistory) 
-app.get('/api/history/alltechs', auth, sanitize, checkRoles(["view_analytics"]), userManager.getAllTechsHistory)
-app.get('/api/history/assetsUpdated', auth, sanitize, checkRoles(["view_analytics"]), userManager.getAssetUpdates)
-app.get('/api/history/assetsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), userManager.getAssetUpdatesNoDetails)
-app.get('/api/history/newAssets', auth, sanitize, checkRoles(["view_analytics"]), userManager.getNewAssets)
-app.get('/api/history/newAssets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), userManager.getNewAssetsNoDetails)
-app.get('/api/history/part', auth, sanitize, checkRoles(["view_analytics", "manage_parts"]), userManager.getPartCreationAndDeletionHistory)
-app.get('/api/history/palletsUpdated', auth, sanitize, checkRoles(["view_analytics"]), userManager.getPalletUpdates)
-app.get('/api/history/palletsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), userManager.getPalletUpdatesNoDetails)
-app.get('/api/history/newPallets', auth, sanitize, checkRoles(["view_analytics"]), userManager.getNewPallets)
-app.get('/api/history/newPallets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), userManager.getNewPalletsNoDetails)
+app.get("/api/history/sales", auth, sanitize, checkRoles(["sell_on_ebay", "view_analytics"]), analytics.getEbaySalesHistory)
+app.get('/api/history/checkins', auth, sanitize, checkRoles(["process_checkins", "view_analytics"]), analytics.getCheckinHistory)
+app.get("/api/history/checkouts", auth, sanitize, checkRoles(["process_checkins", "view_analytics"]), analytics.getCheckoutHistory) 
+app.get('/api/history/alltechs', auth, sanitize, checkRoles(["view_analytics"]), analytics.getAllTechsHistory)
+app.get('/api/history/assetsUpdated', auth, sanitize, checkRoles(["view_analytics"]), analytics.getAssetUpdates)
+app.get('/api/history/assetsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getAssetUpdatesNoDetails)
+app.get('/api/history/newAssets', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewAssets)
+app.get('/api/history/newAssets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewAssetsNoDetails)
+app.get('/api/history/part', auth, sanitize, checkRoles(["view_analytics", "manage_parts"]), analytics.getPartCreationAndDeletionHistory)
+app.get('/api/history/palletsUpdated', auth, sanitize, checkRoles(["view_analytics"]), analytics.getPalletUpdates)
+app.get('/api/history/palletsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getPalletUpdatesNoDetails)
+app.get('/api/history/newPallets', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewPallets)
+app.get('/api/history/newPallets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewPalletsNoDetails)
 
 // ***      Pallets     ***
 app.post("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.createPallet);
@@ -169,33 +171,44 @@ app.put("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManag
 
 app.delete("/api/pallet", auth, sanitize, checkRoles(["correct_pallets"]), palletManager.deletePallet);
 
+// ***      Notifications       ***
+app.get("/api/notifications/publicKey", auth, sanitize, notifs.publicKey);
+app.get("/api/notifications/unread", auth, sanitize, notifs.getUnreadNotifications);
+app.get("/api/notifications", auth, sanitize, notifs.getPastNotifications);
+app.post("/api/notifications/register", auth, sanitize, notifs.register);
+app.post("/api/notifications/send", auth, sanitize, checkRoles(['debug']), notifs.sendNotification);
+app.post("/api/notifications/markRead", auth, sanitize, notifs.markAsRead);
+app.post("/api/notifications/markRead/all", auth, sanitize, notifs.markAllAsRead);
+app.post("/api/notifications/payload/send", auth, sanitize, checkRoles(['debug']), notifs.sendPayload);
+
+
 // Catch all - BAD REQUEST
-app.post("/api/*", async (req, res) => {
+app.post("/api/*", async (_, res) => {
     return res.status(400).send("Invalid request.");
 });
-app.get("/api/*", async (req, res) => {
+app.get("/api/*", async (_, res) => {
     return res.status(400).send("Invalid request.");
 });
-app.put("/api/*", async (req, res) => {
+app.put("/api/*", async (_, res) => {
     return res.status(400).send("Invalid request.");
 });
-app.delete("/api/*", async (req, res) => {
+app.delete("/api/*", async (_, res) => {
     return res.status(400).send("Invalid request.");
 });
 // SERVICE WORKER FOR PWA
-app.get("/service-worker.js", (req, res) => {
+app.get("/service-worker.js", (_, res) => {
     res.sendFile("./static/service-worker.js", {root: ROOT_DIRECTORY});
 });
 // MANIFEST FOR SERVICE WORKER
-app.get("/manifest.json", (req, res) => {
+app.get("/manifest.json", (_, res) => {
     res.sendFile("./static/manifest.json", {root: ROOT_DIRECTORY});
 });
 // ROBOTS FOR LIGHTHOUSE
-app.get("/robots.txt", (req, res) => {
+app.get("/robots.txt", (_, res) => {
     res.sendFile("./static/robots.txt", {root: ROOT_DIRECTORY});
 });
 // Catch all - hand off routing to front end
-app.get('*', async (req, res) => {
+app.get('*', async (_, res) => {
     res.sendFile("./static/index.html", {root: ROOT_DIRECTORY});
 })
 

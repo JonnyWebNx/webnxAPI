@@ -10,13 +10,12 @@ import Part from '../model/part.js'
 import PartRecord from '../model/partRecord.js'
 import Asset from '../model/asset.js'
 import User from "../model/user.js";
-import handleError from "../config/handleError.js";
-import callbackHandler from '../middleware/callbackHandlers.js'
-import { AssetSchema, BuildKitSchema, CartItem, CheckInQueuePart, InventoryEntry, PartRecordSchema, PartRequestSchema, UserSchema } from "./interfaces.js";
+import handleError from "../util/handleError.js";
+import callbackHandler from '../util/callbackHandlers.js'
+import { AssetSchema, BuildKitSchema, CartItem, CheckInQueuePart, InventoryEntry, NotificationTypes, PartRecordSchema, PartRequestSchema, UserSchema, PartSchema } from "../interfaces.js";
 import mongoose, { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
-import { PartSchema } from "./interfaces.js";
 import config from '../config.js'
 import fs from 'fs';
 import {
@@ -33,15 +32,14 @@ import {
     sanitizeInventoryEntries,
     inventoryEntriesValidAsync,
     combineAndRemoveDuplicateCartItems,
-} from './methods/partMethods.js';
-import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsClearSerialsAsync } from './methods/assetMethods.js';
-import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from './methods/genericMethods.js';
-import { stringSanitize } from '../config/sanitize.js';
+} from '../methods/partMethods.js';
+import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsClearSerialsAsync } from '../methods/assetMethods.js';
+import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from '../methods/genericMethods.js';
+import { stringSanitize } from '../util/sanitize.js';
 import PartRequest from '../model/partRequest.js';
 import BuildKit from '../model/buildKit.js';
-import { after } from 'node:test';
+import { pushPayloadToRole, sendNotificationToGroup, sendNotificationToUser } from '../methods/notificationMethods.js';
 const { UPLOAD_DIRECTORY } = config
-
 
 const partManager = {
     // Create
@@ -180,10 +178,15 @@ const partManager = {
                 parts,
                 tech_notes: notes
                 
-            }, (err: CallbackError, request: PartRequestSchema) => {
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
+            })
+            .then(()=>{
+                return sendNotificationToGroup('fulfill_part_requests', NotificationTypes.Alert, "There is a new part request.", "/clerk/partRequests")
+            })
+            .then(() => {
                 res.status(200).send("Success")
+            })
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: " + err);
             })
         }
         catch (err) {
@@ -263,20 +266,26 @@ const partManager = {
                         cancelled: true,
                         date_fulfilled: Date.now(),
                         fulfilled_by: req.user.user_id
-                    }, 
-                    (err: MongooseError, request: PartRequestSchema)=>{
-                        if(err)
-                            return res.status(500).send("API could not handle your request: " + err);
-                        if(!request)
-                            return res.status(400).send("Request not found")
-                        if(request.build_kit_id)
-                            BuildKit.findByIdAndUpdate(request?.build_kit_id, {
-                                requested_by: null,
-                                date_requested: null
-                            }, callbackHandler.callbackHandleError)
-                        res.status(200).send("Success")
                     }
                 )
+                .then(async (request)=>{
+                    if(!request)
+                        return res.status(400).send("Request not found")
+                    await pushPayloadToRole('fulfill_part_requests', {
+                        type: 'partRequestRemoved',
+                        id: request._id
+                    })
+                    await sendNotificationToGroup('fulfill_part_requests', NotificationTypes.Alert, "A part request has been cancelled.")
+                    if(request.build_kit_id)
+                        await BuildKit.findByIdAndUpdate(request?.build_kit_id, {
+                            requested_by: null,
+                            date_requested: null
+                        }, callbackHandler.callbackHandleError)
+                    res.status(200).send("Success")
+                })
+                .catch((err)=>{
+                    return res.status(500).send("API could not handle your request: " + err);
+                })
             else
                 res.status(400).send("Part request not found.");
         }
@@ -327,44 +336,67 @@ const partManager = {
             // Turn into cart items
             let cartItems = partRecordsToCartItems(records)
             // Find the build kit and update it
-            BuildKit.findByIdAndUpdate(request?.build_kit_id, {
+            BuildKit.findByIdAndUpdate(request.build_kit_id, {
                 date_claimed: current_date,
                 claimed_parts: cartItems,
                 claimed_by: request?.requested_by
-            }, async (err: CallbackError, kit: BuildKitSchema) => {
-                // Error
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                // Update the parts
-                await updatePartsAsync(createOptions, searchOptions, cartItems, false)
-                // Update part request
-                PartRequest.findByIdAndUpdate(request_id, {
+            })
+            .then(()=>{
+                return updatePartsAsync(createOptions, searchOptions, cartItems, false)
+            })
+            .then(()=>{
+                return PartRequest.findByIdAndUpdate(request_id, {
                     fulfilled_by: req.user.user_id,
                     date_fulfilled: current_date,
                     fulfilled_list: [],
                     clerk_notes: notes
-                }, (err: MongooseError, request: PartRequestSchema) =>{
-                    if(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    res.status(200).send("Success")
                 })
+            })
+            .then(async (request)=>{
+                await pushPayloadToRole('fulfill_part_requests', {
+                    type: 'partRequestRemoved',
+                    id: request!._id
+                })
+                return request
+            })
+            .then((request)=>{
+                return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been approved.", "/partRequests/fulfilled")
+            })
+            .then(()=>{
+                res.status(200).send("Success")
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
             })
         }
         else {
             BuildKit.findByIdAndUpdate(request?.build_kit_id, {
                 requested_by: null,
                 date_requested: null,
-            }, async (err: CallbackError, kit: BuildKitSchema) => {
-                PartRequest.findByIdAndUpdate(request_id, {
+            })
+            .then(()=>{
+                return PartRequest.findByIdAndUpdate(request_id, {
                     fulfilled_by: req.user.user_id,
                     date_fulfilled: current_date,
                     clerk_notes: notes,
                     denied: true
-                }, (err: MongooseError, request: PartRequestSchema) =>{
-                    if(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    res.status(200).send("Success")
                 })
+            })
+            .then(async (request)=>{
+                await pushPayloadToRole('fulfill_part_requests', {
+                    type: 'partRequestRemoved',
+                    id: request!._id
+                })
+                return request
+            })
+            .then((request)=>{
+                return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been denied.", "/partRequests/fulfilled")
+            })
+            .then(()=>{
+                res.status(200).send("Success")
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
             })
         }
     },
@@ -393,10 +425,22 @@ const partManager = {
                     date_fulfilled: current_date,
                     clerk_notes: notes,
                     denied: true
-                }, (err: MongooseError, request: PartRequestSchema) =>{
-                    if(err)
-                        return res.status(500).send("API could not handle your request: " + err);
+                })
+                .then(async (request)=>{
+                    await pushPayloadToRole('fulfill_part_requests', {
+                        type: 'partRequestRemoved',
+                        id: request!._id
+                    })
+                    return request
+                })
+                .then((request)=>{
+                    return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been denied.", "/partRequests/fulfilled")
+                })
+                .then(()=>{
                     res.status(200).send("Success")
+                })
+                .catch((err)=>{
+                    res.status(500).send("API could not handle your request: " + err);
                 })
                 return
             }
@@ -434,14 +478,12 @@ const partManager = {
             // Check if submission matches part request ✅
             list = list.filter((i: {kiosk: string, parts: InventoryEntry[]})=>i.kiosk!="Rejected")
             // Go through every entry and make sure kiosk has inv
-            let kioskHasInventory = await Promise.all(list.map((item: {kiosk: string, parts: InventoryEntry[]})=>{
-                return new Promise<any>(async (res)=>{
-                    let temp = item.parts.map((p)=>{
-                        return { nxid: p.nxid, quantity: p.unserialized } as CartItem
-                    })
-                    let has = await kioskHasInInventoryAsync(item.kiosk, req.user.building, temp)
-                    res({ has, item})
+            let kioskHasInventory = await Promise.all(list.map(async (item: {kiosk: string, parts: InventoryEntry[]})=>{
+                let temp = item.parts.map((p)=>{
+                    return { nxid: p.nxid, quantity: p.unserialized } as CartItem
                 })
+                let has = await kioskHasInInventoryAsync(item.kiosk, req.user.building, temp)
+                return { has, item}
             }))
             // Check if any returned false
             for(let r of kioskHasInventory) {
@@ -473,10 +515,22 @@ const partManager = {
                 date_fulfilled: current_date,
                 fulfilled_list: listCopy,
                 clerk_notes: notes
-            }, (err: MongooseError, request: PartRequestSchema) =>{
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
+            })
+            .then(async (request)=>{
+                await pushPayloadToRole('fulfill_part_requests', {
+                    type: 'partRequestRemoved',
+                    id: request!._id
+                })
+                return request
+            })
+            .then((request)=>{
+                return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been approved.", "/partRequests/fulfilled")
+            })
+            .then(()=>{
                 res.status(200).send("Success")
+            })
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: " + err);
             })
         }
         catch (err) {
@@ -486,22 +540,29 @@ const partManager = {
         }
     },
 
-    createBuildTemplate: async (req: Request, res: Response) => {
-
-    },
-
+//     createBuildTemplate: async (req: Request, res: Response) => {
+// 
+//     },
+// 
 
     getBuildKitByID: async (req: Request, res: Response) => {
-        let {id} = req.query
-        BuildKit.findById(id, async (err: CallbackError, kit: BuildKitSchema) => {
-            if(err)
-                return res.status(500).send("API could not handle your request: " + err);
-            let records = await PartRecord.find({kit_id: id, next: null})
-            let items = partRecordsToCartItems(records)
-            let returnKit = JSON.parse(JSON.stringify(kit))
-            returnKit.parts = items
-            res.status(200).json(returnKit)
-        })
+        try {
+            let {id} = req.query
+            BuildKit.findById(id, async (err: CallbackError, kit: BuildKitSchema) => {
+                if(err)
+                    return res.status(500).send("API could not handle your request: " + err);
+                let records = await PartRecord.find({kit_id: id, next: null})
+                let items = partRecordsToCartItems(records)
+                let returnKit = JSON.parse(JSON.stringify(kit))
+                returnKit.parts = items
+                res.status(200).json(returnKit)
+            })
+        }
+        catch (err) {
+            // Error
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
     },
 
     createBuildKit: async (req: Request, res: Response) => {
@@ -530,8 +591,6 @@ const partManager = {
             listMap.forEach((v, k)=>{
                 list.push({kiosk: k, parts: v})
             })
-            // save a copy for later
-            let listCopy = JSON.parse(JSON.stringify(list))
             // Convert request parts to cart items
             for(let entry of list) {
                 for(let p of entry.parts) {
@@ -547,14 +606,12 @@ const partManager = {
             // Check if submission matches part request ✅
             list = list.filter((i: {kiosk: string, parts: InventoryEntry[]})=>i.kiosk!="Unsorted")
             // Go through every entry and make sure kiosk has inv
-            let kioskHasInventory = await Promise.all(list.map((item: {kiosk: string, parts: InventoryEntry[]})=>{
-                return new Promise<any>(async (res)=>{
-                    let temp = item.parts.map((p)=>{
-                        return { nxid: p.nxid, quantity: p.unserialized } as CartItem
-                    })
-                    let has = await kioskHasInInventoryAsync(item.kiosk, req.user.building, temp)
-                    res({ has, item})
+            let kioskHasInventory = await Promise.all(list.map(async (item: {kiosk: string, parts: InventoryEntry[]})=>{
+                let temp = item.parts.map((p)=>{
+                    return { nxid: p.nxid, quantity: p.unserialized } as CartItem
                 })
+                let has = await kioskHasInInventoryAsync(item.kiosk, req.user.building, temp)
+                return { has, item}
             }))
             // Check if any returned false
             for(let r of kioskHasInventory) {
@@ -606,17 +663,15 @@ const partManager = {
 
     getBuildKits: async (req: Request, res: Response) => {
         try {
-            function returnKitSearch(numPages: number, numKits: number, req: Request, res: Response) {
+            function returnKitSearch(numPages: number, numKits: number, _: Request, res: Response) {
                 return async (err: CallbackError, results: BuildKitSchema[]) => {
                     if(err)
                         return res.status(500).send("API could not handle your request: " + err);
-                    let kitsWithParts = await Promise.all(results.map((k)=>{
-                        return new Promise(async (res)=>{
-                            let returnKit = JSON.parse(JSON.stringify(k))
-                            let parts = await loadPartsOnBuildKit(returnKit._id)
-                            returnKit.parts = parts
-                            res(returnKit)
-                        })
+                    let kitsWithParts = await Promise.all(results.map(async (k)=>{
+                        let returnKit = JSON.parse(JSON.stringify(k))
+                        let parts = await loadPartsOnBuildKit(returnKit._id)
+                        returnKit.parts = parts
+                        return returnKit
                     }))
                     res.status(200).json({ pages: numPages, total: numKits, items: kitsWithParts});
                 }
@@ -635,11 +690,9 @@ const partManager = {
                 })
                 return { regexKeywords: searchOptions, relevanceScore: relevanceConditions }
             }
-            function loadPartsOnBuildKit(kit_id: string) {
-                return new Promise<CartItem[]>(async (res) => {
-                    let records = await PartRecord.find({kit_id})
-                    res(partRecordsToCartItems(records))
-                })
+            async function loadPartsOnBuildKit(kit_id: string) {
+                let records = await PartRecord.find({kit_id})
+                return partRecordsToCartItems(records)
             }
             // Get search string and page info
             let { pageSize, pageSkip, searchString } = getTextSearchParams(req)
@@ -711,47 +764,54 @@ const partManager = {
     },
 
     requestBuildKit: async (req: Request, res: Response) => {
-        // Get kit id
-        let kit_id = stringSanitize(req.body.kit_id, true)
-        // Check if empty
-        if(!kit_id)
-            return res.status(400).send(`Kit id not present in request.`)
-        // Find kit by id
-        let kit = await BuildKit.findById(kit_id)
-        // Check if kit was found
-        if(!kit)
-            return res.status(400).send(`Kit not found`)
-        // Check if kit was claimed or deleted
-        if(kit.date_claimed||kit.deleted)
-            return res.status(400).send(`Kit has already been claimed or deleted`)
-        // Check if kit has already been requested
-        let existingRequest = await PartRequest.findOne({build_kit_id: kit_id, denied: {$ne: true}, cancelled: {$ne: true}})
-        if(existingRequest)
-            return res.status(400).send(`An active request already exists for this kit.`)
-        let current_date = Date.now()
-        BuildKit.findByIdAndUpdate(kit_id, {
-            requested_by: req.user.user_id,
-            date_requested: current_date
-        }, (err: CallbackError, kit1: BuildKitSchema) => {
-            // Error
-            if(err)
-                return res.status(500).send("API could not handle your request: " + err);
-            // Create the part request
-            PartRequest.create({
-                build_kit_id: kit_id,
+        try {
+            // Get kit id
+            let kit_id = stringSanitize(req.body.kit_id, true)
+            // Check if empty
+            if(!kit_id)
+                return res.status(400).send(`Kit id not present in request.`)
+            // Find kit by id
+            let kit = await BuildKit.findById(kit_id)
+            // Check if kit was found
+            if(!kit)
+                return res.status(400).send(`Kit not found`)
+            // Check if kit was claimed or deleted
+            if(kit.date_claimed||kit.deleted)
+                return res.status(400).send(`Kit has already been claimed or deleted`)
+            // Check if kit has already been requested
+            let existingRequest = await PartRequest.findOne({build_kit_id: kit_id, denied: {$ne: true}, cancelled: {$ne: true}})
+            if(existingRequest)
+                return res.status(400).send(`An active request already exists for this kit.`)
+            let current_date = Date.now()
+            BuildKit.findByIdAndUpdate(kit_id, {
                 requested_by: req.user.user_id,
-                building: req.user.building,
-                parts: [],
-                tech_notes: "",
-                date_created: current_date
-            }, (err: CallbackError, req1: PartRequestSchema) => {
+                date_requested: current_date
+            }, (err: CallbackError, _: BuildKitSchema) => {
                 // Error
                 if(err)
                     return res.status(500).send("API could not handle your request: " + err);
-                // Send success
-                res.status(200).send("Kit requested.")
+                // Create the part request
+                PartRequest.create({
+                    build_kit_id: kit_id,
+                    requested_by: req.user.user_id,
+                    building: req.user.building,
+                    parts: [],
+                    tech_notes: "",
+                    date_created: current_date
+                }, (err: CallbackError, _: PartRequestSchema) => {
+                    // Error
+                    if(err)
+                        return res.status(500).send("API could not handle your request: " + err);
+                    // Send success
+                    res.status(200).send("Kit requested.")
+                })
             })
-        })
+        }
+        catch (err) {
+            // Error
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
     },
 
     claimBuildKit: async (req: Request, res: Response) => {
@@ -806,7 +866,7 @@ const partManager = {
                 date_claimed: current_date,
                 claimed_parts: cartItems,
                 claimed_by: owner
-            }, async (err: CallbackError, kit: BuildKitSchema) => {
+            }, async (err: CallbackError, _: BuildKitSchema) => {
                 // Error
                 if(err)
                     return res.status(500).send("API could not handle your request: " + err);
@@ -839,7 +899,6 @@ const partManager = {
                 return res.status(400).send(`Kit cannot be deleted`)
             let current_date = Date.now();
             // save a copy for later
-            let listCopy = JSON.parse(JSON.stringify(list))
             let kiosks = await getAllKioskNames()
             // Cart items to check against the kit later
             let cartItems = [] as CartItem[]
@@ -901,7 +960,7 @@ const partManager = {
                 deleted_by: req.user.user_id,
                 deleted_parts: list,
                 date_deleted: current_date,
-            }, async (err: MongooseError, kit: BuildKitSchema) =>{
+            }, async (err: MongooseError, _: BuildKitSchema) =>{
                 if(err)
                     return res.status(500).send("API could not handle your request: " + err);
                 let partRequests = await PartRequest.find({build_kit_id: kit_id})
@@ -911,7 +970,16 @@ const partManager = {
                         date_fulfilled: current_date,
                         clerk_notes: "Build kit was deleted.",
                         denied: true
-                    }, callbackHandler.callbackHandleError)
+                    })
+                    .then(()=>{
+                        return pushPayloadToRole('fulfill_part_requests', {
+                            type: 'partRequestRemoved',
+                            id: pr._id
+                        })
+                    })
+                    .catch(()=>{
+                        handleError(err)
+                    })
                 }
                 res.status(200).send("Success")
             })
@@ -1059,6 +1127,7 @@ const partManager = {
                 owner: user_id,
             }
             await updatePartsAsync(createOptions, searchOptions, inventory, false)
+            await sendNotificationToGroup('process_checkins', NotificationTypes.Alert, "There is a new check in request.", "/clerk/checkin")
             // Success
             res.status(200).send("Successfully checked in.")
         }
@@ -1172,66 +1241,64 @@ const partManager = {
             // Get current date for updates
             let current_date = Date.now()
             // Find part records in request
-            await Promise.all(parts.map((p)=>{
-                return new Promise(async (res)=>{
-                    // Check if serialized
-                    let searchOptions = {
-                        nxid: p.nxid, 
-                        next: null, 
-                        location: "Check In Queue", 
-                        date_created: date,
-                        building: req.user.building,
-                        by: by,
-                        serial: p.serial
-                    }
-                    let approvedOptions = {
-                        nxid: p.nxid,
-                        next: null,
-                        location: p.newLocation,
-                        // Clear serial when checked in
-                        // serial: p.serial,
-                        building: req.user.building,
-                        by: req.user.user_id,
-                        date_created: current_date,
-                    } as PartRecordSchema
-                    let deniedOptions = {
-                        nxid: p.nxid,
-                        owner: by,
-                        location: "Tech Inventory",
-                        serial: p.serial,
-                        building: req.user.building,
-                        by: req.user.user_id,
-                        next: null,
-                        date_created: current_date,
-                    } as PartRecordSchema
-                    if(p.serial) {
-                        // Find one
-                        let partToUpdate = await PartRecord.findOne(searchOptions)
-                        approvedOptions.prev = partToUpdate!._id
-                        deniedOptions.prev = partToUpdate!._id
-                        // Create new iteration
-                        // If not approved
-                        if(p.approved==true)
-                            PartRecord.create(approvedOptions, callbackHandler.updateRecord)
-                        else
-                            PartRecord.create(deniedOptions, callbackHandler.updateRecord)
-                        return res("")
-                    }
-                    // Find all matching records
-                    let partsToUpdate = await PartRecord.find(searchOptions)
-                    // Update all approved records
-                    for (let i = 0; i < p.approvedCount!; i++) {
-                        approvedOptions.prev = partsToUpdate[i]._id
+            await Promise.all(parts.map(async (p)=>{
+                // Check if serialized
+                let searchOptions = {
+                    nxid: p.nxid, 
+                    next: null, 
+                    location: "Check In Queue", 
+                    date_created: date,
+                    building: req.user.building,
+                    by: by,
+                    serial: p.serial
+                }
+                let approvedOptions = {
+                    nxid: p.nxid,
+                    next: null,
+                    location: p.newLocation,
+                    // Clear serial when checked in
+                    // serial: p.serial,
+                    building: req.user.building,
+                    by: req.user.user_id,
+                    date_created: current_date,
+                } as PartRecordSchema
+                let deniedOptions = {
+                    nxid: p.nxid,
+                    owner: by,
+                    location: "Tech Inventory",
+                    serial: p.serial,
+                    building: req.user.building,
+                    by: req.user.user_id,
+                    next: null,
+                    date_created: current_date,
+                } as PartRecordSchema
+                if(p.serial) {
+                    // Find one
+                    let partToUpdate = await PartRecord.findOne(searchOptions)
+                    approvedOptions.prev = partToUpdate!._id
+                    deniedOptions.prev = partToUpdate!._id
+                    // Create new iteration
+                    // If not approved
+                    if(p.approved==true)
                         PartRecord.create(approvedOptions, callbackHandler.updateRecord)
-                    }
-                    // Update unapproved records
-                    for (let i = p.approvedCount!; i < p.quantity!; i++) {
-                        deniedOptions.prev = partsToUpdate[i]._id
+                    else
                         PartRecord.create(deniedOptions, callbackHandler.updateRecord)
-                    }
-                    return res("")
-                })
+                    return
+                }
+                // Find all matching records
+                let partsToUpdate = await PartRecord.find(searchOptions)
+                // Update all approved records
+                for (let i = 0; i < p.approvedCount!; i++) {
+                    approvedOptions.prev = partsToUpdate[i]._id
+                    PartRecord.create(approvedOptions, callbackHandler.updateRecord)
+                }
+                // Update unapproved records
+                for (let i = p.approvedCount!; i < p.quantity!; i++) {
+                    deniedOptions.prev = partsToUpdate[i]._id
+                    PartRecord.create(deniedOptions, callbackHandler.updateRecord)
+                }
             }))
+            await pushPayloadToRole('process_checkins', { type:"checkinProcessed", date, by })
             res.status(200).send("Success.");
         } catch (err) {
             // Error
@@ -1243,7 +1310,7 @@ const partManager = {
     searchParts: async (req: Request, res: Response) => {
         try {
             // Get search string and page info
-            let { pageSize, pageSkip, searchString } = getTextSearchParams(req)
+            let { pageSize, pageSkip, searchString, sort } = getTextSearchParams(req)
             // If search string is empty
             if(searchString == "") {
                 // Count all parts
@@ -1253,7 +1320,7 @@ const partManager = {
                 // Get all parts
                 Part.find({})
                     // Sort by NXID
-                    .sort({ nxid: 1 })
+                    .sort(sort)
                     // Skip - gets requested page number
                     .skip(pageSkip)
                     // Limit - returns only enough elements to fill page
@@ -1279,7 +1346,7 @@ const partManager = {
                     }
                 },
                 {
-                    $sort: { relevance: -1 }
+                    $sort: sort
                 },
                 {
                     $project: { relevance: 0 }
@@ -1429,7 +1496,7 @@ const partManager = {
             if(part==null||part==undefined)
                 return res.status(400).send("Part not found");
             // Delete info
-            Part.findByIdAndDelete(part?._id, async (err: MongooseError, part: PartSchema) =>{
+            Part.findByIdAndDelete(part?._id, async (err: MongooseError, _: PartSchema) =>{
                 if (err) {
                     // Error - don't return so other records will be deleted
                     return res.status(500).send("API could not handle your request: " + err);
@@ -1823,7 +1890,7 @@ const partManager = {
                 // Get date for updates
                 let current_date = Date.now()
                 // Filter records to quantity and update
-                await Promise.all(oldRecords.filter((p,i)=>new_quantity>i).map(async(rec)=>{
+                await Promise.all(oldRecords.filter((_,i)=>new_quantity>i).map(async(rec)=>{
                     // Create new record
                     let new_record = JSON.parse(JSON.stringify(rec))
                     new_record.prev = new_record._id
@@ -1882,7 +1949,7 @@ const partManager = {
         }
     },
 
-    nextSequentialNXID: async (req: Request, res: Response) => {
+    nextSequentialNXID: async (_: Request, res: Response) => {
         // Basic binary search
         function findMissingNumber(arr: number[]) {
             // Initialize boundaries
@@ -1931,7 +1998,7 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    mergeParts: async (req: Request, res: Response) => {
+    mergeParts: async (_: Request, res: Response) => {
         try {
 
         } catch(err) {

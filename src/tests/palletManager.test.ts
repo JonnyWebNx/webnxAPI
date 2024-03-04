@@ -1,7 +1,7 @@
 import request from 'supertest'
 import config from "../config"
 import { jest } from '@jest/globals'
-import { CartItem, PalletSchema } from "../app/interfaces"
+import { CartItem, PalletSchema } from "../interfaces"
 const { TECH_TOKEN, KIOSK_TOKEN, INVENTORY_TOKEN, ADMIN_TOKEN } = config
 const PALLET_TAG = "PAL0000002"
 const EMPTY_TEXT_SEARCH_QUERY_STRING = "?searchString=&pageNum=1&pageSize=50"

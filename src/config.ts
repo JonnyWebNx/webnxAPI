@@ -22,7 +22,9 @@ interface ENV {
     ADMIN_TOKEN?: string,
     TECH_TOKEN?: string,
     KIOSK_TOKEN?: string,
-    INVENTORY_TOKEN?: string
+    INVENTORY_TOKEN?: string,
+    VAPID_PUBLIC_KEY?: string,
+    VAPID_PRIVATE_KEY?: string,
 }
 
 // Loading process.env as ENV interface
@@ -43,6 +45,8 @@ const getConfig = (): ENV => {
     TECH_TOKEN: process.env.TECH_TOKEN ? process.env.TECH_TOKEN : "",
     KIOSK_TOKEN: process.env.KIOSK_TOKEN ? process.env.KIOSK_TOKEN : "",
     INVENTORY_TOKEN: process.env.INVENTORY_TOKEN ? process.env.INVENTORY_TOKEN : "",
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY : "",
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY : "",
   };
 };
 
