@@ -1,4 +1,4 @@
-import { PalletSchema, AssetSchema, PartRecordSchema } from "../interfaces.js"
+import { PalletSchema, AssetSchema, PartRecordSchema, BoxSchema } from "../interfaces.js"
 import { Request, Response } from "express";
 import handleError from "../util/handleError.js";
 import Pallet from "../model/pallet.js";
@@ -10,7 +10,8 @@ import { CallbackError } from "mongoose";
 import { cartItemsValidAsync, sanitizeCartItems } from "../methods/partMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
 import { getNumPages, getPageNumAndSize, getTextSearchParams, objectToRegex } from "../methods/genericMethods.js";
-import { addAssetsToPallet, cleansePallet, getPalletSearchRegex, isLocationValid, isValidPalletTag, palletsAreSimilar, parseAssetTags, returnPallet, returnPalletHistory, returnPalletSearch } from "../methods/palletMethods.js";
+import { addAssetsToPallet, addBoxesToPallet, cleansePallet, getPalletSearchRegex, isLocationValid, isValidPalletTag, palletsAreSimilar, parseAssetTags, parseBoxTags, returnPallet, returnPalletHistory, returnPalletSearch } from "../methods/palletMethods.js";
+import Box from "../model/box.js";
 
 
 const palletManager = {
@@ -23,6 +24,8 @@ const palletManager = {
             let parts = sanitizeCartItems(req.body.parts)
             // Get assets on pallet
             let asset_tags = parseAssetTags(req.body.assets)
+            // Get boxes on pallet
+            let box_tags = parseBoxTags(req.body.boxes)
             // Check if input is valid
             if(!pallet||!isValidPalletTag(pallet.pallet_tag)||!isLocationValid(pallet.location))
                 return res.status(400).send("Invalid request");
@@ -55,6 +58,7 @@ const palletManager = {
                 await updatePartsAsync(createOptions, {}, parts, true)
                 // Create/update all assets on pallet
                 await addAssetsToPallet(newPallet.pallet_tag, asset_tags, req.user.user_id as string, date, newPallet.building)
+                await addBoxesToPallet(newPallet.pallet_tag, box_tags, req.user.user_id as string, date, newPallet.building)
                 res.status(200).send("Success");
             })
         } catch(err) {
@@ -170,6 +174,8 @@ const palletManager = {
             let { pallet, parts, correction } = req.body;
             // Get assets on pallet
             let asset_tags = parseAssetTags(req.body.assets)
+            // Get assets on pallet
+            let box_tags = parseBoxTags(req.body.boxes)
             // Check if asset is valid
             if (!isValidPalletTag(pallet.pallet_tag)||!(pallet.pallet_tag)) {
                 // Send response if request is invalid
@@ -246,6 +252,7 @@ const palletManager = {
             await updatePartsClearSerialsAsync(addedOptions, userSearchOptions, added, correction==true)
             // Add assets to pallet
             await addAssetsToPallet(pallet.pallet_tag, asset_tags, req.user.user_id as string, new Date(current_date), pallet.building)
+            await addBoxesToPallet(pallet.pallet_tag, box_tags, req.user.user_id as string, new Date(current_date), pallet.building)
             // Update the asset object and return to user before updating parts records
             let getPallet = JSON.parse(JSON.stringify(await Pallet.findOne({pallet_tag: pallet.pallet_tag, next: null}))) as PalletSchema
             // Check if pallets are similar
@@ -283,7 +290,7 @@ const palletManager = {
         }
     },
 
-    getPartsAndAssetsOnPallet: async (req: Request, res: Response) => {
+    getItemsOnPallet: async (req: Request, res: Response) => {
         try {
             // Parse asset_tag
             const pallet_tag = req.query.pallet_tag as string
@@ -309,7 +316,15 @@ const palletManager = {
                         // Return to client
                         return res.status(500).send("API could not handle your request: " + err);
                     }
-                    res.status(200).json({parts, assets})
+                    Box.find({pallet: pallet_tag, next: null}, (err: CallbackError, boxes: BoxSchema[]) => {
+                        if (err) {
+                            // Handle error
+                            handleError(err)
+                            // Return to client
+                            return res.status(500).send("API could not handle your request: " + err);
+                        }
+                        res.status(200).json({parts, assets, boxes})
+                    })
                 })
             })
         } catch(err) {

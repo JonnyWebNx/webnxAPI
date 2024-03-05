@@ -29,6 +29,17 @@ const callbackHandler = {
             }
         })
     },
+    updateBox: (err: CallbackError, record: BoxSchema) => {
+        if (err) {
+            return handleError(err)
+        }
+        if(record.prev!=null)
+            Box.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created, next_pallet: record.pallet }, (err: MongooseError, _: BoxSchema) => {
+            if (err) {
+                return handleError(err)
+            }
+        })
+    },
     updateAssetAndReturn: (res: Response) =>{
         return (err: CallbackError, record: AssetSchema) => {
             if (err) {

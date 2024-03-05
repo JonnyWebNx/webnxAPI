@@ -163,7 +163,7 @@ app.get('/api/history/newPallets/noDetails', auth, sanitize, checkRoles(["view_a
 app.post("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.createPallet);
 
 app.get("/api/pallet", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPallets);
-app.get("/api/pallet/parts", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPartsAndAssetsOnPallet);
+app.get("/api/pallet/parts", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getItemsOnPallet);
 app.get("/api/pallet/id", auth, sanitize, palletManager.getPalletByID);
 app.get('/api/pallet/search', auth, sanitize, checkRoles(["view_pallets"]), palletManager.searchPallets);
 app.get('/api/pallet/history', auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPalletHistory);
