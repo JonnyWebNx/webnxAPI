@@ -113,6 +113,7 @@ export interface PartRecordSchema {
     location?: string,
     asset_tag?: string,
     pallet_tag?: string,
+    box_tag?: string,
     part_request?: string,
     kit_name?: string,
     serial?: string,
@@ -179,6 +180,16 @@ export interface PalletEvent {
     removedAssets: string[]
 }
 
+export interface BoxEvent {
+    date_begin: Date,
+    box_id: string | Types.ObjectId,
+    by: string | Types.ObjectId,
+    info_updated: boolean,
+    existingParts: CartItem[],
+    addedParts: CartItem[],
+    removedParts: CartItem[],
+}
+
 export interface CheckInQueuePart extends CartItem {
   approved?: boolean,
   approvedCount?: number,
@@ -202,6 +213,19 @@ export interface PalletUpdate {
 export interface PalletSchema {
     _id: Types.ObjectId,
     pallet_tag: string,
+    location: string,
+    building: number,
+    by: string,
+    date_created: Date,
+    date_replaced: Date,
+    notes: string,
+    prev: string|null | Types.ObjectId,
+    next: string|null | Types.ObjectId,
+}
+
+export interface BoxSchema {
+    _id: Types.ObjectId,
+    box_tag: string,
     location: string,
     building: number,
     by: string,

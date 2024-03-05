@@ -1,9 +1,10 @@
 import { CallbackError, MongooseError } from 'mongoose'
 import handleError from '../util/handleError.js'
 import PartRecord from '../model/partRecord.js'
-import { PartRecordSchema, AssetSchema, PalletSchema } from '../interfaces.js'
+import { PartRecordSchema, AssetSchema, PalletSchema, BoxSchema } from '../interfaces.js'
 import Asset from '../model/asset.js'
 import Pallet from '../model/pallet.js'
+import Box from '../model/box.js'
 import { Response } from 'express'
 
 const callbackHandler = {
@@ -54,6 +55,24 @@ const callbackHandler = {
             }
             if(record.prev!=null)
                 Pallet.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, _: PalletSchema) => {
+                    if (err) {
+                        res.status(500).send("API could not handle your request: "+err);
+                        return handleError(err)
+                    }
+                    res.status(200).send("Success")
+                })
+            else
+                res.status(200).send("Success")
+        }
+    },
+    updateBoxAndReturn: (res: Response) =>{
+        return (err: CallbackError, record: BoxSchema) => {
+            if (err) {
+                res.status(500).send("API could not handle your request: "+err);
+                return handleError(err)
+            }
+            if(record.prev!=null)
+                Box.findByIdAndUpdate(record.prev, { next: record._id, date_replaced: record.date_created }, (err: MongooseError, _: BoxSchema) => {
                     if (err) {
                         res.status(500).send("API could not handle your request: "+err);
                         return handleError(err)

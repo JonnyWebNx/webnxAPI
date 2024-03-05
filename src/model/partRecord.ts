@@ -14,6 +14,10 @@ const partRecord = new mongoose.Schema({
     location: { type: String, required: true},
     // Asset tag if associated with an asset
     asset_tag: { type: String },
+    //
+    pallet_tag: { type: String },
+    // Box tag if associated with a box
+    box_tag: { type: String },
     // Serial number (if part is in asset)
     serial: { type: String },
     // User ID of owner if part is checked out
@@ -22,8 +26,6 @@ const partRecord = new mongoose.Schema({
     ebay: { type: String },
     // ID of the user who's request created the part record
     by: { type: String, required: true },
-    //
-    pallet_tag: { type: String },
     // Request where the parts came from
     part_request: { type: String },
     // Build kittttt

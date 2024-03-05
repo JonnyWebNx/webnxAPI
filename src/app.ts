@@ -28,6 +28,7 @@ import assetManager from './routes/assetManager.js'
 import palletManager from './routes/palletManager.js';
 import notifs from './routes/notifs.js';
 import analytics from './routes/analytics.js';
+import boxManager from './routes/boxManager.js';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance
@@ -170,6 +171,19 @@ app.get('/api/pallet/history', auth, sanitize, checkRoles(["view_pallets"]), pal
 app.put("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.updatePallet);
 
 app.delete("/api/pallet", auth, sanitize, checkRoles(["correct_pallets"]), palletManager.deletePallet);
+
+// ***      Boxes       ***
+app.post("/api/box", auth, sanitize, checkRoles(["edit_boxes"]), boxManager.createBox);
+
+app.get("/api/box", auth, sanitize, checkRoles(["view_boxes"]), boxManager.getBoxes);
+app.get("/api/box/parts", auth, sanitize, checkRoles(["view_boxes"]), boxManager.getPartsOnBox);
+app.get("/api/box/id", auth, sanitize, boxManager.getBoxByID);
+app.get('/api/box/search', auth, sanitize, checkRoles(["view_boxes"]), boxManager.searchBoxes);
+app.get('/api/box/history', auth, sanitize, checkRoles(["view_boxes"]), boxManager.getBoxHistory);
+
+app.put("/api/box", auth, sanitize, checkRoles(["edit_boxes"]), boxManager.updateBox);
+
+app.delete("/api/box", auth, sanitize, checkRoles(["correct_boxes"]), boxManager.deleteBox);
 
 // ***      Notifications       ***
 app.get("/api/notifications/publicKey", auth, sanitize, notifs.publicKey);

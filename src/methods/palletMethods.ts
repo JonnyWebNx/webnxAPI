@@ -62,7 +62,7 @@ export function getPalletSearchRegex(searchString: string) {
         searchOptions.push({ "pallet_tag": { $regex: key, $options: "i" } })
         relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$pallet_tag", regex: new RegExp(key, "i") } }, 3, 0] })
         searchOptions.push({ "location": { $regex: key, $options: "i" } })
-        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$pallet_tag", regex: new RegExp(key, "i") } }, 3, 0] })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$location", regex: new RegExp(key, "i") } }, 3, 0] })
         searchOptions.push({ "notes": { $regex: key, $options: "is" } })
         relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$notes", regex: new RegExp(key, "i") } }, 1, 0] })
     })
