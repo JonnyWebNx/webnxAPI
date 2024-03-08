@@ -105,8 +105,8 @@ export async function getPalletUpdateDates(pallet_tag: string) {
     dates = dates.concat(await Asset.find({pallet: pallet_tag, nextPallet: { $ne: pallet_tag }}).distinct("date_replaced") as Date[])
     dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_created") as Date[])
     dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_replaced") as Date[])
-    dates = dates.concat(await Box.find({pallet_tag}).distinct("date_created") as Date[])
-    dates = dates.concat(await Box.find({pallet_tag}).distinct("date_replaced") as Date[])
+    dates = dates.concat(await Box.find({ location: pallet_tag, prev_location: { $ne: pallet_tag } }).distinct("date_created") as Date[])
+    dates = dates.concat(await Box.find({ location: pallet_tag, prev_location: { $ne: pallet_tag } }).distinct("date_replaced") as Date[])
     // Get rid of duplicates
     // Sort
     dates = dates.sort((a: Date, b: Date) => { 
@@ -221,15 +221,15 @@ export function getExistingAssetsPallet(pallet_tag: string, date: Date) {
 }
 
 export function getAddedBoxesPallet(pallet_tag: string, date: Date) {
-    return Box.find({pallet: pallet_tag, date_created: date, prev_pallet: {$ne: pallet_tag} })
+    return Box.find({location: pallet_tag, date_created: date, prev_location: {$ne: pallet_tag} })
 }
 
 export function getRemovedBoxesPallet(pallet_tag: string, date: Date) {
-    return Box.find({pallet: pallet_tag, date_replaced: date, next_pallet: {$ne: pallet_tag} })
+    return Box.find({location: pallet_tag, date_replaced: date, next_location: {$ne: pallet_tag} })
 }
 
 export function getExistingBoxesPallet(pallet_tag: string, date: Date) {
-    return Box.find({pallet: pallet_tag, date_created: { $lt: date }, $or: [
+    return Box.find({location: pallet_tag, date_created: { $lt: date }, $or: [
             {date_replaced: null}, 
             {date_replaced: { $gt: date }}
         ]
@@ -304,13 +304,13 @@ export async function getPalletEvent(pallet_tag: string, date: Date, nxids?: str
                 }
             }
         }
-        let addedAssetTags = addedAssets.map((a: AssetSchema)=>a._id)
-        let existingAssetTags = existingAssets.map((a: AssetSchema)=>a._id)
-        let removedAssetTags = removedAssets.map((a: AssetSchema)=>a._id)
+        let addedAssetIDs = addedAssets.map((a: AssetSchema)=>a._id)
+        let existingAssetIDs = existingAssets.map((a: AssetSchema)=>a._id)
+        let removedAssetIDs = removedAssets.map((a: AssetSchema)=>a._id)
 
-        let addedBoxTags = addedBoxes.map((a: BoxSchema)=>a._id)
-        let existingBoxTags = existingBoxes.map((a: BoxSchema)=>a._id)
-        let removedBoxTags = removedBoxes.map((a: BoxSchema)=>a._id)
+        let addedBoxIDs = addedBoxes.map((a: BoxSchema)=>a._id)
+        let existingBoxIDs = existingBoxes.map((a: BoxSchema)=>a._id)
+        let removedBoxIDs = removedBoxes.map((a: BoxSchema)=>a._id)
         // Fallback
         if(by==""&&pallet)
             by = pallet.by
@@ -321,12 +321,12 @@ export async function getPalletEvent(pallet_tag: string, date: Date, nxids?: str
             existingParts: existingParts as CartItem[], 
             addedParts: added, 
             removedParts: removed, 
-            addedAssets: addedAssetTags,
-            removedAssets: removedAssetTags,
-            existingAssets: existingAssetTags,
-            addedBoxes: addedBoxTags,
-            removedBoxes: removedBoxTags,
-            existingBoxes: existingBoxTags,
+            addedAssets: addedAssetIDs,
+            removedAssets: removedAssetIDs,
+            existingAssets: existingAssetIDs,
+            addedBoxes: addedBoxIDs,
+            removedBoxes: removedBoxIDs,
+            existingBoxes: existingBoxIDs,
             by: by 
         } as PalletEvent
     }
@@ -402,8 +402,8 @@ export function addBoxesToPallet(pallet_tag: string, box_tags: string[], by: str
         existingBox.by = by
         // Copy pallet information
         existingBox.building = building
-        existingBox.prev_pallet = existingBox.pallet
-        existingBox.pallet = pallet_tag
+        existingBox.prev_location = existingBox.location
+        existingBox.location = pallet_tag
         existingBox.date_created = date
         if(existingBox.prev!=null)
             Box.create(existingBox, callbackHandler.updateBox)

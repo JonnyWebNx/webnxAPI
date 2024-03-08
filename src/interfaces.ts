@@ -226,7 +226,6 @@ export interface PalletSchema {
 export interface BoxSchema {
     _id?: Types.ObjectId,
     box_tag: string,
-    location: string,
     building: number,
     by: string,
     date_created: Date,
@@ -235,9 +234,9 @@ export interface BoxSchema {
     prev: string|null | Types.ObjectId,
     next: string|null | Types.ObjectId,
 
-    pallet?: string,
-    prev_pallet?: string,
-    next_pallet?: string,
+    location: string,
+    prev_location?: string,
+    next_location?: string,
 
 }
 

@@ -316,7 +316,7 @@ const palletManager = {
                         // Return to client
                         return res.status(500).send("API could not handle your request: " + err);
                     }
-                    Box.find({pallet: pallet_tag, next: null}, (err: CallbackError, boxes: BoxSchema[]) => {
+                    Box.find({location: pallet_tag, next: null}, (err: CallbackError, boxes: BoxSchema[]) => {
                         if (err) {
                             // Handle error
                             handleError(err)

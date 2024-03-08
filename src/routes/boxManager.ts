@@ -248,6 +248,7 @@ const boxManager = {
                 box.date_created = current_date
                 box.by = req.user.user_id
                 delete box.date_updated
+                box.prev_location = getBox.location
                 // Create new box
                 Box.create(box, (err: CallbackError, new_box: BoxSchema) => {
                     if (err) {
@@ -293,7 +294,7 @@ const boxManager = {
                 }
                 let parts = partRecordsToCartItems(pRecords)
                 // Return to client
-                res.status(200).json({parts})
+                res.status(200).json(parts)
             })
         } catch(err) {
             handleError(err)
@@ -329,6 +330,7 @@ const boxManager = {
                 newBox.prev = newBox._id
                 newBox.next = "deleted"
                 newBox.date_created = new Date(current_date)
+                newBox.prev_location = box.location
                 delete newBox._id
                 // Create new iteration of box 
                 Box.create(box, callbackHandler.updateBoxAndReturn(res))
