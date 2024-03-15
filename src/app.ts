@@ -207,6 +207,10 @@ app.get("/manifest.json", (_, res) => {
 app.get("/robots.txt", (_, res) => {
     res.sendFile("./static/robots.txt", {root: ROOT_DIRECTORY});
 });
+// Notifiation sound
+app.get("/robots.wav", (_, res) => {
+    res.sendFile("./static/notiv.wav", {root: ROOT_DIRECTORY});
+});
 // Catch all - hand off routing to front end
 app.get('*', async (_, res) => {
     res.sendFile("./static/index.html", {root: ROOT_DIRECTORY});
