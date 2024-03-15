@@ -208,8 +208,8 @@ app.get("/robots.txt", (_, res) => {
     res.sendFile("./static/robots.txt", {root: ROOT_DIRECTORY});
 });
 // Notifiation sound
-app.get("/robots.wav", (_, res) => {
-    res.sendFile("./static/notiv.wav", {root: ROOT_DIRECTORY});
+app.get("/notif.wav", (_, res) => {
+    res.sendFile("./static/notif.wav", {root: ROOT_DIRECTORY});
 });
 // Catch all - hand off routing to front end
 app.get('*', async (_, res) => {
