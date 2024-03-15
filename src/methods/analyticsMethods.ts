@@ -392,7 +392,11 @@ export function getCheckinEventsAsync(dates: Date[], users: string[] | undefined
                         // Remove quantity for serialized
                         quantity: {
                             $cond: [
-                                {$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"
+                                {
+                                    $eq: ["$_id.serial", "$arbitraryNonExistentField"]
+                                },
+                                "$quantity",
+                                "$$REMOVE"
                             ]
                         },  
                         // IF next owner exists, part was denied

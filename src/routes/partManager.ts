@@ -989,12 +989,13 @@ const partManager = {
         }
     },
 
-    getKioskQuanitities: async (req: Request, res: Response) => {
+    getKioskQuantities: async (req: Request, res: Response) => {
         try {
             // Parse the cart items from the request
             let nxids = Array.isArray(req.query.part) ? req.query.part as [] : [req.query.part]
             // Check if the cart items are valid
             let kiosks = await getAllKioskNames()
+            kiosks.push("Box")
             PartRecord.aggregate([
                 {
                     $match: {
@@ -1006,8 +1007,11 @@ const partManager = {
                 },
                 {
                     $group: { 
-                        _id: { nxid: "$nxid", location: "$location" },
-                        quantity: { $sum: 1 }
+                        _id: { nxid: "$nxid", location: "$location", box_tag: "$box_tag" },
+                        quantity: { $sum: 1 },
+                        serials: {
+                            $push: "$serial"
+                        },
                     }
                 },
                 {
@@ -1016,7 +1020,9 @@ const partManager = {
                         kiosk_quantities: {
                             $push: {
                                 kiosk: "$_id.location",
+                                box_tag: "$_id.box_tag",
                                 quantity: "$quantity",
+                                serials: "$serials",
                             }
                         }
                     }
@@ -1348,9 +1354,9 @@ const partManager = {
                 {
                     $sort: sort
                 },
-                {
-                    $project: { relevance: 0 }
-                }
+                // {
+                //     $project: { relevance: 0 }
+                // }
             ] as any
             // Aggregate count
             let countQuery = await Part.aggregate(aggregateQuery).count("numParts")

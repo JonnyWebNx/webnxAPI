@@ -104,7 +104,7 @@ app.get("/api/part/records/id", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 app.get("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.auditPart)
-app.get("/api/part/quantities", auth, sanitize, partManager.getKioskQuanitities)
+app.get("/api/part/quantities", auth, sanitize, partManager.getKioskQuantities)
 app.get("/api/part/requests/active", auth, sanitize, partManager.getActivePartRequests)
 app.get("/api/part/requests/fulfilled", auth, sanitize, partManager.getFulfilledPartRequests)
 app.get("/api/buildKit/search", auth, sanitize, partManager.getBuildKits)
