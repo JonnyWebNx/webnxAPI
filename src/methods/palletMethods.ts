@@ -10,7 +10,7 @@ import { AssetSchema, CartItem, PalletEvent, PalletSchema } from "../interfaces.
 import { isValidAssetTag } from "./assetMethods.js"
 
 export function isValidPalletTag(id: string) {
-    return /PAL([0-9]{7})+/.test(id)
+    return /PAL([0-9]{5})+/.test(id)
 }
 
 export function isLocationValid(location: string) {
