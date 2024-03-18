@@ -166,7 +166,7 @@ const partManager = {
         try {
             // Parse the cart items from the request
             let parts = sanitizeCartItems(req.body.parts)
-            let notes = stringSanitize(req.body.notes, true)
+            let notes = stringSanitize(req.body.notes, false)
             // Check if the cart items are valid
             if(!(await cartItemsValidAsync(parts)))
                 return res.status(400).send("Error in requested parts")

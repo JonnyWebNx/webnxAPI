@@ -12,7 +12,7 @@ import { isValidBoxTag } from "./boxMethods.js"
 import Box from "../model/box.js"
 
 export function isValidPalletTag(id: string) {
-    return /PAL([0-9]{7})+/.test(id)
+    return /PAL([0-9]{5})+/.test(id)
 }
 
 export function isLocationValid(location: string) {
