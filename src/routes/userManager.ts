@@ -1,14 +1,3 @@
-/**
- * 
- * @author Cameron McKay
- * 
- * @email cameron@webnx.com
- * 
- * @brief Collection of functions for manipulating User entries in the database
- * 
- * 
- */
-// Import user schema
 import bcrypt from 'bcryptjs'
 import User from '../model/user.js'
 import { MongooseError } from 'mongoose';

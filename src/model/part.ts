@@ -31,6 +31,7 @@ const partSchema = new mongoose.Schema({
     cable_end2: { type: String },
     created_by: { type: String, default: null },
     date_created: { type: Date, default: Date.now() },
+    threshold: { type: Number, required: true, default: 5 },
     audited: { type: Date },
     notes: { type: String }
 });

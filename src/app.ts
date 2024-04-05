@@ -1,13 +1,3 @@
-/**
- * @author Cameron McKay
- * 
- * @email cameron@webnx.com
- * 
- * @brief Main application for handling incoming requests
- * 
- * 
- */
-// Import npm modules
 import config from './config.js';
 import database from './util/database.js'
 import express, { NextFunction, Request, Response } from 'express'
@@ -90,6 +80,7 @@ app.post("/api/buildKit", auth, sanitize, checkRoles(["create_build_kit"]), part
 app.post("/api/buildKit/request", auth, sanitize, checkRoles(["request_build_kit"]), partManager.requestBuildKit)
 app.post("/api/buildKit/request/process", auth, sanitize, checkRoles(["fulfill_part_requests"]), partManager.processBuildKitRequest)
 app.post("/api/buildKit/delete", auth, sanitize, checkRoles(["create_build_kit"]), partManager.deleteBuildKit);
+app.post("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.auditPart)
 
 app.get("/api/checkin/queue", auth, sanitize, checkRoles(["process_checkins"]), partManager.getCheckinQueue)
 app.get("/api/part", auth, sanitize, partManager.getPart);
@@ -103,7 +94,7 @@ app.get("/api/part/records", auth, sanitize, partManager.getPartRecords);
 app.get("/api/part/records/id", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
-app.get("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.auditPart)
+app.get("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.getAudits)
 app.get("/api/part/quantities", auth, sanitize, partManager.getKioskQuantities)
 app.get("/api/part/requests/active", auth, sanitize, partManager.getActivePartRequests)
 app.get("/api/part/requests/fulfilled", auth, sanitize, partManager.getFulfilledPartRequests)

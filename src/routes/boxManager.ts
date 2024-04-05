@@ -3,7 +3,7 @@ import { Request, Response } from "express";
 import handleError from "../util/handleError.js";
 import { isValidObjectId } from "mongoose";
 import PartRecord from "../model/partRecord.js";
-import { getAddedAndRemoved, partRecordsToCartItems, updatePartsAsync, updatePartsClearSerialsAsync, userHasInInventoryAsync } from "../methods/assetMethods.js";
+import { getAddedAndRemoved, partRecordsToCartItems, updatePartsAsync, userHasInInventoryAsync } from "../methods/assetMethods.js";
 import { CallbackError } from "mongoose";
 import { cartItemsValidAsync, sanitizeCartItems } from "../methods/partMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
@@ -237,7 +237,7 @@ const boxManager = {
             // Update removed parts
             await updatePartsAsync(removedOptions, boxSearchOptions, removed, false)
             // Update added parts
-            await updatePartsClearSerialsAsync(addedOptions, userSearchOptions, added, correction==true)
+            await updatePartsAsync(addedOptions, userSearchOptions, added, correction==true)
             // Update the asset object and return to user before updating parts records
             let getBox = JSON.parse(JSON.stringify(await Box.findOne({box_tag: box.box_tag, next: null}))) as BoxSchema
             // Check if boxes are similar

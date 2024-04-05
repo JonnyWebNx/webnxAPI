@@ -1,13 +1,3 @@
-/**
- * @author Cameron McKay
- * 
- * @email cameron@webnx.com
- * 
- * @brief Basic driver file for starting the app and opening PORT for requests
- * 
- */
-
-// import basic requirements
 import http from 'http'
 import app from './app.js'
 import config from './config.js';
@@ -22,7 +12,6 @@ const port = config.PORT;
 
 // Open API_PORT for listening
 server.listen(port, () => {
-  //console.clear()
   console.log("\x1b[32m", "\x1b[1m",`\nWebNX API by Cameron McKay`,"\u001b[35m",`\nVersion ${LIB_VERSION}`,
   "\x1b[0m",`\nServer running on port ${config.PORT}`);
 });

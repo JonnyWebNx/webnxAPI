@@ -5,7 +5,7 @@ import Pallet from "../model/pallet.js";
 import { isValidObjectId } from "mongoose";
 import PartRecord from "../model/partRecord.js";
 import Asset from "../model/asset.js";
-import { getAddedAndRemoved, partRecordsToCartItems, updatePartsAsync, updatePartsClearSerialsAsync, userHasInInventoryAsync } from "../methods/assetMethods.js";
+import { getAddedAndRemoved, partRecordsToCartItems, updatePartsAsync, userHasInInventoryAsync } from "../methods/assetMethods.js";
 import { CallbackError } from "mongoose";
 import { cartItemsValidAsync, sanitizeCartItems } from "../methods/partMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
@@ -249,7 +249,7 @@ const palletManager = {
             // Update removed parts
             await updatePartsAsync(removedOptions, palletSearchOptions, removed, false)
             // Update added parts
-            await updatePartsClearSerialsAsync(addedOptions, userSearchOptions, added, correction==true)
+            await updatePartsAsync(addedOptions, userSearchOptions, added, correction==true)
             // Add assets to pallet
             await addAssetsToPallet(pallet.pallet_tag, asset_tags, req.user.user_id as string, new Date(current_date), pallet.building)
             await addBoxesToPallet(pallet.pallet_tag, box_tags, req.user.user_id as string, new Date(current_date), pallet.building)

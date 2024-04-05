@@ -10,7 +10,7 @@ const handleError = (error: Error | MongooseError | string) => {
     let user = process.env.EMAIL 
     let pass = process.env.EMAIL_PASS
       let transporter = nodemailer.createTransport({
-        service: 'Outlook365',
+        service: 'Gmail',
         auth: {
           user,
           pass

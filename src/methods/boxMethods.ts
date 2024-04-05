@@ -3,8 +3,9 @@ import { CallbackError, MongooseError } from "mongoose"
 import handleError from "../util/handleError.js"
 import { objectSanitize } from "../util/sanitize.js"
 import PartRecord from "../model/partRecord.js"
-import { BoxEvent, BoxSchema, CartItem } from "../interfaces.js"
+import { BoxEvent, BoxSchema, CartItem, PartRecordSchema } from "../interfaces.js"
 import Box from "../model/box.js"
+import { getAddedAndRemovedWithNewSerials } from "./assetMethods.js"
 
 export function isValidBoxTag(id: string) {
     return /BOX([0-9]{7})+/.test(id)
@@ -267,4 +268,20 @@ export function returnBoxHistory(pageNum: number, pageSize: number, res: Respons
         // Return to client
         res.status(200).json({total: totalEvents, pages, events: history})
     }
+}
+
+
+export async function boxHasInInventoryAsync(box_tag: string, building: number, inventory: CartItem[]) {
+    // Filter out the part IDs
+    let nxids = inventory.map((i)=>i.nxid).filter((i, index, arr)=>arr.indexOf(i)==index)
+    // Find the parts
+    return PartRecord.find({nxid: { $in: nxids }, box_tag, next: null, building})
+        .then((userInventoryRecords: PartRecordSchema[])=>{
+            let { added } = getAddedAndRemovedWithNewSerials(inventory, userInventoryRecords)
+            // If added has no members, we can assume the box has all the parts listed.
+            return added.length==0
+        })
+        .catch(()=>{
+            return false
+        })
 }

@@ -1,12 +1,13 @@
-import { CartItem, PartSchema, PartRecordSchema, UserSchema, InventoryEntry } from "../interfaces.js"
+import { CartItem, PartSchema, PartRecordSchema, UserSchema, InventoryEntry, NotificationTypes } from "../interfaces.js"
 import { CallbackError } from "mongoose"
 import Part from "../model/part.js"
-import { getAddedAndRemovedIgnoreSerials } from "./assetMethods.js"
+import { getAddedAndRemovedWithNewSerials } from "./assetMethods.js"
 import PartRecord from "../model/partRecord.js"
 import { objectSanitize } from "../util/sanitize.js"
 import User from "../model/user.js"
 import { Request, Response } from "express"
 import handleError from "../util/handleError.js"
+import { sendEmailToGroup, sendNotificationToGroup } from "./notificationMethods.js"
 
 export function cleansePart(part: PartSchema) {
     let newPart = {} as PartSchema
@@ -170,11 +171,6 @@ export function sanitizeInventoryEntry(entry: InventoryEntry) {
         sanitized.serials = entry.serials
     else
         sanitized.serials = []
-    // Check if valid array
-    if(Array.isArray(entry.newSerials))
-        sanitized.newSerials = entry.newSerials
-    else
-        sanitized.newSerials = []
     // Check if valid number
     if(isNaN(entry.unserialized))
         sanitized.unserialized = 0
@@ -207,9 +203,6 @@ export async function inventoryEntriesValidAsync(invEntries: InventoryEntry[]) {
             ||!Array.isArray(item.serials)
             // Make sure quantity is a number
             ||isNaN(item.unserialized)
-            // Make sure serial is string and not empty
-            ||!Array.isArray(item.newSerials)
-            // Make sure serialized parts have serial and unserialized do not
         ) {
             valid = false
         }
@@ -231,9 +224,6 @@ export async function cartItemsValidAsync(cartItems: CartItem[]) {
             // Make sure serial is string and not empty
             ||(item.serial&&(typeof(item.serial)!="string"||item.serial==""))
             // Make sure serialized parts have serial and unserialized do not
-            // Old:
-            //||((part.serialized==true&&!item.serial)||(part.serialized==false&&item.serial))
-            // New:
             ||(part.serialized==false&&item.serial)
         ) {
             valid = false
@@ -248,10 +238,7 @@ export async function kioskHasInInventoryAsync(kioskName: string, building: numb
     // Find the parts
     return PartRecord.find({nxid: { $in: nxids }, location: kioskName, next: null, building})
         .then((userInventoryRecords: PartRecordSchema[])=>{
-            let { added, error } = getAddedAndRemovedIgnoreSerials(inventory, userInventoryRecords)
-            // If function encounters error
-            if(error)
-                return false
+            let { added } = getAddedAndRemovedWithNewSerials(inventory, userInventoryRecords)
             // If added has no members, we can assume the user has all the parts listed in their inventory
             return added.length==0
         })
@@ -325,6 +312,7 @@ export function returnPartSearch(numPages: number, numParts: number, req: Reques
         }
         else {
             kioskNames =  await getKioskNamesAsync(req.user.building)
+            kioskNames.push("Box")
         }
         let { building, location } = req.query;
         // Get a list of nxids
@@ -406,4 +394,22 @@ export function returnPartSearch(numPages: number, numParts: number, req: Reques
         // Return
         return res.status(200).json({ pages: numPages, total: numParts, items: returnParts});
     }
+}
+
+export async function checkPartThreshold(nxid: string, building: number) {
+    let kiosks = await getKioskNamesAsync(building)
+    kiosks.push("Box")
+    let count = await PartRecord.count({nxid, next: null, location: { $in: kiosks }, building})
+    Part.findOne({nxid})
+    .exec()
+    .then((part)=>{
+        if(part&&count<=part.threshold) {
+            let message = `${part.nxid} - "${part.manufacturer} ${part.name}" has reached or surpassed minimum threshold of ${part.threshold}.  Current quantity is: ${count}`
+            sendNotificationToGroup("manage_parts", NotificationTypes.Warning, message, "/parts/view?nxid="+part.nxid)
+            sendEmailToGroup("manage_parts", `${part.nxid} Threshold Warning`, message)
+        }
+    })
+    .catch((err)=>{
+        handleError(err)
+    })
 }
