@@ -103,13 +103,31 @@ const partManager = {
             // Typecast part
             let req_part = req.query
             // Create query part
-            let search_part = objectToRegex(req_part)
-            let numParts = await Part.count(search_part)
-            let numPages = getNumPages(pageSize, numParts)
-            Part.find(search_part)
-                .skip(pageSkip)
-                .limit(pageSize)
-                .exec(returnPartSearch(numPages, numParts, req, res))
+            let numParts = await Part.count(req_part)
+            // If no regex has results
+            if(numParts>0) {
+                // Calc num pages
+                let numPages = getNumPages(pageSize, numParts)
+                // Search without regex
+                Part.find(req_part)
+                    .skip(pageSkip)
+                    .limit(pageSize)
+                    .exec(returnPartSearch(numPages, numParts, req, res))
+            }
+            // No regex has no results
+            else {
+                // Create regex
+                let search_part = objectToRegex(req_part)
+                // Get num parts
+                numParts = await Part.count(search_part)
+                // Get num pages
+                let numPages = getNumPages(pageSize, numParts)
+                // Regex search
+                Part.find(search_part)
+                    .skip(pageSkip)
+                    .limit(pageSize)
+                    .exec(returnPartSearch(numPages, numParts, req, res))
+            }
         } catch (err) {
             // Database error
             handleError(err)
@@ -1455,7 +1473,7 @@ const partManager = {
                 // Get all parts
                 Part.find({})
                     // Sort by NXID
-                    .sort(sort)
+                    .sort({nxid:1})
                     // Skip - gets requested page number
                     .skip(pageSkip)
                     // Limit - returns only enough elements to fill page

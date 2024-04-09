@@ -21,7 +21,7 @@ export function stringSanitize(text: string, strict: boolean) {
         text = text
             .replaceAll('(', '')
             .replaceAll(')', '')
-            .replaceAll('+', '')
+            //.replaceAll('+', '')
             .replaceAll('|', '')
             //.replaceAll('/', ' ')
             .replaceAll('*', '')
