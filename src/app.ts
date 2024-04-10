@@ -116,8 +116,9 @@ app.get("/api/user/all", auth, sanitize, userManager.getAllUsers)
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 app.get('/api/user/roles', auth, sanitize, userManager.checkRoles)
 
-app.put("/api/user", auth, checkRoles(["manage_users"]), sanitize, userManager.updateUser);
+app.put("/api/user", auth, sanitize, checkRoles(["manage_users"]), userManager.updateUser);
 app.put("/images/users", auth, sanitize, uploadImage, updateUserImage);
+app.post("/api/user", auth, sanitize, checkRoles(["manage_users"]), userManager.createUser);
 
 app.delete("/api/user", auth, checkRoles(["manage_users"]), sanitize, userManager.deleteUser);
 
