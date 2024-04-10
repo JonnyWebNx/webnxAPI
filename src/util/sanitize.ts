@@ -4,11 +4,6 @@ export function stringSanitize(text: string, strict: boolean) {
         return text
     text =  text
         .replaceAll("$", "")
-        // .replaceAll('"', '&quot;')
-        // .replaceAll("'", '&apos;')
-        // .replaceAll('&', '&amp;')
-        // .replaceAll('<', '&lt;')
-        // .replaceAll('>', '&gt;')
     if (strict)
         text = text
             .replaceAll('^', '')
@@ -26,6 +21,11 @@ export function stringSanitize(text: string, strict: boolean) {
             //.replaceAll('/', ' ')
             .replaceAll('*', '')
             // .replaceAll('.', '')
+            // .replaceAll('"', '&quot;')
+            // .replaceAll("'", '&apos;')
+            // .replaceAll('&', '&amp;')
+            // .replaceAll('<', '&lt;')
+            // .replaceAll('>', '&gt;')
     return text
 }
 // Recursively sanitize strings inside of objects
