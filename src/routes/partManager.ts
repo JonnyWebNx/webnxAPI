@@ -2267,9 +2267,53 @@ const partManager = {
             })
             .then(()=>{
                 // Do something...
-
+                return PartRequest.find({
+                    $or: [
+                        {"parts.nxid": "PNX0000001"},
+                        {"fulfilled_list.parts.nxid": "PNX0000001"},
+                        {"boxes.parts.nxid": "PNX0000001"},
+                    ]
+                }).exec()
             })
-
+            .then((partRequests)=>{
+                // Update all the exisitng part requests
+                return Promise.all(partRequests.map((pr)=>{
+                    // Update request list
+                    pr.parts = pr.parts.map((p)=>{
+                        if(p.nxid==deleted)
+                            p.nxid = keep as string
+                        return p
+                    })
+                    // Update Fullfilled list
+                    pr.fulfilled_list = pr.fulfilled_list.map((kq)=>{
+                        kq.parts = kq.parts.map((p: CartItem)=>{
+                            if(p.nxid==deleted)
+                                p.nxid = keep as string
+                            return p
+                        })
+                    })
+                    // Update box list
+                    pr.boxes = pr.boxes.map((bq)=>{
+                        bq.parts = bq.parts.map((p: CartItem)=>{
+                            if(p.nxid==deleted)
+                                p.nxid = keep as string
+                            return p
+                        })
+                    })
+                    // Update in db
+                    return PartRequest.findByIdAndUpdate(pr._id, pr).exec()
+                }))
+            })
+            .then(()=>{
+                // Delete the audit records
+                return AuditRecord.deleteMany({nxid: deleted}).exec()
+            })
+            .then(()=>{
+                res.status(200).send("Success")
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
+            })
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);

@@ -244,6 +244,8 @@ export interface PartRequestSchema {
     requested_by: string,
     building: number,
     parts: CartItem[],
+    fulfilled_list: any[],
+    boxes: any[],
     date_created: Date,
     date_fulfilled?: Date,
     fullfilled_by?: string,
