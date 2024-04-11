@@ -2254,8 +2254,21 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    mergeParts: async (_: Request, res: Response) => {
+    mergeParts: async (req: Request, res: Response) => {
         try {
+            let { keep, deleted } = req.query
+            if(!(isValidPartID(keep as string)&&isValidPartID(deleted as string)))
+                return res.status(400).send("Invalid request.");
+            // Update all the part records
+            PartRecord.updateMany({nxid: deleted}, {nxid: keep}).exec()
+            .then(()=>{
+                // Delete the part info
+                return Part.deleteOne({nxid: deleted}).exec()
+            })
+            .then(()=>{
+                // Do something...
+
+            })
 
         } catch(err) {
             handleError(err)
