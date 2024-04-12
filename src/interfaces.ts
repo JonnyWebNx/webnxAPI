@@ -201,6 +201,12 @@ export interface AssetUpdate {
     by: string
 }
 
+export interface BoxUpdate {
+    box_tag: string,
+    date: Date,
+    by: string
+}
+
 export interface PalletUpdate {
     pallet_tag: string,
     date: Date,

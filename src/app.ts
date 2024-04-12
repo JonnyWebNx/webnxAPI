@@ -151,6 +151,10 @@ app.get('/api/history/palletsUpdated', auth, sanitize, checkRoles(["view_analyti
 app.get('/api/history/palletsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getPalletUpdatesNoDetails)
 app.get('/api/history/newPallets', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewPallets)
 app.get('/api/history/newPallets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewPalletsNoDetails)
+app.get('/api/history/boxesUpdated', auth, sanitize, checkRoles(["view_analytics"]), analytics.getBoxUpdates)
+app.get('/api/history/boxesUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getBoxUpdatesNoDetails)
+app.get('/api/history/newBoxes', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewBoxes)
+app.get('/api/history/newBoxes/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewBoxesNoDetails)
 
 // ***      Pallets     ***
 app.post("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.createPallet);

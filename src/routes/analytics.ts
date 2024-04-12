@@ -2,12 +2,15 @@ import { getNumPages, getPageNumAndSize, getStartAndEndDate } from '../methods/g
 import { getAssetEventAsync, isValidAssetTag } from '../methods/assetMethods.js';
 import { Request, Response } from 'express';
 import { isValidPartID } from '../methods/partMethods.js';
-import { getAllTechsDatesAsync, getAllTechsEventAsync, getAssetUpdates, getCheckinDatesAsync, getCheckinEventsAsync, getCheckoutDatesAsync, getCheckoutEventsAsync, getEbayEvent, getEbaySalesDates, getPalletUpdates, getPartEventAsync, getPartEventDatesAsync, getPartsOnNewAsset, getPartsOnNewPallet } from '../methods/analyticsMethods.js';
+import { getAllTechsDatesAsync, getAllTechsEventAsync, getAssetUpdates, getBoxUpdates, getCheckinDatesAsync, getCheckinEventsAsync, getCheckoutDatesAsync, getCheckoutEventsAsync, getEbayEvent, getEbaySalesDates, getPalletUpdates, getPartEventAsync, getPartEventDatesAsync, getPartsOnNewAsset, getPartsOnNewBox, getPartsOnNewPallet } from '../methods/analyticsMethods.js';
 import handleError from '../util/handleError.js';
 import Asset from '../model/asset.js';
 import Pallet from '../model/pallet.js';
-import { AssetUpdate, PalletUpdate } from '../interfaces.js';
+import { AssetUpdate, BoxUpdate, PalletUpdate } from '../interfaces.js';
 import { getPalletEvent } from '../methods/palletMethods.js';
+import { isValidBoxTag } from '../methods/boxMethods.js';
+import { getBoxEvent } from '../methods/boxMethods.js';
+import Box from '../model/box.js';
 
 const analytics = {
     getCheckinHistory: async (req: Request, res: Response) => {
@@ -531,7 +534,199 @@ const analytics = {
             handleError(err)
             res.status(500).send("API could not handle your request: " + err);
         }
-    }
+    },
+
+    getBoxUpdates: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            let box_tags = Array.isArray(req.query.box_tags) ? req.query.box_tags as string[] : [] as string[]
+            box_tags = box_tags.filter((s)=>isValidBoxTag(s))
+            // Find added parts
+            let boxUpdates = await getBoxUpdates(startDate, endDate, users, nxids, box_tags)
+
+            let totalUpdates = boxUpdates.length
+            
+            let returnValue = await Promise.all(boxUpdates.splice(pageSkip, pageSize).map((a)=>{
+                return getBoxEvent(a.box_tag, a.date, hideOtherParts ? nxids : undefined)
+            }))
+            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+
+    getBoxUpdatesNoDetails: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            let box_tags = Array.isArray(req.query.box_tags) ? req.query.box_tags as string[] : [] as string[]
+            box_tags = box_tags.filter((s)=>isValidBoxTag(s))
+            // Find added parts
+            let boxUpdates = await getBoxUpdates(startDate, endDate, users, nxids, box_tags)
+            // Get all the dates of asset related events
+            let totalUpdates = boxUpdates.length
+            boxUpdates = boxUpdates
+            .splice(pageSkip, pageSize)
+            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates),events: boxUpdates});
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getNewBoxes: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            if(nxids.length>0) {
+                let updates = await getPartsOnNewBox(startDate, endDate, users, nxids)
+                updates = await Promise.all(updates.filter((u)=>{
+                    return Box.exists({box_tag: u.box_tag, by: u.by, date_created: u.by, prev: null})
+                }))
+                let total = updates.length
+                if(total>0) {
+                    updates = updates.splice(pageSkip, pageSize)
+                    let returnValue = await Promise.all(updates.map((a: BoxUpdate)=>{
+                        return getBoxEvent(a.box_tag, a.date, hideOtherParts ? nxids : undefined)
+                    }))
+                    return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: returnValue});
+                }
+                // Return to client
+                res.status(200).json({total: 0, pages: 1, events: []});
+            }
+            else {
+                Box.aggregate([
+                    {
+                        $match: {
+                            $or: [{ prev: null}, {prev: {$exists: false}}],
+                            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                            date_created: { $lte: endDate, $gte: startDate }
+                        }
+                    },
+                    {
+                        $sort: {
+                            "date_created": -1
+                        }
+                    },
+                    // Get total count
+                    {
+                        $group: {
+                            _id: null,
+                            total: {$sum: 1},
+                            updates: {$push: { box_tag: "$box_tag", date: "$date_created", by: "$by"}}
+                        }
+                    },
+                    // Skip to page
+                    {
+                        $project: {
+                            _id: 0,
+                            total: 1,
+                            updates: {$slice: ["$updates", pageSkip, pageSize]}
+                        }
+                    }
+                ]).exec(async (err, result: { total: number, updates: BoxUpdate[]}[])=>{
+                    if(err) {
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    if(result.length&&result.length>0) {
+                        let returnValue = await Promise.all(result[0].updates!.map((a: BoxUpdate)=>{
+                            return getBoxEvent(a.box_tag, a.date)
+                        }))
+                        return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: returnValue});
+                    }
+                    // Return to client
+                    res.status(200).json({total: 0, pages: 1, events: []});
+                })
+            }
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
+    getNewBoxesNoDetails: async (req: Request, res: Response) => {
+        try {
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req)
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            // Get part id filters
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            if(nxids.length>0) {
+                let updates = await getPartsOnNewBox(startDate, endDate, users, nxids)
+                updates = await Promise.all(updates.filter((u)=>{
+                    return Box.exists({box_tag: u.box_tag, by: u.by, date_created: u.by, prev: null})
+                }))
+                if(updates.length&&updates.length>0) {
+                    return res.status(200).json({total: updates.length, pages: getNumPages(pageSize, updates.length),events: updates});
+                }
+                // Return to client
+                res.status(200).json({total: 0, pages: 1, events: []});
+            }
+            else {
+                Box.aggregate([
+                    {
+                        $match: {
+                            $or: [{ prev: null}, {prev: {$exists: false}}],
+                            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                            date_created: { $lte: endDate, $gte: startDate }
+                        }
+                    },
+                    {
+                        $sort: {
+                            "date_created": -1
+                        }
+                    },
+                    // Get total count
+                    {
+                        $group: {
+                            _id: null,
+                            total: {$sum: 1},
+                            updates: {$push: { box_tag: "$box_tag", date: "$date_created", by: "$by"}}
+                        }
+                    },
+                    // Skip to page
+                    {
+                        $project: {
+                            _id: 0,
+                            total: 1,
+                            updates: {$slice: ["$updates", pageSkip, pageSize]}
+                        }
+                    }
+                ]).exec(async (err, result: { total: number, updates: BoxUpdate[]}[])=>{
+                    if(err) {
+                        return res.status(500).send("API could not handle your request: " + err);
+                    }
+                    if(result.length&&result.length>0) {
+                        return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: result[0].updates});
+                    }
+                    // Return to client
+                    res.status(200).json({total: 0, pages: 1, events: []});
+                })
+            }
+        } catch (err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
+    },
 }
 
 export default analytics
