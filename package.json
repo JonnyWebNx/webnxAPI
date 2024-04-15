@@ -1,6 +1,6 @@
 {
   "name": "webnxAPI",
-  "version": "1.4pre",
+  "version": "1.4",
   "description": "",
   "main": "index.js",
   "type": "module",
