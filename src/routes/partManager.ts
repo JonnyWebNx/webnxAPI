@@ -139,6 +139,7 @@ const partManager = {
         try {
             let part = {} as PartSchema
             let kiosks = await getKioskNamesAsync(req.user.building)
+            kiosks.push("Box")
             // Check if NXID
             if (isValidPartID((req.query.id as string).toUpperCase())) {
                 part = await Part.findOne({ nxid: { $eq: (req.query.id as string).toUpperCase() } }) as PartSchema;
