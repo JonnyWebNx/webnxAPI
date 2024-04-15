@@ -1,11 +1,3 @@
-/**
- * @author Cameron McKay
- * 
- * @email cameron@webnx.com
- * 
- * @brief Creates a connect to MongoDB database at MONGO_URI
- * 
- */
 import mongoose, { MongooseError } from 'mongoose'
 import handleError from './handleError.js'
 import config from '../config.js'

@@ -6,8 +6,10 @@ import callbackHandler from "../util/callbackHandlers.js"
 import Asset from "../model/asset.js"
 import Pallet from "../model/pallet.js"
 import PartRecord from "../model/partRecord.js"
-import { AssetSchema, CartItem, PalletEvent, PalletSchema } from "../interfaces.js"
+import { AssetSchema, BoxSchema, CartItem, PalletEvent, PalletSchema } from "../interfaces.js"
 import { isValidAssetTag } from "./assetMethods.js"
+import { isValidBoxTag } from "./boxMethods.js"
+import Box from "../model/box.js"
 
 export function isValidPalletTag(id: string) {
     return /PAL([0-9]{5})+/.test(id)
@@ -62,7 +64,7 @@ export function getPalletSearchRegex(searchString: string) {
         searchOptions.push({ "pallet_tag": { $regex: key, $options: "i" } })
         relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$pallet_tag", regex: new RegExp(key, "i") } }, 3, 0] })
         searchOptions.push({ "location": { $regex: key, $options: "i" } })
-        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$pallet_tag", regex: new RegExp(key, "i") } }, 3, 0] })
+        relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$location", regex: new RegExp(key, "i") } }, 3, 0] })
         searchOptions.push({ "notes": { $regex: key, $options: "is" } })
         relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$notes", regex: new RegExp(key, "i") } }, 1, 0] })
     })
@@ -103,6 +105,8 @@ export async function getPalletUpdateDates(pallet_tag: string) {
     dates = dates.concat(await Asset.find({pallet: pallet_tag, nextPallet: { $ne: pallet_tag }}).distinct("date_replaced") as Date[])
     dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_created") as Date[])
     dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_replaced") as Date[])
+    dates = dates.concat(await Box.find({ location: pallet_tag, prev_location: { $ne: pallet_tag } }).distinct("date_created") as Date[])
+    dates = dates.concat(await Box.find({ location: pallet_tag, prev_location: { $ne: pallet_tag } }).distinct("date_replaced") as Date[])
     // Get rid of duplicates
     // Sort
     dates = dates.sort((a: Date, b: Date) => { 
@@ -216,6 +220,22 @@ export function getExistingAssetsPallet(pallet_tag: string, date: Date) {
      })
 }
 
+export function getAddedBoxesPallet(pallet_tag: string, date: Date) {
+    return Box.find({location: pallet_tag, date_created: date, prev_location: {$ne: pallet_tag} })
+}
+
+export function getRemovedBoxesPallet(pallet_tag: string, date: Date) {
+    return Box.find({location: pallet_tag, date_replaced: date, next_location: {$ne: pallet_tag} })
+}
+
+export function getExistingBoxesPallet(pallet_tag: string, date: Date) {
+    return Box.find({location: pallet_tag, date_created: { $lt: date }, $or: [
+            {date_replaced: null}, 
+            {date_replaced: { $gt: date }}
+        ]
+     })
+}
+
 export async function getPalletEvent(pallet_tag: string, date: Date, nxids?: string[]) {
     try {
         // Get part info
@@ -223,9 +243,13 @@ export async function getPalletEvent(pallet_tag: string, date: Date, nxids?: str
         let removedParts = await getRemovedPartsPallet(pallet_tag, date, nxids)
         let existingParts = await getExistingPartsPallet(pallet_tag, date, nxids)
         // Get asset info
-        let addedAssets = await getAddedAssetsPallet(pallet_tag, date) as AssetSchema
-        let removedAssets = await getRemovedAssetsPallet(pallet_tag, date) as AssetSchema
-        let existingAssets = await getExistingAssetsPallet(pallet_tag, date) as AssetSchema
+        let addedAssets = await getAddedAssetsPallet(pallet_tag, date) as AssetSchema[]
+        let removedAssets = await getRemovedAssetsPallet(pallet_tag, date) as AssetSchema[]
+        let existingAssets = await getExistingAssetsPallet(pallet_tag, date) as AssetSchema[]
+        // Get box info
+        let addedBoxes = await getAddedBoxesPallet(pallet_tag, date) as BoxSchema[]
+        let removedBoxes = await getRemovedBoxesPallet(pallet_tag, date) as BoxSchema[]
+        let existingBoxes = await getExistingBoxesPallet(pallet_tag, date) as BoxSchema[]
         let by = ""
         // Get current pallet
         let pallet = await Pallet.findOne({pallet_tag, date_created: { $lte: date }, $or: [
@@ -261,7 +285,7 @@ export async function getPalletEvent(pallet_tag: string, date: Date, nxids?: str
         if(Array.isArray(addedAssets)&&addedAssets.length>0&&by=="")
             for(let i = 0; i < addedAssets.length; i++) {
                 if(by==""&&addedAssets[i].by)
-                    by = addedAssets[i].by
+                    by = addedAssets[i].by as string
                 else if(by!="")
                     break
             }
@@ -280,9 +304,13 @@ export async function getPalletEvent(pallet_tag: string, date: Date, nxids?: str
                 }
             }
         }
-        addedAssets = addedAssets.map((a: AssetSchema)=>a._id)
-        existingAssets = existingAssets.map((a: AssetSchema)=>a._id)
-        removedAssets = removedAssets.map((a: AssetSchema)=>a._id)
+        let addedAssetIDs = addedAssets.map((a: AssetSchema)=>a._id)
+        let existingAssetIDs = existingAssets.map((a: AssetSchema)=>a._id)
+        let removedAssetIDs = removedAssets.map((a: AssetSchema)=>a._id)
+
+        let addedBoxIDs = addedBoxes.map((a: BoxSchema)=>a._id)
+        let existingBoxIDs = existingBoxes.map((a: BoxSchema)=>a._id)
+        let removedBoxIDs = removedBoxes.map((a: BoxSchema)=>a._id)
         // Fallback
         if(by==""&&pallet)
             by = pallet.by
@@ -293,9 +321,12 @@ export async function getPalletEvent(pallet_tag: string, date: Date, nxids?: str
             existingParts: existingParts as CartItem[], 
             addedParts: added, 
             removedParts: removed, 
-            addedAssets,
-            removedAssets,
-            existingAssets,
+            addedAssets: addedAssetIDs,
+            removedAssets: removedAssetIDs,
+            existingAssets: existingAssetIDs,
+            addedBoxes: addedBoxIDs,
+            removedBoxes: removedBoxIDs,
+            existingBoxes: existingBoxIDs,
             by: by 
         } as PalletEvent
     }
@@ -347,6 +378,40 @@ export function addAssetsToPallet(pallet_tag: string, asset_tags: string[], by: 
     }))
 }
 
+export function addBoxesToPallet(pallet_tag: string, box_tags: string[], by: string, date: Date, building: number) {
+    return Promise.all(box_tags.map(async (b)=>{
+        // Return if invalid asset tag
+        if(!isValidBoxTag(b))
+            return
+        // Check if asset already exists
+        let existingBox = JSON.parse(JSON.stringify(await Box.findOne({box_tag: b, next: null}))) as BoxSchema
+        // If asset already exists
+        if(existingBox&&existingBox._id) {
+            existingBox.prev = existingBox._id
+        }
+        else {
+            // Create new empty asset
+            existingBox = {
+                box_tag: b,
+                prev: null,
+                next: null,
+            } as BoxSchema
+        }
+        // Delete any locatin details
+        delete existingBox._id
+        existingBox.by = by
+        // Copy pallet information
+        existingBox.building = building
+        existingBox.prev_location = existingBox.location
+        existingBox.location = pallet_tag
+        existingBox.date_created = date
+        if(existingBox.prev!=null)
+            Box.create(existingBox, callbackHandler.updateBox)
+        else
+            Box.create(existingBox, callbackHandler.callbackHandleError)
+    }))
+}
+
 export function returnPalletHistory(pageNum: number, pageSize: number, res: Response) {
     return async (err: CallbackError, pallet: PalletSchema) => {
         if (err)
@@ -377,4 +442,15 @@ export function parseAssetTags(tag_list: string) {
         .filter((t: string, i: number, arr: string[]) => i == arr.indexOf(t))
         .map((t: string) => t.replace(/[, ]+/g, " ").trim())
         .filter((t: string)=>isValidAssetTag(t)) as string[];
+}
+
+export function parseBoxTags(tag_list: string) {
+    let boxes = tag_list && typeof(tag_list)=="string" ? tag_list as string : ""
+    return boxes.split('\n')
+        // Filters out blank lines
+        .filter((t: string) => t != '')
+        // Gets rid of duplicates
+        .filter((t: string, i: number, arr: string[]) => i == arr.indexOf(t))
+        .map((t: string) => t.replace(/[, ]+/g, " ").trim())
+        .filter((t: string)=>isValidBoxTag(t)) as string[];
 }

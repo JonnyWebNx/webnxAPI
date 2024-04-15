@@ -1,11 +1,3 @@
-/**
-* @author Cameron McKay
-* 
-* @email cameron@webnx.com
-* 
-* @brief Asset manager object for querying database and creating responses
-* 
-*/
 import Asset from "../model/asset.js";
 import PartRecord from "../model/partRecord.js";
 import handleError from "../util/handleError.js";

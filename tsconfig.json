@@ -17,14 +17,7 @@
             "@types/express/index.d.ts",
             "./node_modules/@types",
             "./global.d.ts"
-        ],
-        "paths": {
-            "app/*": ["./src/app/*"],
-            "methods/*": ["./src/app/methods/*"],
-            "util/*": ["./src/util/*"],
-            "models/*": ["./src/model/*"],
-            "middleware/*": ["./src/middleware/*"]
-        }
+        ]
     },
     "exclude": [ "src/tests"]
 }

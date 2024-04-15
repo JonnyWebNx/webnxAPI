@@ -1,13 +1,3 @@
-/**
- * @author Cameron McKay
- * 
- * @email cameron@webnx.com
- * 
- * @brief Main application for handling incoming requests
- * 
- * 
- */
-// Import npm modules
 import config from './config.js';
 import database from './util/database.js'
 import express, { NextFunction, Request, Response } from 'express'
@@ -28,6 +18,7 @@ import assetManager from './routes/assetManager.js'
 import palletManager from './routes/palletManager.js';
 import notifs from './routes/notifs.js';
 import analytics from './routes/analytics.js';
+import boxManager from './routes/boxManager.js';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance
@@ -89,6 +80,8 @@ app.post("/api/buildKit", auth, sanitize, checkRoles(["create_build_kit"]), part
 app.post("/api/buildKit/request", auth, sanitize, checkRoles(["request_build_kit"]), partManager.requestBuildKit)
 app.post("/api/buildKit/request/process", auth, sanitize, checkRoles(["fulfill_part_requests"]), partManager.processBuildKitRequest)
 app.post("/api/buildKit/delete", auth, sanitize, checkRoles(["create_build_kit"]), partManager.deleteBuildKit);
+app.post("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.auditPart)
+app.post("/api/part/merge", auth, sanitize, checkRoles(["manage_parts"]), partManager.mergeParts)
 
 app.get("/api/checkin/queue", auth, sanitize, checkRoles(["process_checkins"]), partManager.getCheckinQueue)
 app.get("/api/part", auth, sanitize, partManager.getPart);
@@ -102,8 +95,8 @@ app.get("/api/part/records", auth, sanitize, partManager.getPartRecords);
 app.get("/api/part/records/id", auth, sanitize, partManager.getPartRecordsByID);
 app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByID);
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
-app.get("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.auditPart)
-app.get("/api/part/quantities", auth, sanitize, partManager.getKioskQuanitities)
+app.get("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.getAudits)
+app.get("/api/part/quantities", auth, sanitize, partManager.getKioskQuantities)
 app.get("/api/part/requests/active", auth, sanitize, partManager.getActivePartRequests)
 app.get("/api/part/requests/fulfilled", auth, sanitize, partManager.getFulfilledPartRequests)
 app.get("/api/buildKit/search", auth, sanitize, partManager.getBuildKits)
@@ -124,8 +117,9 @@ app.get("/api/user/all", auth, sanitize, userManager.getAllUsers)
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 app.get('/api/user/roles', auth, sanitize, userManager.checkRoles)
 
-app.put("/api/user", auth, checkRoles(["manage_users"]), sanitize, userManager.updateUser);
+app.put("/api/user", auth, sanitize, checkRoles(["manage_users"]), userManager.updateUser);
 app.put("/images/users", auth, sanitize, uploadImage, updateUserImage);
+app.post("/api/user", auth, sanitize, checkRoles(["manage_users"]), userManager.createUser);
 
 app.delete("/api/user", auth, checkRoles(["manage_users"]), sanitize, userManager.deleteUser);
 
@@ -157,12 +151,16 @@ app.get('/api/history/palletsUpdated', auth, sanitize, checkRoles(["view_analyti
 app.get('/api/history/palletsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getPalletUpdatesNoDetails)
 app.get('/api/history/newPallets', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewPallets)
 app.get('/api/history/newPallets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewPalletsNoDetails)
+app.get('/api/history/boxesUpdated', auth, sanitize, checkRoles(["view_analytics"]), analytics.getBoxUpdates)
+app.get('/api/history/boxesUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getBoxUpdatesNoDetails)
+app.get('/api/history/newBoxes', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewBoxes)
+app.get('/api/history/newBoxes/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewBoxesNoDetails)
 
 // ***      Pallets     ***
 app.post("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.createPallet);
 
 app.get("/api/pallet", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPallets);
-app.get("/api/pallet/parts", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPartsAndAssetsOnPallet);
+app.get("/api/pallet/parts", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getItemsOnPallet);
 app.get("/api/pallet/id", auth, sanitize, palletManager.getPalletByID);
 app.get('/api/pallet/search', auth, sanitize, checkRoles(["view_pallets"]), palletManager.searchPallets);
 app.get('/api/pallet/history', auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPalletHistory);
@@ -170,6 +168,20 @@ app.get('/api/pallet/history', auth, sanitize, checkRoles(["view_pallets"]), pal
 app.put("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.updatePallet);
 
 app.delete("/api/pallet", auth, sanitize, checkRoles(["correct_pallets"]), palletManager.deletePallet);
+
+// ***      Boxes       ***
+app.post("/api/box/migrate", auth, sanitize, boxManager.migrateBox);
+app.post("/api/box", auth, sanitize, checkRoles(["edit_boxes"]), boxManager.createBox);
+
+app.get("/api/box", auth, sanitize, checkRoles(["view_boxes"]), boxManager.getBoxes);
+app.get("/api/box/parts", auth, sanitize, checkRoles(["view_boxes"]), boxManager.getPartsOnBox);
+app.get("/api/box/id", auth, sanitize, boxManager.getBoxByID);
+app.get('/api/box/search', auth, sanitize, checkRoles(["view_boxes"]), boxManager.searchBoxes);
+app.get('/api/box/history', auth, sanitize, checkRoles(["view_boxes"]), boxManager.getBoxHistory);
+
+app.put("/api/box", auth, sanitize, checkRoles(["edit_boxes"]), boxManager.updateBox);
+
+app.delete("/api/box", auth, sanitize, checkRoles(["correct_boxes"]), boxManager.deleteBox);
 
 // ***      Notifications       ***
 app.get("/api/notifications/publicKey", auth, sanitize, notifs.publicKey);

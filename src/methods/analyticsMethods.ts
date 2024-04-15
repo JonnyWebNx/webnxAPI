@@ -3,8 +3,9 @@ import Asset from '../model/asset.js'
 import { isValidPalletTag } from './palletMethods.js';
 import { getAllKioskNames } from './partMethods.js';
 import Pallet from '../model/pallet.js';
-import { AssetUpdate, PalletUpdate } from '../interfaces.js'
+import { AssetUpdate, BoxUpdate, PalletUpdate } from '../interfaces.js'
 import { isValidObjectId } from 'mongoose';
+import Box from '../model/box.js';
 
 export async function getPartsOnNewAsset(startDate: Date, endDate: Date, users: string[], nxids: string[]) {
     return await PartRecord.aggregate([
@@ -68,6 +69,38 @@ export async function getPartsOnNewPallet(startDate: Date, endDate: Date, users:
             }
         }
     ])  as PalletUpdate[]
+}
+
+export async function getPartsOnNewBox(startDate: Date, endDate: Date, users: string[], nxids: string[]) {
+    return await PartRecord.aggregate([
+        {
+            $match: {
+                by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                date_created: {$gte: startDate, $lte: endDate},
+                box_tag: { $ne: null },
+                nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null },
+                prev: null
+            }
+        },
+        {
+            $group: {
+                _id: { box_tag: "$box_tag", date: "$date_created", by: "$by" }
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                box_tag: "$_id.box_tag",
+                date: "$_id.date",
+                by: "$_id.by"
+            }
+        },
+        {
+            $sort: {
+                "date": -1
+            }
+        }
+    ])  as BoxUpdate[]
 }
 
 export async function getAssetUpdates(startDate: Date, endDate: Date, users: string[], nxids: string[], asset_tags: string[]) {
@@ -321,6 +354,62 @@ export async function getPalletUpdates(startDate: Date, endDate: Date, users: st
                     }
                 }
             ]))
+            palletUpdates = palletUpdates.concat(await Box.aggregate([
+                {
+                    $match: {
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                        date_created: {$gte: startDate, $lte: endDate},
+                        location: { $regex: /PAL([0-9]{5})+/ },
+                    }
+                },
+                {
+                    $group: {
+                        _id: { pallet_tag: "$location", prevPallet: "$prev_location", date: "$date_created", by: "$by" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        pallet_tag: "$_id.pallet_tag",
+                        prevPallet: "$_id.prevPallet",
+                        date: "$_id.date",
+                        by: "$_id.by"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ]))
+            palletUpdates = palletUpdates.concat(await Box.aggregate([
+                {
+                    $match: {
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                        date_replaced: {$gte: startDate, $lte: endDate},
+                        location: { $regex: /PAL([0-9]{5})+/ },
+                    }
+                },
+                {
+                    $group: {
+                        _id: { pallet_tag: "$location", nextPallet: "$next_location", date: "$date_replaced", by: "$by" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        pallet_tag: "$_id.pallet_tag",
+                        nextPallet: "$_id.nextPallet",
+                        date: "$_id.date",
+                        by: "$_id.by"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ]))
         }
         // Get all the dates of asset related events
         return palletUpdates
@@ -392,7 +481,11 @@ export function getCheckinEventsAsync(dates: Date[], users: string[] | undefined
                         // Remove quantity for serialized
                         quantity: {
                             $cond: [
-                                {$eq: ["$_id.serial", "$arbitraryNonExistentField"]},"$quantity", "$$REMOVE"
+                                {
+                                    $eq: ["$_id.serial", "$arbitraryNonExistentField"]
+                                },
+                                "$quantity",
+                                "$$REMOVE"
                             ]
                         },  
                         // IF next owner exists, part was denied
@@ -674,7 +767,7 @@ export function getExistingPartsAllTechsAsync(date: Date, nxids: string[] | unde
     ])
 }
 
-export function getPartEventDatesAsync(startDate: Date, endDate: Date, nxids: string[] | undefined, users: string[] | undefined) {
+export async function getPartEventDatesAsync(startDate: Date, endDate: Date, nxids: string[] | undefined, users: string[] | undefined) {
     return PartRecord.find({
         // Find new records in data range
         nxid: nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null },
@@ -791,7 +884,7 @@ export function getEbaySales(startDate: Date, endDate: Date, nxids: string[] | u
                 }
             }
         ]
-    )
+    ).exec()
 }
 
 export async function getEbaySalesDates(startDate: Date, endDate: Date, nxids: string[] | undefined, users: string[] | undefined) {
@@ -1070,3 +1163,111 @@ export async function getAllTechsEventAsync(date: Date, nxids?: string[]) {
     // Return event
     return {by, date, existing, added, removed}
 }
+
+
+export async function getBoxUpdates(startDate: Date, endDate: Date, users: string[], nxids: string[], box_tags: string[]) {
+    return PartRecord.aggregate([
+        {
+            $match: {
+                by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                date_created: {$gte: startDate, $lte: endDate},
+                box_tag: (box_tags&&box_tags.length>0)?{ $in: box_tags}:{ $ne: null },
+                nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
+                //prev: {$ne: null}
+            }
+        },
+        {
+            $group: {
+                _id: { box_tag: "$box_tag", date: "$date_created", by: "$by" }
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                box_tag: "$_id.box_tag",
+                date: "$_id.date",
+                by: "$_id.by"
+            }
+        },
+        {
+            $sort: {
+                "date": -1
+            }
+        }
+    ])
+    .then(async (boxUpdates: BoxUpdate[]) => {
+        // Find removed parts
+        return boxUpdates.concat(await PartRecord.aggregate([
+            {
+                $match: {
+                    next_owner: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                    date_replaced: {$gte: startDate, $lte: endDate},
+                    box_tag: (box_tags&&box_tags.length>0)?{ $in: box_tags}:{ $ne: null },
+                    nxid: nxids.length > 0 ? { $in: nxids } : { $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: { box_tag: "$box_tag", date: "$date_replaced", next_owner: "$next_owner" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    box_tag: "$_id.box_tag",
+                    date: "$_id.date",
+                    by: "$_id.next_owner"
+                }
+            },
+            {
+                $sort: {
+                    "date": -1
+                }
+            }
+        ])  as BoxUpdate[])
+    })
+    .then(async (boxUpdates: BoxUpdate[]) => {
+        // Find updated assets
+        if (nxids.length<1)
+            boxUpdates = boxUpdates.concat(await Box.aggregate([
+                {
+                    $match: {
+                        box_tag: (box_tags&&box_tags.length>0)?{ $in: box_tags}:{ $ne: null },
+                        by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
+                        date_created: {$gte: startDate, $lte: endDate},
+                        prev: {$ne: null},
+                    }
+                },
+                {
+                    $group: {
+                        _id: { box_tag: "$box_tag", date: "$date_created", by: "$by" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        box_tag: "$_id.box_tag",
+                        date: "$_id.date",
+                        by: "$_id.by"
+                    }
+                },
+                {
+                    $sort: {
+                        "date": -1
+                    }
+                }
+            ])  as BoxUpdate[])
+        // Get all the dates of asset related events
+        return boxUpdates
+            .sort((a, b)=>{
+                if (a.date.getTime() < b.date.getTime())
+                    return 1
+                return -1
+            })
+            .filter((a, i, arr)=>{return i===boxUpdates.findIndex((b)=>{
+                return b.date.getTime()==a.date.getTime()&&a.box_tag==b.box_tag&&a.by==b.by
+            })})
+    })
+}
+
+

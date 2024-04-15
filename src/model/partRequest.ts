@@ -15,6 +15,7 @@ const partRequest = new mongoose.Schema({
     // Fulfilled by
     fulfilled_by: { type: String, default: null },
     fulfilled_list: { type: Array<any> },
+    boxes: { type: Array<any> },
     // Cancelled?
     cancelled: { type: Boolean },
     denied: { type: Boolean },

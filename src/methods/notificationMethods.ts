@@ -1,9 +1,11 @@
-import { NotificationSchema, NotificationTypes, PushTypes, UserSchema } from "../interfaces.js";
+import { NotificationTypes, PushTypes, UserSchema } from "../interfaces.js";
 import Notification from "../model/notification.js";
 import User from "../model/user.js";
 import config from '../config.js'
 import handleError from "../util/handleError.js";
 import webPush, { PushSubscription } from 'web-push'
+import nodemailer from 'nodemailer'
+import { Options } from 'nodemailer/lib/mailer/index.js'
 
 async function createNotification(
     date: Date,
@@ -157,4 +159,30 @@ export async function pushPayloadToRole(
         handleError(err)
         throw(err)
     })
+}
+
+export async function sendEmailToGroup(role: string, subject: string, body: string) {
+    let users = await User.find({roles: role})
+    let emails = users.map((u)=>u.email!)
+    let user = process.env.EMAIL 
+    let pass = process.env.EMAIL_PASS
+    let transporter = nodemailer.createTransport({
+        service: 'Gmail',
+        auth: {
+            user,
+            pass
+        }
+    });
+    let mailOptions = {
+        from: process.env.EMAIL,
+        to: emails,
+        subject,
+        text: body 
+    };
+    transporter.sendMail(mailOptions as Options, function(err, info){
+        if (err) {
+            console.error(err)
+        }
+    }); 
+    transporter.close()
 }

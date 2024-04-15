@@ -113,6 +113,7 @@ export interface PartRecordSchema {
     location?: string,
     asset_tag?: string,
     pallet_tag?: string,
+    box_tag?: string,
     part_request?: string,
     kit_name?: string,
     serial?: string,
@@ -136,7 +137,6 @@ export interface InventoryEntry {
     nxid?: string,
     unserialized: number,
     serials: string[],
-    newSerials?: string[]
 }
 
 // User schema
@@ -179,6 +179,16 @@ export interface PalletEvent {
     removedAssets: string[]
 }
 
+export interface BoxEvent {
+    date_begin: Date,
+    box_id: string | Types.ObjectId,
+    by: string | Types.ObjectId,
+    info_updated: boolean,
+    existingParts: CartItem[],
+    addedParts: CartItem[],
+    removedParts: CartItem[],
+}
+
 export interface CheckInQueuePart extends CartItem {
   approved?: boolean,
   approvedCount?: number,
@@ -187,6 +197,12 @@ export interface CheckInQueuePart extends CartItem {
 
 export interface AssetUpdate {
     asset_tag: string,
+    date: Date,
+    by: string
+}
+
+export interface BoxUpdate {
+    box_tag: string,
     date: Date,
     by: string
 }
@@ -212,11 +228,30 @@ export interface PalletSchema {
     next: string|null | Types.ObjectId,
 }
 
+export interface BoxSchema {
+    _id?: Types.ObjectId,
+    box_tag: string,
+    building: number,
+    by: string,
+    date_created: Date,
+    date_replaced: Date,
+    notes: string,
+    prev: string|null | Types.ObjectId,
+    next: string|null | Types.ObjectId,
+
+    location: string,
+    prev_location?: string,
+    next_location?: string,
+
+}
+
 export interface PartRequestSchema {
     _id?: Types.ObjectId,
     requested_by: string,
     building: number,
     parts: CartItem[],
+    fulfilled_list: any[],
+    boxes: any[],
     date_created: Date,
     date_fulfilled?: Date,
     fullfilled_by?: string,
@@ -264,4 +299,19 @@ export interface NotificationSchema {
     date_read?: Date,
     title?: string,
     link?: string,
+}
+
+export interface AuditRecordSchema {
+    // NXID of the associated part
+    nxid: string,
+    building: number,
+    // Quantity in the kiosk
+    kiosk_quantities: Array<any>,
+    // All of the parts in the building?
+    total_quantity: number,
+    // ID of the user who's request created the part record
+    by: string,
+    notes: string,
+    // Date the part was created
+    date: Date,
 }

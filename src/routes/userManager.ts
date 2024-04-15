@@ -1,14 +1,3 @@
-/**
- * 
- * @author Cameron McKay
- * 
- * @email cameron@webnx.com
- * 
- * @brief Collection of functions for manipulating User entries in the database
- * 
- * 
- */
-// Import user schema
 import bcrypt from 'bcryptjs'
 import User from '../model/user.js'
 import { MongooseError } from 'mongoose';
@@ -57,7 +46,7 @@ const userManager = {
     getAllUsers: async (_: Request, res: Response) => {
         try{
             // Get all users
-            let users = await User.find() as UserSchema[];
+            let users = await User.find().sort({first_name:1}) as UserSchema[];
             let returnUsers = [] as UserSchema[]
             // Remove password from data
             for (let user of users){
@@ -83,7 +72,8 @@ const userManager = {
                 return res.status(409).send("Email taken.")
             }
             // Delete password from request
-            delete submittedUser.password;
+            if(submittedUser.password&&submittedUser.password!="")
+                submittedUser.password = await bcrypt.hash(submittedUser.password, 10)
             // Send update query to database
             var user = await User.findByIdAndUpdate(submittedUser._id, submittedUser)
             if(user){
@@ -92,6 +82,45 @@ const userManager = {
             }
             // User was not found
             return res.status(400).send("User not found.");
+        } catch(err) {
+            // Database error
+            return res.status(500).send("API could not handle your request: "+err);
+        }
+    },
+
+    createUser: async (req: Request, res: Response) => {
+        try{
+            // Get user input
+            const { first_name, last_name, email, password, roles, enabled } = req.body.user;
+
+            // Validate user input
+            if (!(email && password && first_name && last_name)) {
+                return res.status(400).send("All input is required");
+            }
+            // check if user already exists
+            // Validate if user exists in our database
+            const oldUser = await User.findOne({ email: email.toLowerCase() });
+            if (oldUser) {
+                return res.status(409).send("User already exists.  Please login.");
+            }
+
+            // Encrypt user password
+            let encryptedPassword = await bcrypt.hash(password, 10);
+            // Create user in our database
+            User.create({
+                first_name,
+                last_name,
+                building: 3,
+                email: email.toLowerCase(),
+                password: encryptedPassword,
+                roles,
+                enabled
+            }).then(()=>{
+                return res.status(200).send("Successfully created user.");
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: "+err);
+            })
         } catch(err) {
             // Database error
             return res.status(500).send("API could not handle your request: "+err);

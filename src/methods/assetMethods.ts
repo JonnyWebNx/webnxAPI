@@ -107,6 +107,113 @@ function pushDifferenceUnserialized(map1: Map<string, number>, map2: Map<string,
     })
 }
 
+// If serialized match doesn't exist, function will attempt to match with unserialized part
+// Useful for adding serial numbers to parts while accomodating existing serial numbers.
+function pushDifferenceAddingSerials(array1: CartItem[], array2: CartItem[], differenceDest: CartItem[]) {
+    // Copy unserialized to a new new array
+    let array2unserialized = array2.filter((v)=>v.serial==undefined)
+    let array1unserialized = array1.filter((v)=>v.serial==undefined)
+    // Copy serialized to a new new array
+    let array2serialized = JSON.parse(JSON.stringify(array2.filter((v)=>v.serial!=undefined))) as CartItem[]
+    let array1serialized = JSON.parse(JSON.stringify(array1.filter((v)=>v.serial!=undefined))) as CartItem[]
+    // Create maps for unserialized
+    let unserializedMap2 = new Map<string, number>()
+    let unserializedMap1 = new Map<string, number>()
+    // Fill the map
+    for(let cartItem of array2unserialized) {
+        // declare var
+        let q = 0
+        // If map already has part
+        if(unserializedMap2.has(cartItem.nxid))
+            // Get the existing quantity
+            q = unserializedMap2.get(cartItem.nxid)!
+        // Add the cartItem quantity or 1 if it doesn't exist
+        q += cartItem.quantity ? cartItem.quantity : 1
+        // Update the map
+        unserializedMap2.set(cartItem.nxid, q)
+    }
+    // Fill the map
+    for(let cartItem of array1unserialized) {
+        // declare var
+        let q = 0
+        // If map already has part
+        if(unserializedMap1.has(cartItem.nxid))
+            // Get the existing quantity
+            q = unserializedMap1.get(cartItem.nxid)!
+        // Add the cartItem quantity or 1 if it doesn't exist
+        q += cartItem.quantity ? cartItem.quantity : 1
+        // Update the map
+        unserializedMap1.set(cartItem.nxid, q)
+    }
+    // Loop through the serialized parts
+    for (let i = 0; i < array1serialized.length; i++) {
+        // Find a match
+        let existing = array2serialized.find((e: CartItem)=>(array1serialized[i].nxid==e.nxid)&&(array1serialized[i].serial==e.serial));
+        // If match exists
+        if(existing) {
+            // Delete the element
+            array2serialized.splice(array2serialized.indexOf(existing), 1)
+            // Move on to next one
+            continue
+        }
+        // If serial match doesn't exist, but unserialized exists
+        else if(!existing&&unserializedMap2.has(array1serialized[i].nxid)) {
+            // Get the quantity
+            let q = unserializedMap2.get(array1serialized[i].nxid)!
+            // If quantity is not zero
+            if(q>0) {
+                // Decrement
+                q -= 1
+                // Update if there's still parts left
+                if(q<1)
+                    unserializedMap2.delete(array1serialized[i].nxid)
+                else
+                    unserializedMap2.set(array1serialized[i].nxid, q)
+                continue
+            }
+            // No quantity to match, delete but don't continue
+            // Will hit catch all below
+            else {
+                unserializedMap2.delete(array1serialized[i].nxid)
+            }
+        }
+        // Final catch all for parts with no match.
+        differenceDest.push(JSON.parse(JSON.stringify(array1serialized[i])))
+    }
+    // Loop through the unserialized parts
+    unserializedMap1.forEach((v, k)=>{
+        // If other map has part
+        if(unserializedMap2.has(k)) {
+            // Get quantity
+            let q = unserializedMap2.get(k)!
+            // Clamp the value
+            let diff = q > v ? v : q
+            // If there is still some left, set new q
+            if(q-diff > 0)
+                unserializedMap2.set(k, q-diff)
+            // None left - delete from map
+            else
+                unserializedMap2.delete(k)
+            // Set new quantity
+            v -= diff
+        }
+        // Search serialized arrays here
+        let index = array2serialized.findIndex((p)=>p.nxid==k)
+        // While the serialized array has items to match
+        while(index!=-1&&v>0) {
+            // Remove the element
+            array2serialized.splice(index, 1)
+            // Decrement
+            v -= 1
+            // Find new index
+            index = array2serialized.findIndex((p)=>p.nxid==k)
+        }
+        // Push any leftovers to difference array
+        if (v>0)
+            differenceDest.push({nxid: k, quantity: v})
+    })
+}
+
 // Takes an updated parts list and existing parts list and returns the parts added and removed in the 
 // updated list
 export function getAddedAndRemoved(req_parts: CartItem[], current_parts: PartRecordSchema[]) {
@@ -200,6 +307,20 @@ export function getAddedAndRemovedIgnoreSerials(req_parts: CartItem[], current_p
     pushDifferenceUnserialized(unserializedPartsOnRequest, unserializedExistingParts, added)
     // Return data with no error
     return { added, removed, error: false}
+}
+
+export function getAddedAndRemovedWithNewSerials(req_parts: CartItem[], current_parts: PartRecordSchema[]) {
+    // Convert to usable parts
+    let currentCartItems = partRecordsToCartItems(current_parts)
+    // Parts removed
+    let removed = [] as CartItem[]
+    // Parts added
+    let added = [] as CartItem[]
+    // Do the array magic
+    pushDifferenceAddingSerials(currentCartItems, req_parts, removed)
+    pushDifferenceAddingSerials(req_parts, currentCartItems, added)
+    // Return data with no error
+    return { added, removed }
 }
 
 // Takes an updated parts list and existing parts list and returns the parts added and removed in the 
@@ -392,41 +513,120 @@ export function updatePartsClearSerialsAsync(createOptions: PartRecordSchema, se
     }))
 }
 
-export function updatePartsAddSerialsAsync(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: InventoryEntry[]) {
-    return Promise.all(arr.map(async (p)=>{
+function getUpdatedAndSkippedOnUpdate(parts: { nxid: string, quantity: number, serials: string[], skippedSerials: string[], skippedUnserialized: number }[]) {
+    let updated = []
+    let skipped = []
+    // Loop through the returned parts
+    for(let p of parts) {
+        // If unserialized parts > 0
+        if(p.quantity>0)
+            // Push unserialized to return array
+            updated.push({nxid: p.nxid, quantity: p.quantity})
+        // If serials
+        if(p.serials) {
+            // Add each one as cart item to return array
+            p.serials.forEach((v)=>{
+                updated.push({nxid: p.nxid, serial: v})
+            })
+        }
+        // If serials were skipped
+        if(p.skippedSerials) {
+            // Add each one as cart item to return array
+            p.skippedSerials.forEach((v)=>{
+                skipped.push({nxid: p.nxid, serial: v})
+            })
+        }
+        // If unserialized were skipped
+        if(p.skippedUnserialized>0)
+            skipped.push({nxid: p.nxid, quantity: p.skippedUnserialized})
+    }
+    // Return the parts that were updated
+    return { updated, skipped } 
+}
+
+export async function updatePartsAddSerialsDryRunAsync(searchOptions: PartRecordSchema, arr: InventoryEntry[]) {
+    let parts = await Promise.all(arr.map(async (p)=>{
+        let count = 0
+        let serials = [] as string[]
+        let skippedUnserialized = 0
+        let skippedSerials = [] as string[]
+        // Search options
+        let sOptions = JSON.parse(JSON.stringify(searchOptions)) as any
+        sOptions.nxid = p.nxid
+        sOptions.serial = { $eq: undefined }
+        let toBeUpdated = await PartRecord.find(sOptions)
+        //Check consumable
+        let i = 0
+        for (i=0; i < p.unserialized; i++) {
+            // Make sure there is a record to update
+            if(toBeUpdated[i]) {
+                // Update record
+                count++
+            }
+            // No more records to update, break loop
+            else {
+                skippedUnserialized = p.unserialized - i
+                break
+            }
+        }
+        // For parts that already have serials
+        for(let serial of p.serials) {
+            // Set create and search options serial
+            sOptions.serial = serial
+            // Find previous
+            let prev = await PartRecord.findOne(sOptions)
+            // If no previous
+            if(!prev) {
+                // Check if unserialized parts are left
+                if(i<toBeUpdated.length) {
+                    prev = toBeUpdated[i]
+                    i++
+                }
+                // If no previous is found, skip
+                else {
+                    skippedSerials.push(serial)
+                    continue
+                }
+            }
+            serials.push(serial)
+        }
+        return { nxid: p.nxid!, quantity: count, serials, skippedSerials, skippedUnserialized }
+    }))
+    return getUpdatedAndSkippedOnUpdate(parts)
+}
+
+export async function updatePartsAddSerialsAsync(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: InventoryEntry[]) {
+    let parts = await Promise.all(arr.map(async (p)=>{
+        let count = 0
+        let serials = [] as string[]
+        let skippedUnserialized = 0
+        let skippedSerials = [] as string[]
         // Create Options
         let cOptions = JSON.parse(JSON.stringify(createOptions)) as PartRecordSchema
         // Search options
-        let sOptions = JSON.parse(JSON.stringify(searchOptions)) as PartRecordSchema
+        let sOptions = JSON.parse(JSON.stringify(searchOptions)) as any
         sOptions.nxid = p.nxid
         cOptions.nxid = p.nxid
-        sOptions.serial = undefined
+        sOptions.serial = { $eq: undefined }
         let toBeUpdated = await PartRecord.find(sOptions)
         //Check consumable
         let partInfo = await Part.findOne({nxid: p.nxid})
         if(partInfo&&partInfo.consumable == true)
             cOptions.next = "consumed"
-        for (let i = 0; i < p.unserialized; i++) {
-            // Check if part will have new serial
-            if(p.newSerials&&p.newSerials[i]) {
-                // Check if serial already exists
-                let existing = await PartRecord.findOne({nxid: p.nxid, serial: p.newSerials[i], next: null})
-                // Only add serial if doesn't already exist
-                if(existing==null)
-                    cOptions.serial = p.newSerials[i]
-            }
-            // Part does not have new serial
-            else
-                delete cOptions.serial
+        let i = 0
+        for (i=0; i < p.unserialized; i++) {
             // Make sure there is a record to update
             if(toBeUpdated[i]) {
                 // Update record
                 cOptions.prev = toBeUpdated[i]._id
                 PartRecord.create(cOptions, callbackHandler.updateRecord)
+                count++
             }
             // No more records to update, break loop
-            else
+            else {
+                skippedUnserialized = p.unserialized - i
                 break
+            }
         }
         // For parts that already have serials
         for(let serial of p.serials) {
@@ -435,16 +635,28 @@ export function updatePartsAddSerialsAsync(createOptions: PartRecordSchema, sear
             cOptions.serial = serial
             // Find previous
             let prev = await PartRecord.findOne(sOptions)
-            // If no previous is found, skip
-            if(!prev)
-                continue
+            // If no previous
+            if(!prev) {
+                // Check if unserialized parts are left
+                if(i<toBeUpdated.length) {
+                    prev = toBeUpdated[i]
+                    i++
+                }
+                // If no previous is found, skip
+                else {
+                    skippedSerials.push(serial)
+                    continue
+                }
+            }
             // Set prvious
             cOptions.prev = prev._id
             // Update record
             PartRecord.create(cOptions, callbackHandler.updateRecord)
+            serials.push(serial)
         }
-        return
+        return { nxid: p.nxid!, quantity: count, serials, skippedSerials, skippedUnserialized }
     }))
+    return getUpdatedAndSkippedOnUpdate(parts)
 }
 /**
  * 
