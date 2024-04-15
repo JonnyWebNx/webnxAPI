@@ -1599,7 +1599,7 @@ const partManager = {
             switch(location) {
                 case "Asset":
                     if(!isValidAssetTag(owner._id))
-                        return res.status(400).send("Invalid box tag.");
+                        return res.status(400).send("Invalid asset tag.");
                     // Make sure asset exists
                     let asset = await Asset.findOne({ asset_tag: owner._id }) as AssetSchema
                     if(asset == null) 
