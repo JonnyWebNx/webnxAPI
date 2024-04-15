@@ -26,7 +26,7 @@ import {
     combineAndRemoveDuplicateCartItems,
     checkPartThreshold,
 } from '../methods/partMethods.js';
-import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsAddSerialsDryRunAsync } from '../methods/assetMethods.js';
+import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsAddSerialsDryRunAsync, isValidAssetTag } from '../methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from '../methods/genericMethods.js';
 import { stringSanitize } from '../util/sanitize.js';
 import PartRequest from '../model/partRequest.js';
@@ -139,6 +139,13 @@ const partManager = {
         try {
             let part = {} as PartSchema
             let kiosks = await getKioskNamesAsync(req.user.building)
+            let box_tag = ""
+            let is_box = false
+            if(req.query.location&&isValidBoxTag(req.query.location as string)) {
+                is_box = true
+                box_tag = req.query.location as string
+                req.query.location = "Box"
+            }
             kiosks.push("Box")
             // Check if NXID
             if (isValidPartID((req.query.id as string).toUpperCase())) {
@@ -161,6 +168,7 @@ const partManager = {
                 nxid: part.nxid,
                 building: req.query.building ? req.query.building : req.user.building,
                 location: req.query.location ? req.query.location : {$in: kiosks},
+                box_tag: is_box ? box_tag : undefined,
                 next: null
             });
             // Get rid of unnecessary info
@@ -1577,6 +1585,7 @@ const partManager = {
                 return res.status(400).send("Part not found");
             if(partInfo.consumable&&!kioskNames.includes)
                 return res.status(400).send("Unable to add consumables outside parts room");
+            let date = new Date()
             let createOptions = {
                 nxid,
                 location: location,
@@ -1584,11 +1593,13 @@ const partManager = {
                 prev: null,
                 next: null,
                 by: req.user.user_id,
-                date_created: new Date()
+                date_created: date
             } as PartRecordSchema
 
             switch(location) {
                 case "Asset":
+                    if(!isValidAssetTag(owner._id))
+                        return res.status(400).send("Invalid box tag.");
                     // Make sure asset exists
                     let asset = await Asset.findOne({ asset_tag: owner._id }) as AssetSchema
                     if(asset == null) 
@@ -1596,6 +1607,28 @@ const partManager = {
                     // Add info to create options
                     createOptions.building = asset.building
                     createOptions.asset_tag = asset.asset_tag
+                    break
+                case "Box":
+                    if(!isValidBoxTag(owner._id))
+                        return res.status(400).send("Invalid box tag.");
+                    // Make sure asset exists
+                    let box = await Box.findOne({ box_tag: owner._id }) as BoxSchema
+                    if(box == null) {
+                        box = {
+                            box_tag: owner._id,
+                            by: req.user.user_id,
+                            building: req.user.building,
+                            date_created: date,
+                            next: null,
+                            prev: null,
+                            notes: "Automatically created from inventory adjustments",
+                            location: "TBD",
+                        } as BoxSchema
+                        await Box.create(box)
+                    }
+                    // Add info to create options
+                    createOptions.building = box.building
+                    createOptions.box_tag = box.box_tag
                     break
                 case "Tech Inventory":
                     // Check if id exists
