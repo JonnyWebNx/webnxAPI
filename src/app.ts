@@ -83,6 +83,7 @@ app.post("/api/buildKit/delete", auth, sanitize, checkRoles(["create_build_kit"]
 app.post("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.auditPart)
 app.post("/api/part/merge", auth, sanitize, checkRoles(["manage_parts"]), partManager.mergeParts)
 
+app.get("/api/part/makeSerialized", auth, sanitize, partManager.makePartSerialized);
 app.get("/api/checkin/queue", auth, sanitize, checkRoles(["process_checkins"]), partManager.getCheckinQueue)
 app.get("/api/part", auth, sanitize, partManager.getPart);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
