@@ -164,13 +164,16 @@ const partManager = {
                 next: null
             });
             // Get available quantity in specified building or location - use defaults from ternary if unspecified
-            let quantity = await PartRecord.count({
+            let search = {
                 nxid: part.nxid,
                 building: req.query.building ? req.query.building : req.user.building,
                 location: req.query.location ? req.query.location : {$in: kiosks},
-                box_tag: is_box ? box_tag : undefined,
                 next: null
-            });
+            } as any
+            if(is_box)
+                search.box_tag = box_tag
+            console.log(search)
+            let quantity = await PartRecord.count(search);
             // Get rid of unnecessary info
             part = part._doc;
             // Add quantities
