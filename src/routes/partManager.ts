@@ -172,7 +172,6 @@ const partManager = {
             } as any
             if(is_box)
                 search.box_tag = box_tag
-            console.log(search)
             let quantity = await PartRecord.count(search);
             // Get rid of unnecessary info
             part = part._doc;
