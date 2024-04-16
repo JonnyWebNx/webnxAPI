@@ -2353,29 +2353,29 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    makePartSerialized: async (req: Request, res: Response) => {
-        try{
-            let {nxid} = req.query
-            Part.findOne({nxid}).exec()
-            .then((part)=>{
-                if(part){
-                    part.serialized = true
-                    return Part.findOneAndUpdate({nxid}, part).exec()
-                }
-                return
-            })
-            .then(()=>{
-                res.status(200).send("Success")
-            })
-            .catch((err)=>{
-                return res.status(500).send("API could not handle your request: " + err);
-            })
+    // makePartSerialized: async (req: Request, res: Response) => {
+    //     try{
+    //         let {nxid} = req.query
+    //         Part.findOne({nxid}).exec()
+    //         .then((part)=>{
+    //             if(part){
+    //                 part.serialized = true
+    //                 return Part.findOneAndUpdate({nxid}, part).exec()
+    //             }
+    //             return
+    //         })
+    //         .then(()=>{
+    //             res.status(200).send("Success")
+    //         })
+    //         .catch((err)=>{
+    //             return res.status(500).send("API could not handle your request: " + err);
+    //         })
 
-        } catch(err) {
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    }
+    //     } catch(err) {
+    //         handleError(err)
+    //         return res.status(500).send("API could not handle your request: " + err);
+    //     }
+    // }
 };
 
 export default partManager;
