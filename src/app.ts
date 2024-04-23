@@ -170,7 +170,6 @@ app.put("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManag
 app.delete("/api/pallet", auth, sanitize, checkRoles(["correct_pallets"]), palletManager.deletePallet);
 
 // ***      Boxes       ***
-app.post("/api/box/migrate", auth, sanitize, boxManager.migrateBox);
 app.post("/api/box", auth, sanitize, checkRoles(["edit_boxes"]), boxManager.createBox);
 
 app.get("/api/box", auth, sanitize, checkRoles(["view_boxes"]), boxManager.getBoxes);
