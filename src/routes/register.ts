@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import handleError from "../util/handleError.js";
 import { Request, Response } from "express";
 import config from '../config.js'
+import { DEFAULT_BUILDING } from '../Constants.js';
 const { JWT_EXPIRES_IN, JWT_SECRET} = config
 
 const register = async (req: Request, res: Response) => {
@@ -35,7 +36,7 @@ const register = async (req: Request, res: Response) => {
         let user = await User.create({
             first_name,
             last_name,
-            building: 3,
+            building: DEFAULT_BUILDING,
             email: email.toLowerCase(),
             password: encryptedPassword,
         }) as any;

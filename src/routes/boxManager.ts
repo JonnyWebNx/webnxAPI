@@ -14,47 +14,6 @@ import { boxesAreSimilar, cleanseBox, getBoxSearchRegex, isValidBoxTag, returnBo
 
 
 const boxManager = {
-    migrateBox: async (req: Request, res: Response) => {
-        try {
-            // Cleanse box 
-            let box_tag = req.body.box_tag as string
-            let shelf = "Motherboard Cage"
-            // Get parts in box
-            let parts = sanitizeCartItems(req.body.parts)
-            let date_created = new Date()
-            // Try and find existing box
-            let existingBox = await Box.findOne({box_tag})
-            if(!existingBox) {
-                let box = {
-                    box_tag,
-                    by: req.user.user_id,
-                    date_created: date_created,
-                    building: 3,
-                    next: null,
-                    prev: null,
-                    notes: "Automatically migrated from spreadsheet",
-                    location: shelf,
-                } as BoxSchema
-                await Box.create(box)
-            }
-            // Create all part records
-            let createOptions = {
-                building: 3,
-                location: "Box",
-                box_tag: box_tag,
-                by: req.user.user_id,
-                date_created: date_created,
-                prev: null,
-                next: null
-            }
-            await updatePartsAsync(createOptions, {}, parts, true)
-            console.log(`Created box ${box_tag} with ${parts.length} parts.`)
-            res.status(200).send("Success");
-        } catch(err) {
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
     createBox: async (req: Request, res: Response) => {
         try {
             // Cleanse box 
