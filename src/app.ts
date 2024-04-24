@@ -128,6 +128,7 @@ app.post("/api/asset", auth, sanitize, checkRoles(["edit_assets"]), assetManager
 
 app.post("/api/asset/template", auth, sanitize, checkRoles(["edit_assets"]), assetManager.createAssetTemplate);
 
+app.get("/api/asset/template", auth, sanitize, checkRoles(["edit_assets"]), assetManager.getAssetTemplates);
 app.get("/api/asset", auth, sanitize, checkRoles(["view_assets"]), assetManager.getAssets);
 app.get("/api/asset/parts", auth, sanitize, checkRoles(["view_assets"]), assetManager.getPartsOnAsset);
 app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
@@ -138,6 +139,7 @@ app.get('/api/asset/highestTag', sanitize, assetManager.getHighestAssetTag);
 app.put("/api/asset", auth, sanitize, checkRoles(["edit_assets"]), assetManager.updateAsset);
 
 app.delete("/api/asset", auth, sanitize, checkRoles(["correct_assets"]), assetManager.deleteAsset);
+app.delete("/api/asset/template", auth, sanitize, checkRoles(["edit_assets"]), assetManager.deleteAssetTemplate);
 
 // *** History ***
 app.get("/api/history/sales", auth, sanitize, checkRoles(["sell_on_ebay", "view_analytics"]), analytics.getEbaySalesHistory)

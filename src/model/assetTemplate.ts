@@ -4,7 +4,7 @@ import { AssetSchema } from "../interfaces.js";
 const assetTemplate = new mongoose.Schema({
     template_name: { type: String, required: true},
     // Location: LA - 1, OG - 3, NY - 4
-    building: { type: Number, required: true },
+    building: { type: Number },
     // Asset type
     asset_type: { type: String },
     // Chassis type
@@ -29,7 +29,7 @@ const assetTemplate = new mongoose.Schema({
     pallet: { type: String },
     fw_rev: { type: String },
     // Status
-    live: { type: Boolean, default: false},
+    live: { type: Boolean },
     in_rack: { type: Boolean },
     // Bay
     bay: { type: Number },

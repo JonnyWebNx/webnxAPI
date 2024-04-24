@@ -110,14 +110,48 @@ const assetManager = {
             asset.parts = parts
             asset.template_name = name
             // Create a new asset
-            AssetTemplate.create(asset, async (err: MongooseError, newAsset: AssetSchema) => {
+            AssetTemplate.create(asset)
+            .then(()=>{
                 // Create/update all assets on pallet
-                res.status(200).send("Success");
+                res.status(200).send("Successfully created template.");
             })
             .catch((err)=>{
                 handleError(err)
                 return res.status(500).send("API could not handle your request: " + err);
             })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: "+err);
+        }
+    },
+
+    getAssetTemplates: async (req: Request, res: Response) => {
+        try {
+            AssetTemplate.find({by: req.user.user_id}).exec()
+            .then((templates)=>{
+                res.status(200).json(templates)
+            })
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: "+err);
+            })
+
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: "+err);
+        }
+    },
+
+    deleteAssetTemplate: async (req: Request, res: Response) => {
+        try {
+            let {id} = req.query
+            AssetTemplate.findOneAndDelete({_id: id, by: req.user.user_id}).exec()
+            .then(()=>{
+                res.status(200).send("Successfully deleted template.");
+            })
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: "+err);
+            })
+
         } catch (err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);
