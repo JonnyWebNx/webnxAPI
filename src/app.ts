@@ -126,6 +126,8 @@ app.delete("/api/user", auth, checkRoles(["manage_users"]), sanitize, userManage
 // ***    Assets    ***
 app.post("/api/asset", auth, sanitize, checkRoles(["edit_assets"]), assetManager.addUntrackedAsset);
 
+app.post("/api/asset/template", auth, sanitize, checkRoles(["edit_assets"]), assetManager.createAssetTemplate);
+
 app.get("/api/asset", auth, sanitize, checkRoles(["view_assets"]), assetManager.getAssets);
 app.get("/api/asset/parts", auth, sanitize, checkRoles(["view_assets"]), assetManager.getPartsOnAsset);
 app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
