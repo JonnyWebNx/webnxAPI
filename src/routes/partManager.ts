@@ -2078,8 +2078,8 @@ const partManager = {
             if(!nxid||!isValidPartID(nxid)||new_quantity<0||!kiosks.includes(location))
                 return res.status(400).send("Invalid request");
             let partInfo = await Part.findOne({nxid})
-            if(partInfo?.serialized)
-                return res.status(400).send("Cannot delete serialized records");
+            // if(partInfo?.serialized)
+            //     return res.status(400).send("Cannot delete serialized records");
             // Find parts room records
             PartRecord.find({nxid: nxid, building: building, location: location, next: null}, async (err: MongooseError, oldRecords: PartRecordSchema[])=>{
                 if(err)
@@ -2090,7 +2090,7 @@ const partManager = {
                 // Get date for updates
                 let current_date = Date.now()
                 // Filter records to quantity and update
-                await Promise.all(oldRecords.filter((_,i)=>new_quantity>i).map(async(rec)=>{
+                await Promise.all(oldRecords.filter((r)=>!r.serial).filter((_,i)=>new_quantity>i).map(async(rec)=>{
                     // Create new record
                     let new_record = JSON.parse(JSON.stringify(rec))
                     new_record.prev = new_record._id
