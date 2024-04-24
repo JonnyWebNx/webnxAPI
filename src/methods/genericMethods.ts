@@ -1,4 +1,5 @@
 import { Request } from "express";
+import { DEFAULT_PAGE_SIZE } from "../Constants.js";
 import { PartQuery } from "../interfaces.js";
 import { stringSanitize } from "../util/sanitize.js";
 export function getPageNumAndSize(req: Request) {
@@ -7,7 +8,7 @@ export function getPageNumAndSize(req: Request) {
     let pageSize = parseInt(req.query.pageSize as string)
     // If NaN, default to 20 per page
     if(isNaN(pageSize))
-        pageSize = 50
+        pageSize = DEFAULT_PAGE_SIZE
     // If NaN, default to page 1
     if(isNaN(pageNum))
         pageNum = 1

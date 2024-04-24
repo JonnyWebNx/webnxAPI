@@ -2077,9 +2077,6 @@ const partManager = {
             // Check request
             if(!nxid||!isValidPartID(nxid)||new_quantity<0||!kiosks.includes(location))
                 return res.status(400).send("Invalid request");
-            let partInfo = await Part.findOne({nxid})
-            // if(partInfo?.serialized)
-            //     return res.status(400).send("Cannot delete serialized records");
             // Find parts room records
             PartRecord.find({nxid: nxid, building: building, location: location, next: null}, async (err: MongooseError, oldRecords: PartRecordSchema[])=>{
                 if(err)

@@ -11,6 +11,7 @@ import { Options } from 'nodemailer/lib/mailer/index.js'
 import config from '../config.js'
 import crypto from 'crypto'
 import resetToken from '../model/resetToken.js';
+import { DEFAULT_BUILDING } from '../Constants.js';
 const { UPLOAD_DIRECTORY, EMAIL, EMAIL_PASS } = config
 
 // Main object containing functions
@@ -110,7 +111,7 @@ const userManager = {
             User.create({
                 first_name,
                 last_name,
-                building: 3,
+                building: DEFAULT_BUILDING,
                 email: email.toLowerCase(),
                 password: encryptedPassword,
                 roles,

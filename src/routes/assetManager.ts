@@ -1,4 +1,5 @@
 import Asset from "../model/asset.js";
+import AssetTemplate from "../model/assetTemplate.js";
 import PartRecord from "../model/partRecord.js";
 import handleError from "../util/handleError.js";
 import { Request, Response } from "express";
@@ -19,7 +20,7 @@ import {
 } from "../methods/assetMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
 import { getNumPages, getPageNumAndSize, getTextSearchParams } from "../methods/genericMethods.js";
-import { cartItemsValidAsync, sanitizeCartItems } from "../methods/partMethods.js";
+import { cartItemsValidAsync, combineAndRemoveDuplicateCartItems, sanitizeCartItems } from "../methods/partMethods.js";
 
 const assetManager = {
     addUntrackedAsset: async (req: Request, res: Response) => {
@@ -83,6 +84,80 @@ const assetManager = {
             return res.status(500).send("API could not handle your request: "+err);
         }
     },
+
+    createAssetTemplate: async (req: Request, res: Response) => {
+        try {
+            // Get asset from request
+            let asset = cleanseAsset(req.body.asset)
+            let parts = sanitizeCartItems(req.body.parts)
+            let name = req.body.name && (typeof req.body.name === 'string' || req.body.name instanceof String) ? req.body.name : "Untitled Template"
+            // Remove date created if present
+            delete asset.date_created;
+            // Set by attribute to requesting user
+            let dateCreated = Date.now()
+            asset.by = req.user.user_id;
+            asset.date_created = new Date(dateCreated);
+            asset.date_updated = dateCreated;
+            asset.prev = null;
+            asset.next = null;
+            delete asset.migrated;
+            parts = combineAndRemoveDuplicateCartItems(parts.map((p)=>{
+                return { nxid: p.nxid, quantity: p.quantity ? p.quantity : 1 }
+            }))
+            let valid = cartItemsValidAsync(parts)
+            if(!valid)
+                return res.status(400).send("Invalid parts on request.");
+            asset.parts = parts
+            asset.template_name = name
+            // Create a new asset
+            AssetTemplate.create(asset)
+            .then(()=>{
+                // Create/update all assets on pallet
+                res.status(200).send("Successfully created template.");
+            })
+            .catch((err)=>{
+                handleError(err)
+                return res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: "+err);
+        }
+    },
+
+    getAssetTemplates: async (req: Request, res: Response) => {
+        try {
+            AssetTemplate.find({by: req.user.user_id}).exec()
+            .then((templates)=>{
+                res.status(200).json(templates)
+            })
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: "+err);
+            })
+
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: "+err);
+        }
+    },
+
+    deleteAssetTemplate: async (req: Request, res: Response) => {
+        try {
+            let {id} = req.query
+            AssetTemplate.findOneAndDelete({_id: id, by: req.user.user_id}).exec()
+            .then(()=>{
+                res.status(200).send("Successfully deleted template.");
+            })
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: "+err);
+            })
+
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: "+err);
+        }
+    },
+
     getAssets: async (req: Request, res: Response) => {
         try {
             // Parse search info
