@@ -103,8 +103,6 @@ const partManager = {
             delete req.query.advanced;
             // Typecast part
             let req_part = req.query
-            // Create query part
-            let numParts = await Part.count(req_part)
 
             let regexObject = {} as PartQuery
             Object.keys(req_part).forEach((k)=>{
@@ -114,10 +112,12 @@ const partManager = {
                 // ALlow array partial matches
                 if(Array.isArray(req_part[k])&&!(req_part[k]!.length==0)) {
                     // Use $all with array of case insensitive regexes
-                    return regexObject[k] = { $all: req_part }
+                    return regexObject[k] = { $all: req_part[k] }
                 }
                 regexObject[k] = req_part[k]
             })
+            // Create query part
+            let numParts = await Part.count(regexObject)
             // If no regex has results
             if(numParts>0) {
                 // Calc num pages
