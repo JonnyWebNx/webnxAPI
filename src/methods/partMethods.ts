@@ -295,6 +295,78 @@ export function getPartSearchRegex(searchString: string) {
     return { regexKeywords: searchOptions, relevanceScore: relevanceConditions }
 }
 
+export async function getPartCounts(req: Request, parts: PartSchema[]) {
+    // Map for all parts
+    let kioskNames = [] as string[]
+    let user = await User.findById(req.user.user_id)
+    if(user&&user.roles?.includes("is_kiosk")) {
+        let u = await User.findById(req.user.user_id)
+        kioskNames.push(u?.first_name + " " + u?.last_name)
+    }
+    else {
+        kioskNames =  await getKioskNamesAsync(req.user.building)
+        kioskNames.push("Box")
+    }
+    let { building, location } = req.query;
+    // Get a list of nxids
+    let nxids = [] as string[]
+    // For is quicker than map supposedly
+    for (let i = 0; i < parts.length; i++) {
+        nxids.push(parts[i].nxid!)
+    }
+    // Count kiosk quantities using aggregate pipeline
+    let counts = await PartRecord.aggregate([
+        {
+            $match:{
+                nxid: { $in: nxids },
+                next: null,
+                location: location ? location : {$in: kioskNames},
+                building: isNaN(parseInt(building as string)) ? req.user.building : parseInt(building as string)
+            }
+        },
+        {
+            $group: {
+                _id: "$nxid",
+                quantity: {$sum: 1}
+            }
+        }
+    ]) as PartSchema[]
+    // Initialize hashmap
+    let countsMap = new Map<string, number>()
+    // Push parts to map
+    for (let i = 0; i < counts.length; i++) {
+        countsMap.set(counts[i]._id, counts[i].quantity!)
+    }
+    // Get total counts
+    let totalCounts = await PartRecord.aggregate([
+        {
+            $match:{
+                nxid: { $in: nxids },
+                next: null
+            }
+        },
+        {
+            $group: {
+                _id: "$nxid",
+                quantity: {$sum: 1}
+            }
+        }
+    ]) as PartSchema[]
+    // Create map
+    let totalCountsMap = new Map<string, number>()
+    // Push quantities to map
+    for (let i = 0; i < totalCounts.length; i++) {
+        totalCountsMap.set(totalCounts[i]._id, totalCounts[i].quantity!)
+    }
+    // Add total quantities and quanities to parts
+    return parts.map((p)=>{
+        let part = JSON.parse(JSON.stringify(p))
+        part.quantity = countsMap.has(p.nxid!)?countsMap.get(p.nxid!):0
+        part.total_quantity = totalCountsMap.has(p.nxid!)?totalCountsMap.get(p.nxid!):0
+        return part
+    })
+}
+
 export function returnPartSearch(numPages: number, numParts: number, req: Request, res: Response) {
     // Return mongoose callback
     return async (err: CallbackError | null, parts: PartSchema[])  => {
@@ -303,94 +375,8 @@ export function returnPartSearch(numPages: number, numParts: number, req: Reques
             handleError(err)
             return res.status(500).send("API could not handle your request: " + err);
         }
-        // Map for all parts
-        let kioskNames = [] as string[]
-        let user = await User.findById(req.user.user_id)
-        if(user&&user.roles?.includes("is_kiosk")) {
-            let u = await User.findById(req.user.user_id)
-            kioskNames.push(u?.first_name + " " + u?.last_name)
-        }
-        else {
-            kioskNames =  await getKioskNamesAsync(req.user.building)
-            kioskNames.push("Box")
-        }
-        let { building, location } = req.query;
-        // Get a list of nxids
-        let nxids = [] as string[]
-        // For is quicker than map supposedly
-        for (let i = 0; i < parts.length; i++) {
-            nxids.push(parts[i].nxid!)
-        }
-        // Count kiosk quantities using aggregate pipeline
-        let counts = await PartRecord.aggregate([
-            {
-                $match:{
-                    nxid: { $in: nxids },
-                    next: null,
-                    // This will enable build kits counting towards search quantities
-                    // $or: [
-                    //     {
-                    //         location: location ? location : { $in: kioskNames }
-                    //     },
-                    //     // Evil ternary shit
-                    //     (req.user.roles.includes('kiosk') ?
-                    //         // If User is a kiosk
-                    //         {
-                    //             location: 'Build Kit',
-                    //             kiosk: req.user.user_id
-                    //         }
-                    //         :
-                    //         // If User is not a kiosk
-                    //         {
-                    //             location: 'Build Kit'
-                    //         }
-                    //     )
-                    // ],
-                    location: location ? location : {$in: kioskNames},
-                    building: isNaN(parseInt(building as string)) ? req.user.building : parseInt(building as string)
-                }
-            },
-            {
-                $group: {
-                    _id: "$nxid",
-                    quantity: {$sum: 1}
-                }
-            }
-        ]) as PartSchema[]
-        // Initialize hashmap
-        let countsMap = new Map<string, number>()
-        // Push parts to map
-        for (let i = 0; i < counts.length; i++) {
-            countsMap.set(counts[i]._id, counts[i].quantity!)
-        }
-        // Get total counts
-        let totalCounts = await PartRecord.aggregate([
-            {
-                $match:{
-                    nxid: { $in: nxids },
-                    next: null
-                }
-            },
-            {
-                $group: {
-                    _id: "$nxid",
-                    quantity: {$sum: 1}
-                }
-            }
-        ]) as PartSchema[]
-        // Create map
-        let totalCountsMap = new Map<string, number>()
-        // Push quantities to map
-        for (let i = 0; i < totalCounts.length; i++) {
-            totalCountsMap.set(totalCounts[i]._id, totalCounts[i].quantity!)
-        }
-        // Add total quantities and quanities to parts
-        let returnParts = parts.map((p)=>{
-            let part = JSON.parse(JSON.stringify(p))
-            part.quantity = countsMap.has(p.nxid!)?countsMap.get(p.nxid!):0
-            part.total_quantity = totalCountsMap.has(p.nxid!)?totalCountsMap.get(p.nxid!):0
-            return part
-        })
+
+        let returnParts = await getPartCounts(req, parts)
         // Return
         return res.status(200).json({ pages: numPages, total: numParts, items: returnParts});
     }

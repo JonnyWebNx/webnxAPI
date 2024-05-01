@@ -17,6 +17,7 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
@@ -47,6 +48,7 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
             // Get user filter
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get location filter
@@ -78,6 +80,7 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -128,6 +131,7 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -269,6 +273,7 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req);
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
 
             let hideOtherParts = req.query.hideOthers == "true" ? true : false
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -298,6 +303,7 @@ const analytics = {
         // Get data from query
         let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
         let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+        let skipPagination = req.query.skipPagination == 'true' ? true : false
         nxids = nxids.filter((s)=>isValidPartID(s))
         let { pageSize, pageSkip } = getPageNumAndSize(req);
         let { startDate, endDate } = getStartAndEndDate(req);
@@ -319,6 +325,7 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -470,13 +477,17 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
+            let box_tags = Array.isArray(req.query.box_tags) ? req.query.box_tags as string[] : [] as string[]
+            let asset_tags = Array.isArray(req.query.asset_tags) ? req.query.asset_tags as string[] : [] as string[]
+            let pallet_tags = Array.isArray(req.query.pallet_tags) ? req.query.pallet_tags as string[] : [] as string[]
 
             let hideOtherParts = req.query.hideOthers == "true" ? true : false
-            let palletUpdates = await getPalletUpdates(startDate, endDate, users, nxids)
+            let palletUpdates = await getPalletUpdates(startDate, endDate, users, nxids, pallet_tags, asset_tags, box_tags)
 
             let totalUpdates = palletUpdates.length
             
@@ -499,8 +510,11 @@ const analytics = {
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
+            let box_tags = Array.isArray(req.query.box_tags) ? req.query.box_tags as string[] : [] as string[]
+            let asset_tags = Array.isArray(req.query.asset_tags) ? req.query.asset_tags as string[] : [] as string[]
+            let pallet_tags = Array.isArray(req.query.pallet_tags) ? req.query.pallet_tags as string[] : [] as string[]
 
-            let palletUpdates = await getPalletUpdates(startDate, endDate, users, nxids)
+            let palletUpdates = await getPalletUpdates(startDate, endDate, users, nxids, pallet_tags, asset_tags, box_tags)
 
             let totalUpdates = palletUpdates.length
             
@@ -525,8 +539,7 @@ const analytics = {
             let sales = await getEbaySalesDates(startDate, endDate, nxids, users)
             let totalUpdates = sales.length
             let returnValue = await Promise.all(sales.splice(pageSkip, pageSize).map(async (a)=>{
-                let event = await getEbayEvent(a, hideOtherParts?nxids:undefined)
-                return event[0]
+                return getEbayEvent(a, hideOtherParts?nxids:undefined)
             }))
             res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
         } catch (err) {
@@ -540,6 +553,7 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -551,10 +565,18 @@ const analytics = {
             let boxUpdates = await getBoxUpdates(startDate, endDate, users, nxids, box_tags)
 
             let totalUpdates = boxUpdates.length
+
+            if(!skipPagination) {
+                boxUpdates = boxUpdates.splice(pageSkip, pageSize)
+            }
             
-            let returnValue = await Promise.all(boxUpdates.splice(pageSkip, pageSize).map((a)=>{
+            let returnValue = await Promise.all(boxUpdates.map((a)=>{
                 return getBoxEvent(a.box_tag, a.date, hideOtherParts ? nxids : undefined)
             }))
+
+            if(skipPagination) {
+                return res.status(200).json(returnValue);
+            }
             res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
         } catch (err) {
             // Error
@@ -590,71 +612,32 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             let hideOtherParts = req.query.hideOthers == "true" ? true : false
             nxids = nxids.filter((s)=>isValidPartID(s))
-            if(nxids.length>0) {
-                let updates = await getPartsOnNewBox(startDate, endDate, users, nxids)
-                updates = await Promise.all(updates.filter((u)=>{
-                    return Box.exists({box_tag: u.box_tag, by: u.by, date_created: u.by, prev: null})
-                }))
-                let total = updates.length
-                if(total>0) {
+
+            let updates = await getPartsOnNewBox(startDate, endDate, users, nxids)
+            updates = await Promise.all(updates.filter((u)=>{
+                return Box.exists({box_tag: u.box_tag, by: u.by, date_created: u.by, prev: null})
+            }))
+            let total = updates.length
+            if(total>0) {
+                if(!skipPagination) {
                     updates = updates.splice(pageSkip, pageSize)
-                    let returnValue = await Promise.all(updates.map((a: BoxUpdate)=>{
-                        return getBoxEvent(a.box_tag, a.date, hideOtherParts ? nxids : undefined)
-                    }))
-                    return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: returnValue});
                 }
-                // Return to client
-                res.status(200).json({total: 0, pages: 1, events: []});
+                let returnValue = await Promise.all(updates.map((a: BoxUpdate)=>{
+                    return getBoxEvent(a.box_tag, a.date, hideOtherParts ? nxids : undefined)
+                }))
+                if(skipPagination) {
+                    return res.status(200).json(returnValue);
+                }
+                return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: returnValue});
             }
-            else {
-                Box.aggregate([
-                    {
-                        $match: {
-                            $or: [{ prev: null}, {prev: {$exists: false}}],
-                            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                            date_created: { $lte: endDate, $gte: startDate }
-                        }
-                    },
-                    {
-                        $sort: {
-                            "date_created": -1
-                        }
-                    },
-                    // Get total count
-                    {
-                        $group: {
-                            _id: null,
-                            total: {$sum: 1},
-                            updates: {$push: { box_tag: "$box_tag", date: "$date_created", by: "$by"}}
-                        }
-                    },
-                    // Skip to page
-                    {
-                        $project: {
-                            _id: 0,
-                            total: 1,
-                            updates: {$slice: ["$updates", pageSkip, pageSize]}
-                        }
-                    }
-                ]).exec(async (err, result: { total: number, updates: BoxUpdate[]}[])=>{
-                    if(err) {
-                        return res.status(500).send("API could not handle your request: " + err);
-                    }
-                    if(result.length&&result.length>0) {
-                        let returnValue = await Promise.all(result[0].updates!.map((a: BoxUpdate)=>{
-                            return getBoxEvent(a.box_tag, a.date)
-                        }))
-                        return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: returnValue});
-                    }
-                    // Return to client
-                    res.status(200).json({total: 0, pages: 1, events: []});
-                })
-            }
+            // Return to client
+            res.status(200).json({total: 0, pages: 1, events: []});
         } catch (err) {
             // Error
             handleError(err)
@@ -669,58 +652,17 @@ const analytics = {
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
-            if(nxids.length>0) {
-                let updates = await getPartsOnNewBox(startDate, endDate, users, nxids)
-                updates = await Promise.all(updates.filter((u)=>{
-                    return Box.exists({box_tag: u.box_tag, by: u.by, date_created: u.by, prev: null})
-                }))
-                if(updates.length&&updates.length>0) {
-                    return res.status(200).json({total: updates.length, pages: getNumPages(pageSize, updates.length),events: updates});
-                }
-                // Return to client
-                res.status(200).json({total: 0, pages: 1, events: []});
+
+            let updates = await getPartsOnNewBox(startDate, endDate, users, nxids)
+            updates = await Promise.all(updates.filter((u)=>{
+                return Box.exists({box_tag: u.box_tag, by: u.by, date_created: u.by, prev: null})
+            }))
+            if(updates.length&&updates.length>0) {
+                updates = updates.splice(pageSkip, pageSize)
+                return res.status(200).json({total: updates.length, pages: getNumPages(pageSize, updates.length),events: updates});
             }
-            else {
-                Box.aggregate([
-                    {
-                        $match: {
-                            $or: [{ prev: null}, {prev: {$exists: false}}],
-                            by: (users && users.length > 0 ? { $in: users } : { $ne: null }),
-                            date_created: { $lte: endDate, $gte: startDate }
-                        }
-                    },
-                    {
-                        $sort: {
-                            "date_created": -1
-                        }
-                    },
-                    // Get total count
-                    {
-                        $group: {
-                            _id: null,
-                            total: {$sum: 1},
-                            updates: {$push: { box_tag: "$box_tag", date: "$date_created", by: "$by"}}
-                        }
-                    },
-                    // Skip to page
-                    {
-                        $project: {
-                            _id: 0,
-                            total: 1,
-                            updates: {$slice: ["$updates", pageSkip, pageSize]}
-                        }
-                    }
-                ]).exec(async (err, result: { total: number, updates: BoxUpdate[]}[])=>{
-                    if(err) {
-                        return res.status(500).send("API could not handle your request: " + err);
-                    }
-                    if(result.length&&result.length>0) {
-                        return res.status(200).json({total: result[0].total, pages: getNumPages(pageSize, result[0].total),events: result[0].updates});
-                    }
-                    // Return to client
-                    res.status(200).json({total: 0, pages: 1, events: []});
-                })
-            }
+            // Return to client
+            res.status(200).json({total: 0, pages: 1, events: []});
         } catch (err) {
             // Error
             handleError(err)

@@ -25,9 +25,10 @@ import {
     inventoryEntriesValidAsync,
     combineAndRemoveDuplicateCartItems,
     checkPartThreshold,
+    getPartCounts,
 } from '../methods/partMethods.js';
-import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsAddSerialsDryRunAsync, isValidAssetTag } from '../methods/assetMethods.js';
-import { getNumPages, getPageNumAndSize, getStartAndEndDate, getTextSearchParams, objectToRegex } from '../methods/genericMethods.js';
+import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsAddSerialsDryRunAsync, isValidAssetTag, getAddedAndRemovedWithNewSerials } from '../methods/assetMethods.js';
+import { getNumPages, getPageNumAndSize, getSearchSort, getStartAndEndDate, getTextSearchParams, objectToRegex } from '../methods/genericMethods.js';
 import { stringSanitize } from '../util/sanitize.js';
 import PartRequest from '../model/partRequest.js';
 import BuildKit from '../model/buildKit.js';
@@ -95,13 +96,19 @@ const partManager = {
         try {
             // Destructure request
             let { pageSize, pageSkip } = getPageNumAndSize(req)
+            let sort = getSearchSort(req)
+            if(sort['location']!=undefined) 
+                sort = {rack_num: sort['location'], shelf_location: sort['location']}
             delete req.query.pageNum
             delete req.query.pageSize
             delete req.query.location
             delete req.query.building
             delete req.query.advanced;
+            delete req.query.sortString
+            delete req.query.sortDir;
             // Typecast part
-            let req_part = req.query
+            let req_part = req.query as unknown as PartSchema[]
+
             // Create query part
             let numParts = await Part.count(req_part)
             // If no regex has results
@@ -110,6 +117,7 @@ const partManager = {
                 let numPages = getNumPages(pageSize, numParts)
                 // Search without regex
                 Part.find(req_part)
+                    .sort(sort)
                     .skip(pageSkip)
                     .limit(pageSize)
                     .exec(returnPartSearch(numPages, numParts, req, res))
@@ -118,12 +126,14 @@ const partManager = {
             else {
                 // Create regex
                 let search_part = objectToRegex(req_part)
+                console.log(search_part)
                 // Get num parts
                 numParts = await Part.count(search_part)
                 // Get num pages
                 let numPages = getNumPages(pageSize, numParts)
                 // Regex search
                 Part.find(search_part)
+                    .sort(sort)
                     .skip(pageSkip)
                     .limit(pageSize)
                     .exec(returnPartSearch(numPages, numParts, req, res))
@@ -1475,16 +1485,54 @@ const partManager = {
         try {
             // Get search string and page info
             let { pageSize, pageSkip, searchString, sort } = getTextSearchParams(req)
-            // If search string is empty
-            if(searchString == "") {
+            if(sort['location']!=undefined) 
+                sort = {rack_num: sort['location'], shelf_location: sort['location']}
+            if(searchString == ""&&sort['quantity']!=undefined) {
                 // Count all parts
                 let numParts = await Part.count()
                 // Calc number of pages
                 let numPages = getNumPages(pageSize, numParts)
                 // Get all parts
                 Part.find({})
+                    // Return search to user
+                    .exec()
+                    .then(async (parts)=>{
+                        let loadedParts = await getPartCounts(req, parts)
+                        loadedParts = loadedParts.sort((a, b)=>{
+                            if(a.quantity<b.quantity) {
+                                return -1 * sort['quantity']
+                            }
+                            else if(a.quantity>b.quantity) {
+                                return 1 * sort['quantity']
+                            }
+                            if(a.total_quantity<b.total_quantity) {
+                                return -1 * sort['quantity']
+                            }
+                            else if(a.total_quantity>b.total_quantity) {
+                                return 1 * sort['quantity']
+                            }
+                            return 0
+                        })
+                        .splice(pageSkip, pageSize)
+                        return res.status(200).json({ pages: numPages, total: numParts, items: loadedParts});
+                    })
+                    .catch((err)=>{
+                        return res.status(500).send("API could not handle your request: " + err);
+                    })
+                return
+            }
+            // If search string is empty
+            else if(searchString == "") {
+                // Count all parts
+                let numParts = await Part.count()
+                // Calc number of pages
+                let numPages = getNumPages(pageSize, numParts)
+                if(JSON.stringify(sort)==JSON.stringify({ relevance: -1 })) 
+                    sort = {nxid:1}
+                // Get all parts
+                Part.find({})
                     // Sort by NXID
-                    .sort({nxid:1})
+                    .sort(sort)
                     // Skip - gets requested page number
                     .skip(pageSkip)
                     // Limit - returns only enough elements to fill page
@@ -1509,9 +1557,6 @@ const partManager = {
                         }
                     }
                 },
-                {
-                    $sort: sort
-                },
                 // {
                 //     $project: { relevance: 0 }
                 // }
@@ -1522,6 +1567,39 @@ const partManager = {
             let numParts = countQuery.length > 0&&countQuery[0].numParts ? countQuery[0].numParts : 0
             // Ternary that hurts my eyes
             let numPages = getNumPages(pageSize, numParts)
+            if(sort['quantity']!=undefined) {
+                Part.aggregate(aggregateQuery)
+                    // Return search to user
+                    .exec()
+                    .then(async (parts)=>{
+                        let loadedParts = await getPartCounts(req, parts)
+                        loadedParts = loadedParts.sort((a, b)=>{
+                            if(a.quantity<b.quantity) {
+                                return -1 * sort['quantity']
+                            }
+                            else if(a.quantity>b.quantity) {
+                                return 1 * sort['quantity']
+                            }
+                            if(a.total_quantity<b.total_quantity) {
+                                return -1 * sort['quantity']
+                            }
+                            else if(a.total_quantity>b.total_quantity) {
+                                return 1 * sort['quantity']
+                            }
+                            return 0
+                        })
+                        .splice(pageSkip, pageSize)
+                        return res.status(200).json({ pages: numPages, total: numParts, items: loadedParts});
+                    })
+                    .catch((err)=>{
+                        return res.status(500).send("API could not handle your request: " + err);
+                    })
+                return
+            }
+            aggregateQuery.push(
+                {
+                    $sort: sort
+                })
             // Search
             Part.aggregate(aggregateQuery)
                 .skip(pageSkip)
@@ -2017,6 +2095,44 @@ const partManager = {
             // Get data from request
             let parts = req.body.parts as InventoryEntry[]
             parts = sanitizeInventoryEntries(parts)
+
+            let assets = req.body.assets as AssetSchema[]
+            let assetPartListMatches = await Promise.all(assets.map((asset)=>{
+                return PartRecord.find({next: null, asset_tag: asset.asset_tag}).exec()
+                    .then(async (partRecords)=>{
+                        let {added, removed} = getAddedAndRemovedWithNewSerials(asset.parts, partRecords)
+                        return added.length==0&&removed.length==0
+                    })
+                    .catch((err)=>{
+                        return false
+                    })
+            }))
+            for (let match of assetPartListMatches) {
+                if(!match)
+                    return res.status(400).send("Error in asset parts list");
+            }
+
+            let assetDryRuns = await Promise.all(assets.map(async (asset)=>{
+                let searchOptions = {asset_tag: asset.asset_tag, next: null}
+                let partMap = new Map<string, InventoryEntry>()
+                for(let part of asset.parts) {
+                    let ie = { nxid: part.nxid, unserialized: 0, serials: [] } as InventoryEntry
+                    if(partMap.has(part.nxid))
+                        ie = partMap.get(part.nxid)!
+                    if(part.serial&&part.serial!="")
+                        ie.serials.push(part.serial!)
+                    else
+                        ie.unserialized++
+                    partMap.set(part.nxid, ie)
+                }
+                let { skipped } = await updatePartsAddSerialsDryRunAsync(searchOptions, Array.from(partMap.values()))
+                return skipped.length == 0
+            }))
+            for (let update of assetDryRuns) {
+                if(!update)
+                    return res.status(400).send("Error in asset parts list 2");
+            }
+
             // Check if cart items are valid
             if(!(await inventoryEntriesValidAsync(parts)))
                 return res.status(400).send("Error in updated parts list");
@@ -2057,6 +2173,44 @@ const partManager = {
                 // Return error
                 return res.status(400).send(failString)
             }
+
+            await Promise.all(assets.map(async (asset)=>{
+                let searchOptions = {asset_tag: asset.asset_tag, next: null}
+                let partMap = new Map<string, InventoryEntry>()
+                for(let part of asset.parts) {
+                    let ie = { nxid: part.nxid, unserialized: 0, serials: [] } as InventoryEntry
+                    if(partMap.has(part.nxid))
+                        ie = partMap.get(part.nxid)!
+                    if(part.serial&&part.serial!="")
+                        ie.serials.push(part.serial!)
+                    else
+                        ie.unserialized++
+                    partMap.set(part.nxid, ie)
+                } 
+                let newTo = JSON.parse(JSON.stringify(to))
+                newTo.asset_tag = asset.asset_tag
+                await updatePartsAddSerialsAsync(newTo, searchOptions, Array.from(partMap.values()))
+                await Asset.findOne({asset_tag: asset.asset_tag, next: null}).exec()
+                    .then(async (ass1)=>{
+                        let ass = JSON.parse(JSON.stringify(ass1))
+                        if(ass) {
+                            ass.prev = ass._id
+                            delete ass._id
+                            delete ass.pallet
+                            ass.next = 'sold'
+                            ass.ebay = stringSanitize(req.body.orderID, false)
+                            ass.location = 'sold'
+                            ass.date_created = to.date_created
+                            ass.building = req.user.building
+                            ass.by = req.user.user_id
+                            Asset.create(ass, callbackHandler.updateAsset)
+                        }
+                        return
+                    })
+                    .catch((err)=>{
+                        handleError(err)
+                    })
+            }))
             await updatePartsAddSerialsAsync(to, searchOptions, parts)
             // Success !!!
             return res.status(200).send("Success");

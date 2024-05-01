@@ -7,7 +7,7 @@ import { getAddedAndRemoved, partRecordsToCartItems, updatePartsAsync, userHasIn
 import { CallbackError } from "mongoose";
 import { cartItemsValidAsync, sanitizeCartItems } from "../methods/partMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
-import { getNumPages, getPageNumAndSize, getTextSearchParams, objectToRegex } from "../methods/genericMethods.js";
+import { getNumPages, getPageNumAndSize, getSearchSort, getTextSearchParams, objectToRegex } from "../methods/genericMethods.js";
 import { isLocationValid } from "../methods/palletMethods.js";
 import Box from "../model/box.js";
 import { boxesAreSimilar, cleanseBox, getBoxSearchRegex, isValidBoxTag, returnBox, returnBoxHistory, returnBoxSearch } from "../methods/boxMethods.js";
@@ -63,6 +63,7 @@ const boxManager = {
         try {
             // Parse search info
             let { pageSize, pageSkip } = getPageNumAndSize(req)
+            let sort = getSearchSort(req)
             // Get box object from request
             let box = objectToRegex(cleanseBox(req.query as unknown as BoxSchema));
             box.next = null;
@@ -70,6 +71,7 @@ const boxManager = {
             let numPages = getNumPages(pageSize, numBoxes)
             // Send request to database
             Box.find(box)
+                .sort(sort)
                 .skip(pageSkip)
                 .limit(pageSize)
                 .exec(returnBoxSearch(res, numPages, numBoxes))
@@ -98,16 +100,18 @@ const boxManager = {
             // Search data
             // Limit
             // Page skip
-            let { searchString, pageSize, pageSkip } = getTextSearchParams(req);
+            let { searchString, pageSize, pageSkip, sort } = getTextSearchParams(req);
             // Find parts
             if(searchString == "") {
+                if(JSON.stringify(sort)==JSON.stringify({ relevance: -1 })) 
+                    sort = {box_tag:1}
                 // Count all boxes
                 let numBoxes = await Box.count({next: null})
                 // Calc number of pages
                 let numPages = getNumPages(pageSize, numBoxes)
                 // Get all boxes
                 Box.find({next: null})
-                    .sort({box_tag:1})
+                    .sort(sort)
                     // Skip - gets requested page number
                     .skip(pageSkip)
                     // Limit - returns only enough elements to fill page
@@ -137,12 +141,6 @@ const boxManager = {
                         }
                     }
                 },
-                {
-                    $sort: { relevance: -1 }
-                },
-                {
-                    $project: { relevance: 0 }
-                }
             ] as any
             // Aggregate count
             let countQuery = await Box.aggregate(aggregateQuery).count("numBoxes")
@@ -152,6 +150,7 @@ const boxManager = {
             let numPages = getNumPages(pageSize, numBoxes)
             // Find boxes 
             Box.aggregate(aggregateQuery)
+                .sort(sort)
                 .skip(pageSkip)
                 .limit(pageSize)
                 .exec(returnBoxSearch(res, numPages, numBoxes))

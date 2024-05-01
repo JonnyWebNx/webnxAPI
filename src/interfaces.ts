@@ -83,6 +83,7 @@ export interface AssetSchema {
     by?: string | Types.ObjectId,
     sid?: number,
     notes?: string,
+    ebay?: string,
 
     units?: number,
     num_psu?: number,

@@ -18,7 +18,7 @@ export function getPageNumAndSize(req: Request) {
 }
 
 export function getSearchSort(req: Request) {
-    let sortBy = req.query.sortBy as string
+    let sortBy = req.query.sortString as string
     let sortDir = parseInt(req.query.sortDir as string)
     let sort = { relevance: -1 } as any
     if(sortBy) {
