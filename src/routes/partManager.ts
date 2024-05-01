@@ -101,7 +101,12 @@ const partManager = {
             delete req.query.building
             delete req.query.advanced;
             // Typecast part
-            let req_part = req.query
+            let req_part = req.query as unknown as PartSchema
+            for(let k of req_part.keys()) {
+                if(Array.isArray(req_part[k]))
+                    req_part[k] = { $in: req_part[k] }
+            }
+
             // Create query part
             let numParts = await Part.count(req_part)
             // If no regex has results
