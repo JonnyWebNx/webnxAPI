@@ -4,7 +4,7 @@ import Asset from '../model/asset.js'
 import User from "../model/user.js";
 import handleError from "../util/handleError.js";
 import callbackHandler from '../util/callbackHandlers.js'
-import { AssetSchema, BuildKitSchema, CartItem, CheckInQueuePart, InventoryEntry, NotificationTypes, PartRecordSchema, PartRequestSchema, UserSchema, PartSchema, BoxSchema } from "../interfaces.js";
+import { AssetSchema, BuildKitSchema, CartItem, CheckInQueuePart, InventoryEntry, NotificationTypes, PartRecordSchema, PartRequestSchema, UserSchema, PartSchema, BoxSchema, PartQuery } from "../interfaces.js";
 import mongoose, { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
@@ -92,6 +92,7 @@ const partManager = {
         }
     },
     // Read
+    // Read
     getPart: async (req: Request, res: Response) => {
         try {
             // Destructure request
@@ -107,16 +108,28 @@ const partManager = {
             delete req.query.sortString
             delete req.query.sortDir;
             // Typecast part
-            let req_part = req.query as unknown as PartSchema[]
+            let req_part = req.query
 
+            let regexObject = {} as PartQuery
+            Object.keys(req_part).forEach((k)=>{
+                // early return for empty strings
+                if(req_part[k]=='')
+                    return
+                // ALlow array partial matches
+                if(Array.isArray(req_part[k])&&!(req_part[k]!.length==0)) {
+                    // Use $all with array of case insensitive regexes
+                    return regexObject[k] = { $all: req_part[k] }
+                }
+                regexObject[k] = req_part[k]
+            })
             // Create query part
-            let numParts = await Part.count(req_part)
+            let numParts = await Part.count(regexObject)
             // If no regex has results
             if(numParts>0) {
                 // Calc num pages
                 let numPages = getNumPages(pageSize, numParts)
                 // Search without regex
-                Part.find(req_part)
+                Part.find(regexObject)
                     .sort(sort)
                     .skip(pageSkip)
                     .limit(pageSize)
