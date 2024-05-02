@@ -91,10 +91,11 @@ export async function sendNotificationToGroup(
     return User.find({roles: role})
     .then((users: UserSchema[]) => {
         // For every user
-        return Promise.all(users.map((u)=>{
+        users.map((u)=>{
             // Create the notification
-            return createNotification(date, u._id, type, text, title, link)
-        }))
+            createNotification(date, u._id, type, text, title, link)
+        })
+        return
     })
     .catch((err)=>{
         handleError(err)
