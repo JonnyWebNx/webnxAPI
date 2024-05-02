@@ -139,7 +139,6 @@ const partManager = {
             else {
                 // Create regex
                 let search_part = objectToRegex(req_part)
-                console.log(search_part)
                 // Get num parts
                 numParts = await Part.count(search_part)
                 // Get num pages
@@ -215,9 +214,11 @@ const partManager = {
             // Parse the cart items from the request
             let parts = sanitizeCartItems(req.body.parts)
             let notes = stringSanitize(req.body.notes, false)
+            let time = Date.now()
             // Check if the cart items are valid
             if(!(await cartItemsValidAsync(parts)))
                 return res.status(400).send("Error in requested parts")
+            console.log((Date.now()-time)/1000)
             // Create the reqest in the db
             PartRequest.create({
                 requested_by: req.user.user_id,
@@ -228,9 +229,11 @@ const partManager = {
                 
             })
             .then(()=>{
+                console.log((Date.now()-time)/1000)
                 return sendNotificationToGroup('fulfill_part_requests', NotificationTypes.Alert, "There is a new part request.", "/clerk/partRequests")
             })
             .then(() => {
+                console.log((Date.now()-time)/1000)
                 res.status(200).send("Success")
             })
             .catch((err)=>{
