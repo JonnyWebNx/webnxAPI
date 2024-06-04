@@ -18,6 +18,7 @@ const analytics = {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
             nxids = nxids.filter((s)=>isValidPartID(s))
@@ -26,6 +27,10 @@ const analytics = {
             let dates = await getCheckinDatesAsync(startDate, endDate, users, nxids)
             // Total number of events
             let total = dates.length
+
+            if(noDetails)
+                return res.status(200).json({total, pages: getNumPages(pageSize, total), events: dates});
+
             // Splice to page skip and size
             if(!skipPagination)
                 dates = dates.splice(pageSkip, pageSize)
@@ -53,6 +58,7 @@ const analytics = {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
             // Get user filter
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get location filter
@@ -66,6 +72,8 @@ const analytics = {
             let dates = await getCheckoutDatesAsync(startDate, endDate, users, location, nxids)
             // Total number of events
             let total = dates.length
+            if(noDetails)
+                return res.status(200).json({total, pages: getNumPages(pageSize, total), events: dates});
             // Splice to page skip and size
             if(!skipPagination)
                 dates = dates.splice(pageSkip, pageSize)
@@ -88,6 +96,7 @@ const analytics = {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -98,10 +107,12 @@ const analytics = {
             // Find added parts
             let assetUpdates = await getAssetUpdates(startDate, endDate, users, nxids, asset_tags)
             let totalUpdates = assetUpdates.length
+            if(noDetails)
+                return res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: assetUpdates});
             if(!skipPagination) {
-                assetUpdates.splice(pageSkip, pageSize)
+                 assetUpdates = assetUpdates.splice(pageSkip, pageSize)
             }
-            let returnValue = await Promise.all(assetUpdates.splice(pageSkip, pageSize).map((a)=>{
+            let returnValue = await Promise.all(assetUpdates.map((a)=>{
                 return getAssetEventAsync(a.asset_tag, a.date, hideOtherParts ? nxids : undefined)
             }))
             if(skipPagination)
@@ -115,33 +126,12 @@ const analytics = {
         }
     },
 
-    getAssetUpdatesNoDetails: async (req: Request, res: Response) => {
-        try {
-            let { pageSize, pageSkip } = getPageNumAndSize(req);
-            let { startDate, endDate } = getStartAndEndDate(req)
-            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            // Get part id filters
-            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
-            nxids = nxids.filter((s)=>isValidPartID(s))
-            let asset_tags = Array.isArray(req.query.asset_tags) ? req.query.asset_tags as string[] : [] as string[]
-            asset_tags = asset_tags.filter((s)=>isValidAssetTag(s))
-            // Find added parts
-            let assetUpdates = await getAssetUpdates(startDate, endDate, users, nxids, asset_tags)
-            // Get all the dates of asset related events
-            let totalUpdates = assetUpdates.length
-            assetUpdates = assetUpdates.splice(pageSkip, pageSize)
-            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates),events: assetUpdates});
-        } catch (err) {
-            // Error
-            handleError(err)
-            res.status(500).send("API could not handle your request: " + err);
-        }
-    },
     getNewAssets: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -153,6 +143,9 @@ const analytics = {
                 return Asset.exists({asset_tag: u.asset_tag, by: u.by, date_created: u.by, prev: null})
             }))
             let total = updates.length
+
+            if(noDetails)
+                return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: updates});
 
             if(!skipPagination)
                 updates = updates.splice(pageSkip, pageSize)
@@ -169,30 +162,13 @@ const analytics = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-    getNewAssetsNoDetails: async (req: Request, res: Response) => {
-        try {
-            let { pageSize, pageSkip } = getPageNumAndSize(req);
-            let { startDate, endDate } = getStartAndEndDate(req)
-            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            // Get part id filters
-            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
-            nxids = nxids.filter((s)=>isValidPartID(s))
-            let updates = await getPartsOnNewAsset(startDate, endDate, users, nxids)
-            updates = await Promise.all(updates.filter((u)=>{
-                return Asset.exists({asset_tag: u.asset_tag, by: u.by, date_created: u.by, prev: null})
-            }))
-            res.status(200).json({total: updates.length, pages: getNumPages(pageSize, updates.length),events: updates});
-        } catch (err) {
-            // Error
-            handleError(err)
-            res.status(500).send("API could not handle your request: " + err);
-        }
-    },
+
     getAllTechsHistory: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req);
             let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
 
             let hideOtherParts = req.query.hideOthers == "true" ? true : false
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -201,6 +177,9 @@ const analytics = {
 
             let dates = await getAllTechsDatesAsync(startDate, endDate, nxids, users)
             let totalEvents = dates.length
+
+            if(noDetails)
+                return res.status(200).json({total: totalEvents, pages: getNumPages(pageSize, totalEvents), events: dates})
 
             if(!skipPagination)
                 dates = dates.splice(pageSkip, pageSize)
@@ -222,29 +201,42 @@ const analytics = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
+
     getPartCreationAndDeletionHistory: async (req: Request, res: Response) => {
-        // Get data from query
-        let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
-        let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-        let skipPagination = req.query.skipPagination == 'true' ? true : false
-        nxids = nxids.filter((s)=>isValidPartID(s))
-        let { pageSize, pageSkip } = getPageNumAndSize(req);
-        let { startDate, endDate } = getStartAndEndDate(req);
-        let hideOtherParts = req.query.hideOthers == "true" ? true : false
-        // Get event dates
-        let dates = await getPartEventDatesAsync(startDate, endDate, nxids, users)
-        // Total number of events
-        let total = dates.length
-        // Splice to page skip and size
-        if(!skipPagination)
-            dates = dates.splice(pageSkip, pageSize)
-        // Get history from map
-        let history = await Promise.all(dates.map((d)=>getPartEventAsync(d, hideOtherParts ? nxids : undefined)))
-        // Return data
-        if(skipPagination)
-            res.status(200).json(history)
-        else
-            res.status(200).json({total, pages: getNumPages(pageSize, total), events: history})
+        try {
+            // Get data from query
+            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
+            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
+            nxids = nxids.filter((s)=>isValidPartID(s))
+            let { pageSize, pageSkip } = getPageNumAndSize(req);
+            let { startDate, endDate } = getStartAndEndDate(req);
+            let hideOtherParts = req.query.hideOthers == "true" ? true : false
+            // Get event dates
+            let dates = await getPartEventDatesAsync(startDate, endDate, nxids, users)
+            // Total number of events
+            let total = dates.length
+
+            if(noDetails)
+                return res.status(200).json({total: total, pages: getNumPages(pageSize, total), events: dates})
+
+            // Splice to page skip and size
+            if(!skipPagination)
+                dates = dates.splice(pageSkip, pageSize)
+            // Get history from map
+            let history = await Promise.all(dates.map((d)=>getPartEventAsync(d, hideOtherParts ? nxids : undefined)))
+            // Return data
+            if(skipPagination)
+                res.status(200).json(history)
+            else
+                res.status(200).json({total, pages: getNumPages(pageSize, total), events: history})
+        }
+        catch(err) {
+            // Error
+            handleError(err)
+            res.status(500).send("API could not handle your request: " + err);
+        }
     },
 
     getNewPallets: async (req: Request, res: Response) => {
@@ -252,6 +244,7 @@ const analytics = {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -265,6 +258,9 @@ const analytics = {
             }))
             // Store total
             let total = updates.length
+            if(noDetails)
+                return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: updates});
+
             // Splice to page
             if(!skipPagination)
                 updates = updates.splice(pageSkip, pageSize)
@@ -283,36 +279,12 @@ const analytics = {
         }
     },
 
-    getNewPalletsNoDetails: async (req: Request, res: Response) => {
-        try {
-            let { pageSize } = getPageNumAndSize(req);
-            let { startDate, endDate } = getStartAndEndDate(req)
-            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            // Get part id filters
-            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
-            nxids = nxids.filter((s)=>isValidPartID(s))
-            // Get all possible updates with new parts
-            let updates = await getPartsOnNewPallet(startDate, endDate, users, nxids)
-            // Filter - Check if pallet was new on part creation
-            updates = await Promise.all(updates.filter((u)=>{
-                return Pallet.exists({pallet_tag: u.pallet_tag, by: u.by, date_created: u.by, prev: null})
-            }))
-            // Store total
-            let total = updates.length
-            return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: updates});
-        } catch (err) {
-            // Error
-            handleError(err)
-            res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-
     getPalletUpdates: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -325,6 +297,9 @@ const analytics = {
             let palletUpdates = await getPalletUpdates(startDate, endDate, users, nxids, pallet_tags, asset_tags, box_tags)
 
             let totalUpdates = palletUpdates.length
+
+            if(noDetails)
+                return res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: palletUpdates});
 
             if(!skipPagination) {
                 palletUpdates = palletUpdates.splice(pageSkip, pageSize)
@@ -342,37 +317,13 @@ const analytics = {
             res.status(500).send("API could not handle your request: " + err);
         }
     },
-
-    getPalletUpdatesNoDetails: async (req: Request, res: Response) => {
-        try {
-            let { pageSize, pageSkip } = getPageNumAndSize(req);
-            let { startDate, endDate } = getStartAndEndDate(req)
-            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            // Get part id filters
-            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
-            nxids = nxids.filter((s)=>isValidPartID(s))
-            let box_tags = Array.isArray(req.query.box_tags) ? req.query.box_tags as string[] : [] as string[]
-            let asset_tags = Array.isArray(req.query.asset_tags) ? req.query.asset_tags as string[] : [] as string[]
-            let pallet_tags = Array.isArray(req.query.pallet_tags) ? req.query.pallet_tags as string[] : [] as string[]
-
-            let palletUpdates = await getPalletUpdates(startDate, endDate, users, nxids, pallet_tags, asset_tags, box_tags)
-
-            let totalUpdates = palletUpdates.length
-            
-            let returnValue = palletUpdates.splice(pageSkip, pageSize)
-            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: returnValue});
-        } catch (err) {
-            // Error
-            handleError(err)
-            res.status(500).send("API could not handle your request: " + err);
-        }
-    },
     
     getEbaySalesHistory: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             let hideOtherParts = req.query.hideOthers == "true" ? true : false
             // Get part id filters
@@ -380,6 +331,10 @@ const analytics = {
             nxids = nxids.filter((s)=>isValidPartID(s))
             let sales = await getEbaySalesDates(startDate, endDate, nxids, users)
             let totalUpdates = sales.length
+
+            if(noDetails)
+                return res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: sales});
+
             if(!skipPagination) {
                 sales = sales.splice(pageSkip, pageSize)
             }
@@ -401,6 +356,7 @@ const analytics = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
+            let noDetails = req.query.noDetails == 'true' ? true : false
             let skipPagination = req.query.skipPagination == 'true' ? true : false
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
@@ -413,6 +369,9 @@ const analytics = {
             let boxUpdates = await getBoxUpdates(startDate, endDate, users, nxids, box_tags)
 
             let totalUpdates = boxUpdates.length
+
+            if(noDetails)
+                return res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates), events: boxUpdates});
 
             if(!skipPagination) {
                 boxUpdates = boxUpdates.splice(pageSkip, pageSize)
@@ -433,34 +392,13 @@ const analytics = {
         }
     },
 
-    getBoxUpdatesNoDetails: async (req: Request, res: Response) => {
-        try {
-            let { pageSize, pageSkip } = getPageNumAndSize(req);
-            let { startDate, endDate } = getStartAndEndDate(req)
-            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            // Get part id filters
-            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
-            nxids = nxids.filter((s)=>isValidPartID(s))
-            let box_tags = Array.isArray(req.query.box_tags) ? req.query.box_tags as string[] : [] as string[]
-            box_tags = box_tags.filter((s)=>isValidBoxTag(s))
-            // Find added parts
-            let boxUpdates = await getBoxUpdates(startDate, endDate, users, nxids, box_tags)
-            // Get all the dates of asset related events
-            let totalUpdates = boxUpdates.length
-            boxUpdates = boxUpdates
-            .splice(pageSkip, pageSize)
-            res.status(200).json({total: totalUpdates, pages: getNumPages(pageSize, totalUpdates),events: boxUpdates});
-        } catch (err) {
-            // Error
-            handleError(err)
-            res.status(500).send("API could not handle your request: " + err);
-        }
-    },
     getNewBoxes: async (req: Request, res: Response) => {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req);
             let { startDate, endDate } = getStartAndEndDate(req)
             let skipPagination = req.query.skipPagination == 'true' ? true : false
+            let noDetails = req.query.noDetails == 'true' ? true : false
+
             let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
             // Get part id filters
             let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
@@ -472,6 +410,10 @@ const analytics = {
                 return Box.exists({box_tag: u.box_tag, by: u.by, date_created: u.by, prev: null})
             }))
             let total = updates.length
+
+            if(noDetails)
+                return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: updates});
+
             if(!skipPagination) {
                 updates = updates.splice(pageSkip, pageSize)
             }
@@ -482,28 +424,6 @@ const analytics = {
                 return res.status(200).json(returnValue);
             }
             return res.status(200).json({total: total, pages: getNumPages(pageSize, total),events: returnValue});
-        } catch (err) {
-            // Error
-            handleError(err)
-            res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-    getNewBoxesNoDetails: async (req: Request, res: Response) => {
-        try {
-            let { pageSize, pageSkip } = getPageNumAndSize(req);
-            let { startDate, endDate } = getStartAndEndDate(req)
-            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            // Get part id filters
-            let nxids = Array.isArray(req.query.nxids) ? req.query.nxids as string[] : [] as string[]
-            nxids = nxids.filter((s)=>isValidPartID(s))
-
-            let updates = await getPartsOnNewBox(startDate, endDate, users, nxids)
-            updates = await Promise.all(updates.filter((u)=>{
-                return Box.exists({box_tag: u.box_tag, by: u.by, date_created: u.by, prev: null})
-            }))
-            updates = updates.splice(pageSkip, pageSize)
-            // Return to client
-            return res.status(200).json({total: updates.length, pages: getNumPages(pageSize, updates.length),events: updates});
         } catch (err) {
             // Error
             handleError(err)

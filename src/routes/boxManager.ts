@@ -14,6 +14,19 @@ import { boxesAreSimilar, cleanseBox, getBoxSearchRegex, isValidBoxTag, returnBo
 
 
 const boxManager = {
+    countBoxes: async(req: Request, res: Response) =>{
+        try {
+            Box.find({next:null}).count().exec().then((count)=>{
+                res.status(200).json(count);
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     createBox: async (req: Request, res: Response) => {
         try {
             // Cleanse box 

@@ -1048,8 +1048,38 @@ export async function getEbayEvent(date: Date, nxids: string[] | undefined) {
             },
         ]
     ).exec()
+
+    let perUnitCosts = await PartRecord.aggregate(
+        [
+            {
+                $match: {
+                    nxid: nxids && nxids.length > 0 ? { $in: nxids } : { $ne: null },
+                    date_created: date,
+                    next: "sold",
+                    sale_price: {$ne: null}
+                },
+            },
+            {
+                $group: {
+                    _id: {
+                        nxid: "$nxid",
+                        sale_price: "$sale_price"
+                    },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    nxid: "$_id.nxid",
+                    sale_price: "$_id.sale_price",
+                },
+            },
+        ]
+    ).exec()
+
+
     // Get order from array
-    let order = partsQuery[0] as { date: Date, order: string, by: string, parts: any[], assets: AssetSchema[] }
+    let order = partsQuery[0] as { date: Date, order: string, by: string, parts: any[], assets: AssetSchema[], perUnitSalePrice: any[] }
     // Filter out asset parts
     let assetParts = order.parts.filter((v)=>v.asset_tag)
     order.parts = order.parts.filter((v)=>!v.asset_tag)
@@ -1076,6 +1106,7 @@ export async function getEbayEvent(date: Date, nxids: string[] | undefined) {
     }
     // Add them to ebay order
     order.assets = Array.from(assetMap.values())
+    order.perUnitSalePrice = perUnitCosts
     return order
 }
 

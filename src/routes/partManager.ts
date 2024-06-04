@@ -4,7 +4,7 @@ import Asset from '../model/asset.js'
 import User from "../model/user.js";
 import handleError from "../util/handleError.js";
 import callbackHandler from '../util/callbackHandlers.js'
-import { AssetSchema, BuildKitSchema, CartItem, CheckInQueuePart, InventoryEntry, NotificationTypes, PartRecordSchema, PartRequestSchema, UserSchema, PartSchema, BoxSchema, PartQuery } from "../interfaces.js";
+import { AssetSchema, CartItem, CheckInQueuePart, InventoryEntry, NotificationTypes, PartRecordSchema, UserSchema, PartSchema, BoxSchema, PartQuery } from "../interfaces.js";
 import mongoose, { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { Request, Response } from "express";
 import path from 'path';
@@ -12,7 +12,6 @@ import config from '../config.js'
 import fs from 'fs';
 import {
     cartItemsValidAsync,
-    kioskHasInInventoryAsync,
     sanitizeCartItems,
     cleansePart,
     getKiosksAsync,
@@ -23,15 +22,13 @@ import {
     returnPartSearch,
     sanitizeInventoryEntries,
     inventoryEntriesValidAsync,
-    combineAndRemoveDuplicateCartItems,
     checkPartThreshold,
     getPartCounts,
 } from '../methods/partMethods.js';
-import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, getAddedAndRemovedCartItems, findExistingSerial, getAddedAndRemoved, updatePartsAddSerialsDryRunAsync, isValidAssetTag, getAddedAndRemovedWithNewSerials } from '../methods/assetMethods.js';
+import { updatePartsAsync, updatePartsAddSerialsAsync, userHasInInventoryAsync, partRecordsToCartItems, updatePartsAddSerialsDryRunAsync, isValidAssetTag, getAddedAndRemovedWithNewSerials } from '../methods/assetMethods.js';
 import { getNumPages, getPageNumAndSize, getSearchSort, getStartAndEndDate, getTextSearchParams, objectToRegex } from '../methods/genericMethods.js';
 import { stringSanitize } from '../util/sanitize.js';
 import PartRequest from '../model/partRequest.js';
-import BuildKit from '../model/buildKit.js';
 import { pushPayloadToRole, sendNotificationToGroup, sendNotificationToUser } from '../methods/notificationMethods.js';
 import { isValidBoxTag } from '../methods/boxMethods.js';
 import Box from '../model/box.js';
@@ -39,6 +36,19 @@ import AuditRecord from '../model/auditRecord.js';
 const { UPLOAD_DIRECTORY } = config
 
 const partManager = {
+    countParts: async(req: Request, res: Response) =>{
+        try {
+            PartRecord.find({next:null}).count().exec().then((count)=>{
+                res.status(200).json(count);
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     // Create
     createPart: async (req: Request, res: Response) => {
         try {
@@ -98,6 +108,7 @@ const partManager = {
             // Destructure request
             let { pageSize, pageSkip } = getPageNumAndSize(req)
             let sort = getSearchSort(req)
+            let skipPagination = req.query.skipPagination == "true" ? true : false
             if(sort['location']!=undefined) 
                 sort = {rack_num: sort['location'], shelf_location: sort['location']}
             delete req.query.pageNum
@@ -107,6 +118,7 @@ const partManager = {
             delete req.query.advanced;
             delete req.query.sortString
             delete req.query.sortDir;
+            delete req.query.skipPagination
             // Typecast part
             let req_part = req.query
 
@@ -128,12 +140,26 @@ const partManager = {
             if(numParts>0) {
                 // Calc num pages
                 let numPages = getNumPages(pageSize, numParts)
-                // Search without regex
-                Part.find(regexObject)
-                    .sort(sort)
-                    .skip(pageSkip)
-                    .limit(pageSize)
-                    .exec(returnPartSearch(numPages, numParts, req, res))
+                if(skipPagination) {
+                    Part.find(regexObject)
+                        .sort(sort)
+                        .exec()
+                        .then(async (parts)=>{
+                            let loadedParts = await getPartCounts(req, parts)
+                            return res.status(200).json(loadedParts);
+                        })
+                        .catch((err)=>{
+                            return res.status(500).send("API could not handle your request: " + err);
+                        })
+                }
+                else {
+                    // Search without regex
+                    Part.find(regexObject)
+                        .sort(sort)
+                        .skip(pageSkip)
+                        .limit(pageSize)
+                        .exec(returnPartSearch(numPages, numParts, req, res))
+                }
             }
             // No regex has no results
             else {
@@ -144,11 +170,25 @@ const partManager = {
                 // Get num pages
                 let numPages = getNumPages(pageSize, numParts)
                 // Regex search
-                Part.find(search_part)
-                    .sort(sort)
-                    .skip(pageSkip)
-                    .limit(pageSize)
-                    .exec(returnPartSearch(numPages, numParts, req, res))
+                if(skipPagination) {
+                    Part.find(search_part)
+                        .sort(sort)
+                        .exec()
+                        .then(async (parts)=>{
+                            let loadedParts = await getPartCounts(req, parts)
+                            return res.status(200).json(loadedParts);
+                        })
+                        .catch((err)=>{
+                            return res.status(500).send("API could not handle your request: " + err);
+                        })
+                }
+                else {
+                    Part.find(search_part)
+                        .sort(sort)
+                        .skip(pageSkip)
+                        .limit(pageSize)
+                        .exec(returnPartSearch(numPages, numParts, req, res))
+                }
             }
         } catch (err) {
             // Database error
@@ -206,931 +246,6 @@ const partManager = {
             // Database error
             handleError(err)
             res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    createPartRequest: async (req: Request, res: Response) => {
-        try {
-            // Parse the cart items from the request
-            let parts = sanitizeCartItems(req.body.parts)
-            let notes = stringSanitize(req.body.notes, false)
-            let time = Date.now()
-            // Check if the cart items are valid
-            if(!(await cartItemsValidAsync(parts)))
-                return res.status(400).send("Error in requested parts")
-            console.log((Date.now()-time)/1000)
-            // Create the reqest in the db
-            PartRequest.create({
-                requested_by: req.user.user_id,
-                building: req.user.building,
-                date_created: Date.now(),
-                parts,
-                tech_notes: notes
-                
-            })
-            .then(()=>{
-                console.log((Date.now()-time)/1000)
-                return sendNotificationToGroup('fulfill_part_requests', NotificationTypes.Alert, "There is a new part request.", "/clerk/partRequests")
-            })
-            .then(() => {
-                console.log((Date.now()-time)/1000)
-                res.status(200).send("Success")
-            })
-            .catch((err)=>{
-                res.status(500).send("API could not handle your request: " + err);
-            })
-        }
-        catch (err) {
-            // Error
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    getActivePartRequests: async (req: Request, res: Response) => {
-        try {
-
-            let user_id = req.query.id
-
-            PartRequest.find({
-                date_fulfilled: null,
-                cancelled: {$ne: true},
-                requested_by: user_id ? user_id : {$ne: null}
-            }, (err: MongooseError, requests: PartRequestSchema)=>{
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                res.status(200).send(requests)
-            })
-        }
-        catch (err) {
-            // Error
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    getFulfilledPartRequests: async (req: Request, res: Response) => {
-        try {
-            let { pageSize, pageSkip } = getPageNumAndSize(req);
-            let { startDate, endDate } = getStartAndEndDate(req)
-            let users = Array.isArray(req.query.users) ? req.query.users as string[] : [] as string[]
-            PartRequest.aggregate([
-            {
-                $match: {
-                    date_fulfilled: { $lte: endDate, $gte: startDate },
-                    $or: [
-                        {requested_by: users && users.length > 0 ? { $in: users } : { $ne: null }},
-                        {fulfilled_by: users && users.length > 0 ? { $in: users } : { $ne: null }}
-                    ],
-                }
-            },
-            {
-                $sort: {
-                    "date_fulfilled": -1
-                }
-            }
-            ], (err: MongooseError, requests: PartRequestSchema[])=>{
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                res.status(200).send({total: requests.length, pages: getNumPages(pageSize, requests.length), events: requests.splice(pageSkip, pageSize)})
-            })
-        }
-        catch (err) {
-            // Error
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    cancelPartRequest: async (req: Request, res: Response) => {
-        try {
-            let { id } = req.body
-            if(id)
-                PartRequest.findOneAndUpdate(
-                    {
-                        _id: id,
-                        requested_by: req.user.user_id,
-                        date_fulfilled: null,
-                        cancelled: {$ne: true},
-                    }, 
-                    {
-                        cancelled: true,
-                        date_fulfilled: Date.now(),
-                        fulfilled_by: req.user.user_id
-                    }
-                )
-                .then(async (request)=>{
-                    if(!request)
-                        return res.status(400).send("Request not found")
-                    await pushPayloadToRole('fulfill_part_requests', {
-                        type: 'partRequestRemoved',
-                        id: request._id
-                    })
-                    await sendNotificationToGroup('fulfill_part_requests', NotificationTypes.Alert, "A part request has been cancelled.")
-                    if(request.build_kit_id)
-                        await BuildKit.findByIdAndUpdate(request?.build_kit_id, {
-                            requested_by: null,
-                            date_requested: null
-                        }, callbackHandler.callbackHandleError)
-                    res.status(200).send("Success")
-                })
-                .catch((err)=>{
-                    return res.status(500).send("API could not handle your request: " + err);
-                })
-            else
-                res.status(400).send("Part request not found.");
-        }
-        catch (err) {
-            // Error
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    processBuildKitRequest: async (req: Request, res: Response) => {
-        // Get the ID
-        let request_id = req.body.request_id as string
-        // Eval approved or not
-        let approved = eval(req.body.approved as string)
-        let notes = req.body.notes as string
-        // Check request
-        if(!request_id||(approved!==true&&approved!==false))
-            return res.status(400).send("Invalid request");
-        // Find part request by ID
-        let request = await PartRequest.findById(request_id)
-        // If not found
-        if(!request)
-            return res.status(400).send("Build kit request not found");
-        // If kit ID not present
-        if(!request?.build_kit_id)
-            return res.status(400).send("Part request does not contain build kit.");
-        
-        let current_date = Date.now();
-
-        if(approved) {
-            // Create options
-            let createOptions = {
-                owner: request?.requested_by,
-                location: "Tech Inventory",
-                building: req.user.building,
-                by: req.user.user_id,
-                next: null,
-                date_created: current_date,
-            }
-            // Filter for part records
-            let searchOptions = {
-                next: null,
-                kit_id: request?.build_kit_id!
-            }
-            // Get the records
-            let records = await PartRecord.find(searchOptions)
-            // Turn into cart items
-            let cartItems = partRecordsToCartItems(records)
-            // Find the build kit and update it
-            BuildKit.findByIdAndUpdate(request.build_kit_id, {
-                date_claimed: current_date,
-                claimed_parts: cartItems,
-                claimed_by: request?.requested_by
-            })
-            .then(()=>{
-                return updatePartsAsync(createOptions, searchOptions, cartItems, false)
-            })
-            .then(()=>{
-                return PartRequest.findByIdAndUpdate(request_id, {
-                    fulfilled_by: req.user.user_id,
-                    date_fulfilled: current_date,
-                    fulfilled_list: [],
-                    clerk_notes: notes
-                })
-            })
-            .then(async (request)=>{
-                await pushPayloadToRole('fulfill_part_requests', {
-                    type: 'partRequestRemoved',
-                    id: request!._id
-                })
-                return request
-            })
-            .then((request)=>{
-                return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been approved.", "/partRequests/fulfilled")
-            })
-            .then(()=>{
-                res.status(200).send("Success")
-            })
-            .then(()=>{
-                cartItems.filter((v, i, arr)=>i==arr.findIndex((j)=>j.nxid==v.nxid)).map((ci)=>{
-                    checkPartThreshold(ci.nxid, req.user.building)
-                })
-            })
-            .catch((err)=>{
-                return res.status(500).send("API could not handle your request: " + err);
-            })
-        }
-        else {
-            BuildKit.findByIdAndUpdate(request?.build_kit_id, {
-                requested_by: null,
-                date_requested: null,
-            })
-            .then(()=>{
-                return PartRequest.findByIdAndUpdate(request_id, {
-                    fulfilled_by: req.user.user_id,
-                    date_fulfilled: current_date,
-                    clerk_notes: notes,
-                    denied: true
-                })
-            })
-            .then(async (request)=>{
-                await pushPayloadToRole('fulfill_part_requests', {
-                    type: 'partRequestRemoved',
-                    id: request!._id
-                })
-                return request
-            })
-            .then((request)=>{
-                return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been denied.", "/partRequests/fulfilled")
-            })
-            .then(()=>{
-                res.status(200).send("Success")
-            })
-            .catch((err)=>{
-                return res.status(500).send("API could not handle your request: " + err);
-            })
-        }
-    },
-
-    fulfillPartRequest: async (req: Request, res: Response) => {
-        try {
-            let { request_id, list, notes, approved, boxes } = req.body
-            approved = eval(approved)
-            let current_date = Date.now();
-            list = list as {kiosk: string, parts: InventoryEntry[]}[]
-            // Create array for cart items
-            let cartItems = [] as CartItem[]
-            let serializedParts = [] as CartItem[]
-            // Get part request
-            let partRequest = await PartRequest.findById(request_id)
-            // Return error if it does not exist
-            if(!partRequest)
-                return res.status(400).send("Part request not found")
-            // Return error if cancelled
-            if(partRequest.cancelled)
-                return res.status(400).send("Part request cancelled")
-            // Return request if bad API route
-            if(partRequest.build_kit_id)
-                return res.status(400).send("Incorrect API route")
-            // If request is denied
-            if(approved != true) {
-                PartRequest.findByIdAndUpdate(request_id, {
-                    fulfilled_by: req.user.user_id,
-                    date_fulfilled: current_date,
-                    clerk_notes: notes,
-                    denied: true
-                })
-                .then(async (request)=>{
-                    await pushPayloadToRole('fulfill_part_requests', {
-                        type: 'partRequestRemoved',
-                        id: request!._id
-                    })
-                    return request
-                })
-                .then((request)=>{
-                    return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been denied.", "/partRequests/fulfilled")
-                })
-                .then(()=>{
-                    res.status(200).send("Success")
-                })
-                .catch((err)=>{
-                    res.status(500).send("API could not handle your request: " + err);
-                })
-                return
-            }
-            // Filter out duplicate kiosks
-            list = list.filter((v: any, i: any, arr: any)=>arr.findIndex((k: any)=>k.kiosk==v.kiosk)==i)
-            // Convert request parts to cart items
-            for(let entry of list) {
-                // Loop through request
-                for(let p of entry.parts) {
-                    // Push unserialized cart items to array
-                    cartItems.push({nxid: p.nxid, quantity: p.unserialized+p.serials.length})
-                    // Keep copy of serialized parts
-                    serializedParts = serializedParts.concat(p.serials.map((s: string)=>{
-                        return {nxid: p.nxid, serial: s}
-                    }))
-                }
-            }
-            // Combine and remove duplicates
-            cartItems = combineAndRemoveDuplicateCartItems(cartItems)
-            // Check for difference in parts list
-            let diff = getAddedAndRemovedCartItems(cartItems, partRequest!.parts)
-            // If there are differences or error in parsing, return error
-            if(diff.added.length!=0||diff.removed.length!=0||diff.error)
-                return res.status(400).send("Error in parts list.")
-            // Filter for box array
-            let boxArr = list
-                .filter((i: {kiosk: string, parts: InventoryEntry[]})=>i.kiosk=="Box")
-            // Get it as object
-            let boxKiosk = boxArr.length == 1 ? boxArr[0] : undefined
-            // Boxes will be ignored if boxKiosk is not present
-            if(boxKiosk) {
-                // Reset cart items var
-                cartItems = []
-                // Loop through all the boxes
-                for (let box of boxes) {
-                    // Push box parts as cart items
-                    cartItems = cartItems.concat(box.parts.map((v: any)=>{
-                        return {
-                            nxid: v.nxid,
-                            quantity: v.unserialized + v.serials.length
-                        }
-                    }))
-                }
-                // Combine and remove dupes
-                cartItems = combineAndRemoveDuplicateCartItems(cartItems)
-                // Map box kiosk parts
-                let boxKioskParts = boxKiosk.parts.map((v: any)=>{
-                    return {
-                        nxid: v.nxid,
-                        quantity: v.unserialized + v.serials.length
-                    }
-                })
-                // Check if boxes match kiosk
-                diff = getAddedAndRemovedCartItems(cartItems, boxKioskParts)
-                // If there are differences or error in parsing, return error
-                if(diff.added.length!=0||diff.removed.length!=0||diff.error)
-                    return res.status(400).send("Error in box list.")
-            }
-            // Check if submission matches part request ✅
-            list = list
-                .filter((i: {kiosk: string, parts: InventoryEntry[]}) => {
-                    return i.kiosk!="Rejected"&&i.kiosk!="Box"
-                })
-            // Update the box parts
-            let boxDryRun = await Promise.all(boxes.map(async (item: {box_tag: string, parts: InventoryEntry[]})=>{
-                // Get parts from kiosk
-                let searchOptions = {
-                    next: null,
-                    box_tag: item.box_tag,
-                    building: partRequest?.building
-                }
-                // Dry run update - check if any are skipped
-                let { updated, skipped } = await updatePartsAddSerialsDryRunAsync(searchOptions, item.parts)
-                // Update em ayyyyyy
-                return { box_tag: item.box_tag, updated, skipped }
-            }))
-            // Check all of the boxes
-            for(let b of boxDryRun) {
-                // If parts were skipped
-                if(b.skipped.length>0) {
-                    // Return an error message
-                    return res.status(400).send(`Error updating parts on box ${b.box_tag} (Dry run)`)
-                }
-            }
-            // Update the regular kiosk parts
-            let kioskDryRun = await Promise.all(list.map(async (item: {kiosk: string, parts: InventoryEntry[]})=>{
-                // Get parts from kiosk
-                let searchOptions = {
-                    next: null,
-                    location: item.kiosk,
-                    building: partRequest?.building
-                }
-                // Dry run update - check if any are skipped
-                let { updated, skipped } = await updatePartsAddSerialsDryRunAsync(searchOptions, item.parts)
-                return { kiosk: item.kiosk, updated, skipped }
-            }))
-            // Check all of the boxes
-            for(let k of kioskDryRun) {
-                // If parts were skipped
-                if(k.skipped.length>0) {
-                    // Return an error message
-                    return res.status(400).send(`Error updating parts on kiosk ${k.kiosk} (Dry run)`)
-                }
-            }
-            // Generate the create options
-            let createOptions = {
-                owner: partRequest.requested_by,
-                location: "Tech Inventory",
-                building: partRequest.building,
-                by: req.user.user_id,
-                next: null,
-                date_created: current_date,
-            }
-            // Update the box parts
-            let boxUpdates = await Promise.all(boxes.map(async (item: {box_tag: string, parts: InventoryEntry[]})=>{
-                // Get parts from kiosk
-                let searchOptions = {
-                    next: null,
-                    box_tag: item.box_tag,
-                    building: partRequest?.building
-                }
-                // Update em ayyyyyy
-                let { updated } = await updatePartsAddSerialsAsync(createOptions, searchOptions, item.parts)
-                return { box_tag: item.box_tag, parts: updated }
-            }))
-            // Update the regular kiosk parts
-            let kioskUpdates = await Promise.all(list.map(async (item: {kiosk: string, parts: InventoryEntry[]})=>{
-                // Get parts from kiosk
-                let searchOptions = {
-                    next: null,
-                    location: item.kiosk,
-                    building: partRequest?.building
-                }
-                // Update em ayyyyyy
-                let { updated } = await updatePartsAddSerialsAsync(createOptions, searchOptions, item.parts)
-                return { kiosk: item.kiosk, parts: updated }
-            }))
-            // Update the request and send notifications
-            PartRequest.findByIdAndUpdate(request_id, {
-                fulfilled_by: req.user.user_id,
-                date_fulfilled: current_date,
-                fulfilled_list: kioskUpdates,
-                boxes: boxUpdates,
-                clerk_notes: notes
-            })
-            .then(async (request)=>{
-                await pushPayloadToRole('fulfill_part_requests', {
-                    type: 'partRequestRemoved',
-                    id: request!._id
-                })
-                return request
-            })
-            .then((request)=>{
-                return sendNotificationToUser(request!.requested_by, NotificationTypes.Alert, "Your part request has been approved.", "/partRequests/fulfilled")
-            })
-            .then(()=>{
-                res.status(200).send("Success")
-            })
-            .then(()=>{
-                partRequest?.parts.map((ci)=>{
-                    checkPartThreshold(ci.nxid, req.user.building)
-                })
-            })
-            .catch((err)=>{
-                res.status(500).send("API could not handle your request: " + err);
-            })
-        }
-        catch (err) {
-            // Error
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-//     createBuildTemplate: async (req: Request, res: Response) => {
-// 
-//     },
-// 
-
-    getBuildKitByID: async (req: Request, res: Response) => {
-        try {
-            let {id} = req.query
-            BuildKit.findById(id, async (err: CallbackError, kit: BuildKitSchema) => {
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                let records = await PartRecord.find({kit_id: id, next: null})
-                let items = partRecordsToCartItems(records)
-                let returnKit = JSON.parse(JSON.stringify(kit))
-                returnKit.parts = items
-                res.status(200).json(returnKit)
-            })
-        }
-        catch (err) {
-            // Error
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    createBuildKit: async (req: Request, res: Response) => {
-        try{
-            let { kit_name, parts, notes, kiosk } = req.body
-            kit_name = stringSanitize(kit_name, true)
-            notes = stringSanitize(notes, false)
-            if(kit_name=="")
-                return res.status(400).send(`Invalid kit name`)
-            let existing_kit = await BuildKit.findOne({kit_name, date_claimed: null})
-            if(existing_kit)
-                return res.status(400).send(`Kit name already exists.`)
-            let kioskUser = await User.findById(kiosk)
-            if(!kioskUser||kioskUser.building!=req.user.building)
-                return res.status(400).send(`Invalid kiosk selection.`)
-            let current_date = Date.now();
-            let list = parts as {kiosk: string, parts: InventoryEntry[]}[]
-            // Create array for cart items
-            let serializedParts = [] as CartItem[]
-            // Use map to remove any dupes
-            let listMap = new Map<string, InventoryEntry[]>()
-            for(let entry of list) {
-                listMap.set(entry.kiosk, entry.parts)
-            }
-            list = [] as {kiosk: string, parts: InventoryEntry[]}[]
-            listMap.forEach((v, k)=>{
-                list.push({kiosk: k, parts: v})
-            })
-            // Convert request parts to cart items
-            for(let entry of list) {
-                for(let p of entry.parts as any) {
-                    serializedParts = serializedParts.concat(p.newSerials!.map((s: string)=>{
-                        return {nxid: p.nxid, serial: s} as CartItem
-                    }))
-                }
-            }
-            // Check if any of the serial numbers already exist
-            let serial = await findExistingSerial(serializedParts)
-            if(serial!="")
-                return res.status(400).send(`Serial ${serial} already exists.`)
-            // Check if submission matches part request ✅
-            list = list.filter((i: {kiosk: string, parts: InventoryEntry[]})=>i.kiosk!="Unsorted")
-            // Go through every entry and make sure kiosk has inv
-            let kioskHasInventory = await Promise.all(list.map(async (item: {kiosk: string, parts: InventoryEntry[]})=>{
-                let temp = item.parts.map((p)=>{
-                    return { nxid: p.nxid, quantity: p.unserialized } as CartItem
-                })
-                let has = await kioskHasInInventoryAsync(item.kiosk, req.user.building, temp)
-                return { has, item}
-            }))
-            // Check if any returned false
-            for(let r of kioskHasInventory) {
-                if(!r.has)
-                    return res.status(400).send("Kiosk does not have enough parts.")
-            }
-
-            BuildKit.create({
-                kit_name,
-                kiosk,
-                building: req.user.building,
-                date_created: current_date,
-                created_by: req.user.user_id,
-                notes
-            }, async (err: CallbackError, kit: BuildKitSchema) => {
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                let createOptions = {
-                    //owner: partRequest.requested_by,
-                    kit_id: kit._id,
-                    location: "Build Kit",
-                    building: req.user.building,
-                    by: req.user.user_id,
-                    next: null,
-                    date_created: current_date,
-                    kiosk,
-                }
-                let nxids = [] as string[]
-                // Update the parts
-                await Promise.all(list.map((item: {kiosk: string, parts: InventoryEntry[]})=>{
-                    // Get parts from kiosk
-                    let searchOptions = {
-                        next: null,
-                        location: item.kiosk,
-                        building: req.user.building
-                    }
-                    nxids = nxids.concat(item.parts.map((ie)=>{
-                        return ie.nxid!
-                    }))
-                    // Update em ayyyyyy
-                    return updatePartsAddSerialsAsync(createOptions, searchOptions, item.parts)
-                }))
-                res.status(200).send("Success.")
-                
-                nxids.filter((v,i,arr)=>i==arr.indexOf(v)).map((nxid)=>{
-                    checkPartThreshold(nxid, req.user.building)
-                })
-            })
-
-        }
-        catch (err) {
-            // Error
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    getBuildKits: async (req: Request, res: Response) => {
-        try {
-            function returnKitSearch(numPages: number, numKits: number, _: Request, res: Response) {
-                return async (err: CallbackError, results: BuildKitSchema[]) => {
-                    if(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    let kitsWithParts = await Promise.all(results.map(async (k)=>{
-                        let returnKit = JSON.parse(JSON.stringify(k))
-                        let parts = await loadPartsOnBuildKit(returnKit._id)
-                        returnKit.parts = parts
-                        return returnKit
-                    }))
-                    res.status(200).json({ pages: numPages, total: numKits, items: kitsWithParts});
-                }
-            }
-            function getBuildKitRegex(searchString: string) {
-                let keywords = [searchString]
-                keywords = keywords.concat(searchString.split(" ")).filter((s)=>s!='')
-                let searchOptions = [] as any
-                let relevanceConditions = [] as any
-                // Add regex of keywords to all search options
-                keywords.map((key) => {
-                    searchOptions.push({ "kit_name": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$nxid", regex: new RegExp(key, "") } }, 5, -1] })
-                    searchOptions.push({ "notes": { $regex: key, $options: "i" } })
-                    relevanceConditions.push({ $cond: [{ $regexMatch: { input: "$name", regex: new RegExp(key, "i") } }, 3, 0] })
-                })
-                return { regexKeywords: searchOptions, relevanceScore: relevanceConditions }
-            }
-            async function loadPartsOnBuildKit(kit_id: string) {
-                let records = await PartRecord.find({kit_id})
-                return partRecordsToCartItems(records)
-            }
-            // Get search string and page info
-            let { pageSize, pageSkip, searchString } = getTextSearchParams(req)
-            // If search string is empty
-            if(searchString == "") {
-                // Count all parts
-                let numKits = await BuildKit.count({
-                        date_claimed: null,
-                        deleted: false
-                    })
-                // Calc number of pages
-                let numPages = getNumPages(pageSize, numKits)
-                // Get all parts
-                BuildKit.find({
-                        date_claimed: null,
-                        deleted: false
-                    })
-                    // Sort by NXID
-                    .sort({ date_created: -1 })
-                    // Skip - gets requested page number
-                    .skip(pageSkip)
-                    // Limit - returns only enough elements to fill page
-                    .limit(pageSize)
-                    // Return search to user
-                    .exec(returnKitSearch(numPages, numKits, req, res))
-                return
-            }
-            // Get regex for aggregate search
-            let { regexKeywords, relevanceScore } = getBuildKitRegex(searchString)
-            // Use keywords to build search options
-            let aggregateQuery = [
-                {
-                    $match: {
-                        $or: regexKeywords,
-                        date_claimed: null,
-                        deleted: false
-                    }
-                },
-                {
-                    $addFields: {
-                        relevance: {
-                            $sum: relevanceScore
-                        }
-                    }
-                },
-                {
-                    $sort: { relevance: -1 }
-                },
-                {
-                    $project: { relevance: 0 }
-                }
-            ] as any
-            // Aggregate count
-            let countQuery = await BuildKit.aggregate(aggregateQuery).count("numParts")
-            // This is stupid but it works
-            let numKits = countQuery.length > 0&&countQuery[0].numParts ? countQuery[0].numParts : 0
-            // Ternary that hurts my eyes
-            let numPages = getNumPages(pageSize, numKits)
-            // Search
-            BuildKit.aggregate(aggregateQuery)
-                .skip(pageSkip)
-                .limit(pageSize)
-                .exec(returnKitSearch(numPages, numKits, req, res))
-
-        } catch (err) {
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    requestBuildKit: async (req: Request, res: Response) => {
-        try {
-            // Get kit id
-            let kit_id = stringSanitize(req.body.kit_id, true)
-            // Check if empty
-            if(!kit_id)
-                return res.status(400).send(`Kit id not present in request.`)
-            // Find kit by id
-            let kit = await BuildKit.findById(kit_id)
-            // Check if kit was found
-            if(!kit)
-                return res.status(400).send(`Kit not found`)
-            // Check if kit was claimed or deleted
-            if(kit.date_claimed||kit.deleted)
-                return res.status(400).send(`Kit has already been claimed or deleted`)
-            // Check if kit has already been requested
-            let existingRequest = await PartRequest.findOne({build_kit_id: kit_id, denied: {$ne: true}, cancelled: {$ne: true}})
-            if(existingRequest)
-                return res.status(400).send(`An active request already exists for this kit.`)
-            let current_date = Date.now()
-            BuildKit.findByIdAndUpdate(kit_id, {
-                requested_by: req.user.user_id,
-                date_requested: current_date
-            }, (err: CallbackError, _: BuildKitSchema) => {
-                // Error
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                // Create the part request
-                PartRequest.create({
-                    build_kit_id: kit_id,
-                    requested_by: req.user.user_id,
-                    building: req.user.building,
-                    parts: [],
-                    tech_notes: "",
-                    date_created: current_date
-                }, (err: CallbackError, _: PartRequestSchema) => {
-                    // Error
-                    if(err)
-                        return res.status(500).send("API could not handle your request: " + err);
-                    // Send success
-                    res.status(200).send("Kit requested.")
-                })
-            })
-        }
-        catch (err) {
-            // Error
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    claimBuildKit: async (req: Request, res: Response) => {
-        try {
-            let owner = ""
-            let user = await User.findById(req.user.user_id)
-            if(user&&user.roles?.includes("is_kiosk")) {
-                user = await User.findById(req.body.user_id)
-                if(!req.body.user_id)
-                    return res.status(400).send(`User id not present in request.`)
-                if(!user)
-                    return res.status(400).send(`User does not exist.`)
-                owner = user._id
-            }
-            else {
-                owner = req.user.user_id as string
-            }
-            // Get kit id
-            let kit_id = stringSanitize(req.body.kit_id, true)
-            // Check if empty
-            if(!kit_id)
-                return res.status(400).send(`Kit id not present in request.`)
-            // Find kit by id
-            let kit = await BuildKit.findById(kit_id)
-            // Check if kit was found
-            if(!kit)
-                return res.status(400).send(`Kit not found`)
-            if(kit.date_claimed||kit.deleted)
-                return res.status(400).send(`Kit cannot be claimed`)
-            // Get current date for updates
-            let current_date = Date.now()
-            // Create options
-            let createOptions = {
-                owner,
-                location: "Tech Inventory",
-                building: req.user.building,
-                by: req.user.user_id,
-                next: null,
-                date_created: current_date,
-            }
-            // Filter for part records
-            let searchOptions = {
-                next: null,
-                kit_id
-            }
-            // Get the records
-            let records = await PartRecord.find(searchOptions)
-            // Turn into cart items
-            let cartItems = partRecordsToCartItems(records)
-            // Find the build kit and update it
-            BuildKit.findByIdAndUpdate(kit_id, {
-                date_claimed: current_date,
-                claimed_parts: cartItems,
-                claimed_by: owner
-            }, async (err: CallbackError, _: BuildKitSchema) => {
-                // Error
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                // Update the parts
-                await updatePartsAsync(createOptions, searchOptions, cartItems, false)
-                // Send success
-                res.status(200).send("Kit claimed.")
-                cartItems.filter((v,i,arr)=>i==arr.findIndex((j)=>j.nxid==v.nxid)).map((ci)=>{
-                    checkPartThreshold(ci.nxid, req.user.building)
-                })
-            })
-        } catch (err) {
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
-        }
-    },
-
-    deleteBuildKit: async (req: Request, res: Response) => {
-        try {
-            // Get kit id
-            let kit_id = stringSanitize(req.body.kit_id, true)
-            let list = req.body.parts as {kiosk: string, parts: CartItem[]}[]
-            // Check if empty
-            if(!kit_id)
-                return res.status(400).send(`Kit id not present in request.`)
-            // Find kit by id
-            let kit = await BuildKit.findById(kit_id)
-            // Check if kit was found
-            if(!kit)
-                return res.status(400).send(`Kit not found`)
-            // 
-            if(kit.date_claimed||kit.deleted)
-                return res.status(400).send(`Kit cannot be deleted`)
-            let current_date = Date.now();
-            // save a copy for later
-            let kiosks = await getAllKioskNames()
-            // Cart items to check against the kit later
-            let cartItems = [] as CartItem[]
-            // Use these for quick dupe checks
-            let kioskMap = new Map<string, any>()
-            let serialMap = new Map<string, any>()
-            // Loop through the whole list of kiosks
-            for(let entry of list) {
-                // Check if kiosk is valid
-                if(!kiosks.includes(entry.kiosk))
-                    return res.status(400).send(`Error in parts list.`)
-                // Check if kiosk has already been used in array
-                if(kioskMap.has(entry.kiosk))
-                    return res.status(400).send(`Duplicate kiosk in request`)
-                // Loop through all parts
-                for(let p of entry.parts) {
-                    // If no serial, skip
-                    if(!p.serial)
-                        continue
-                    // If serial already has been used for part - return error
-                    if(serialMap.has(p.nxid+p.serial))
-                        return res.status(400).send(`Duplicate serial ${p.nxid}: ${p.serial} in request`)
-                    // Add serial to hash map
-                    serialMap.set(p.nxid+p.serial, {})
-                }
-                // Add kiosk to hash map
-                kioskMap.set(entry.kiosk, {})
-                // Add the list to the cart items without kiosk
-                cartItems = cartItems.concat(entry.parts)
-            }
-            // Combine and remove duplicates (there should be no duplicates, just combines)
-            cartItems = combineAndRemoveDuplicateCartItems(cartItems)
-            // Get the part records associated with the kit
-            let kit_records = await PartRecord.find({kit_id, next: null})
-            // Check if lists match
-            let { added, removed, error } = getAddedAndRemoved(cartItems, kit_records)
-            if(added.length>0 || removed.length>0 || error)
-                return res.status(400).send(`Error in parts list.`)
-            // Update the parts
-            await Promise.all(list.map((item: {kiosk: string, parts: CartItem[]})=>{
-                let createOptions = {
-                    next: null,
-                    location: item.kiosk,
-                    building: req.user.building,
-                    by: req.user.user_id,
-                    date_created: current_date,
-                }
-                // Get parts from kiosk
-                let searchOptions = {
-                    next: null,
-                    kit_id
-                }
-                // Update em ayyyyyy
-                return updatePartsAsync(createOptions, searchOptions, item.parts, false)
-            }))
-            // Update the request
-            BuildKit.findByIdAndUpdate(kit_id, {
-                deleted: true,
-                deleted_by: req.user.user_id,
-                deleted_parts: list,
-                date_deleted: current_date,
-            }, async (err: MongooseError, _: BuildKitSchema) =>{
-                if(err)
-                    return res.status(500).send("API could not handle your request: " + err);
-                let partRequests = await PartRequest.find({build_kit_id: kit_id})
-                for(let pr of partRequests) {
-                    PartRequest.findByIdAndUpdate(pr._id!, {
-                        fulfilled_by: req.user.user_id,
-                        date_fulfilled: current_date,
-                        clerk_notes: "Build kit was deleted.",
-                        denied: true
-                    })
-                    .then(()=>{
-                        return pushPayloadToRole('fulfill_part_requests', {
-                            type: 'partRequestRemoved',
-                            id: pr._id
-                        })
-                    })
-                    .catch(()=>{
-                        handleError(err)
-                    })
-                }
-                res.status(200).send("Success")
-            })
-        } catch (err) {
-            handleError(err)
-            return res.status(500).send("API could not handle your request: " + err);
         }
     },
 
@@ -1467,6 +582,10 @@ const partManager = {
                     let partToUpdate = await PartRecord.findOne(searchOptions)
                     approvedOptions.prev = partToUpdate!._id
                     deniedOptions.prev = partToUpdate!._id
+                    if(partToUpdate!.buy_price) {
+                        approvedOptions.buy_price = partToUpdate!.buy_price
+                        deniedOptions.buy_price = partToUpdate!.buy_price
+                    }
                     // Create new iteration
                     // If not approved
                     if(p.approved==true)
@@ -1480,11 +599,15 @@ const partManager = {
                 // Update all approved records
                 for (let i = 0; i < p.approvedCount!; i++) {
                     approvedOptions.prev = partsToUpdate[i]._id
+                    if(partsToUpdate[i].buy_price)
+                        approvedOptions.buy_price = partsToUpdate[i].buy_price
                     PartRecord.create(approvedOptions, callbackHandler.updateRecord)
                 }
                 // Update unapproved records
                 for (let i = p.approvedCount!; i < p.quantity!; i++) {
                     deniedOptions.prev = partsToUpdate[i]._id
+                    if(partsToUpdate[i].buy_price)
+                        approvedOptions.buy_price = partsToUpdate[i].buy_price
                     PartRecord.create(deniedOptions, callbackHandler.updateRecord)
                 }
             }))
@@ -1501,6 +624,9 @@ const partManager = {
         try {
             // Get search string and page info
             let { pageSize, pageSkip, searchString, sort } = getTextSearchParams(req)
+            
+            let skipPagination = req.query.skipPagination == "true" ? true : false
+
             if(sort['location']!=undefined) 
                 sort = {rack_num: sort['location'], shelf_location: sort['location']}
             if(searchString == ""&&sort['quantity']!=undefined) {
@@ -1529,8 +655,14 @@ const partManager = {
                             }
                             return 0
                         })
-                        .splice(pageSkip, pageSize)
-                        return res.status(200).json({ pages: numPages, total: numParts, items: loadedParts});
+                        if(skipPagination) {
+                            return res.status(200).json(loadedParts);
+                        }
+                        else {
+                            loadedParts = loadedParts
+                            .splice(pageSkip, pageSize)
+                            return res.status(200).json({ pages: numPages, total: numParts, items: loadedParts});
+                        }
                     })
                     .catch((err)=>{
                         return res.status(500).send("API could not handle your request: " + err);
@@ -1545,16 +677,34 @@ const partManager = {
                 let numPages = getNumPages(pageSize, numParts)
                 if(JSON.stringify(sort)==JSON.stringify({ relevance: -1 })) 
                     sort = {nxid:1}
-                // Get all parts
-                Part.find({})
-                    // Sort by NXID
-                    .sort(sort)
-                    // Skip - gets requested page number
-                    .skip(pageSkip)
-                    // Limit - returns only enough elements to fill page
-                    .limit(pageSize)
-                    // Return search to user
-                    .exec(returnPartSearch(numPages, numParts, req, res))
+                if(skipPagination) {
+                    // Get all parts
+                    Part.find({})
+                        // Sort by NXID
+                        .sort(sort)
+                        // Return search to user
+                        .exec()
+                        .then(async (parts)=>{
+                            let loadedParts = await getPartCounts(req, parts)
+                            return res.status(200).json(loadedParts);
+                        })
+                        .catch((err)=>{
+                            return res.status(500).send("API could not handle your request: " + err);
+                        })
+                }
+                else {
+
+                    // Get all parts
+                    Part.find({})
+                        // Sort by NXID
+                        .sort(sort)
+                        // Skip - gets requested page number
+                        .skip(pageSkip)
+                        // Limit - returns only enough elements to fill page
+                        .limit(pageSize)
+                        // Return search to user
+                        .exec(returnPartSearch(numPages, numParts, req, res))
+                }
                 return
             }
             // Get regex for aggregate search
@@ -1604,8 +754,14 @@ const partManager = {
                             }
                             return 0
                         })
-                        .splice(pageSkip, pageSize)
-                        return res.status(200).json({ pages: numPages, total: numParts, items: loadedParts});
+                        if(skipPagination) {
+                            return res.status(200).json(loadedParts);
+                        }
+                        else {
+                            loadedParts = loadedParts
+                            .splice(pageSkip, pageSize)
+                            return res.status(200).json({ pages: numPages, total: numParts, items: loadedParts});
+                        }
                     })
                     .catch((err)=>{
                         return res.status(500).send("API could not handle your request: " + err);
@@ -1616,11 +772,27 @@ const partManager = {
                 {
                     $sort: sort
                 })
-            // Search
-            Part.aggregate(aggregateQuery)
-                .skip(pageSkip)
-                .limit(pageSize)
-                .exec(returnPartSearch(numPages, numParts, req, res))
+
+            if(skipPagination) {
+                // Get all parts
+                Part.aggregate(aggregateQuery)
+                    // Return search to user
+                    .exec()
+                    .then(async (parts)=>{
+                        let loadedParts = await getPartCounts(req, parts)
+                        return res.status(200).json(loadedParts);
+                    })
+                    .catch((err)=>{
+                        return res.status(500).send("API could not handle your request: " + err);
+                    })
+            }
+            else {
+                // Search
+                Part.aggregate(aggregateQuery)
+                    .skip(pageSkip)
+                    .limit(pageSize)
+                    .exec(returnPartSearch(numPages, numParts, req, res))
+            }
             //}
         } catch (err) {
             handleError(err)
@@ -2112,8 +1284,15 @@ const partManager = {
             let parts = req.body.parts as InventoryEntry[]
             parts = sanitizeInventoryEntries(parts)
 
+            let perUnitPrice = req.body.perUnitPrice
+            let priceMap = new Map<string, number>()
+            for (let p of perUnitPrice) {
+                if(p.nxid&&p.cost)
+                    priceMap.set(p.nxid, p.cost)
+            }
+
             let assets = req.body.assets as AssetSchema[]
-            let assetPartListMatches = await Promise.all(assets.map((asset)=>{
+            let assetPartListMatches = await Promise.all(assets.map(async (asset)=>{
                 return PartRecord.find({next: null, asset_tag: asset.asset_tag}).exec()
                     .then(async (partRecords)=>{
                         let {added, removed} = getAddedAndRemovedWithNewSerials(asset.parts, partRecords)
@@ -2165,8 +1344,8 @@ const partManager = {
                     partsToCheck.push({nxid: p.nxid!, quantity: p.unserialized})
             })
             // Check if user has inventory 
-            if(!(await userHasInInventoryAsync(req.user.user_id, partsToCheck)))
-                return res.status(400).send("User does not have parts in inventory");
+            // if(!(await userHasInInventoryAsync(req.user.user_id, partsToCheck)))
+            //     return res.status(400).send("User does not have parts in inventory");
             // Check if location is valid
             let to = {} as PartRecordSchema
             to.owner = "sold";
@@ -2205,7 +1384,7 @@ const partManager = {
                 } 
                 let newTo = JSON.parse(JSON.stringify(to))
                 newTo.asset_tag = asset.asset_tag
-                await updatePartsAddSerialsAsync(newTo, searchOptions, Array.from(partMap.values()))
+                await updatePartsAddSerialsAsync(newTo, searchOptions, Array.from(partMap.values()), priceMap)
                 await Asset.findOne({asset_tag: asset.asset_tag, next: null}).exec()
                     .then(async (ass1)=>{
                         let ass = JSON.parse(JSON.stringify(ass1))
@@ -2227,7 +1406,7 @@ const partManager = {
                         handleError(err)
                     })
             }))
-            await updatePartsAddSerialsAsync(to, searchOptions, parts)
+            await updatePartsAddSerialsAsync(to, searchOptions, parts, priceMap)
             // Success !!!
             return res.status(200).send("Success");
         } catch(err) {
@@ -2362,6 +1541,7 @@ const partManager = {
         try {
             let { pageSize, pageSkip } = getPageNumAndSize(req)
             let { startDate, endDate } = getStartAndEndDate(req)
+            let skipPagination = req.query.skipPagination == 'true' ? true : false
             let nxids = req.query.nxids ? req.query.nxids as string[] : []
             let users = req.query.users ? req.query.users as string[] : []
             nxids = nxids.filter((v)=>isValidPartID(v))
@@ -2392,6 +1572,8 @@ const partManager = {
                 let total = records.length
                 // Get number of pages
                 let pages = getNumPages(pageSize, total)
+                if(skipPagination)
+                    return res.status(200).json(records)
                 // Splice records to current page
                 let events = records.splice(pageSkip, pageSize)
                 // Return the search
@@ -2472,9 +1654,9 @@ const partManager = {
                 // Do something...
                 return PartRequest.find({
                     $or: [
-                        {"parts.nxid": "PNX0000001"},
-                        {"fulfilled_list.parts.nxid": "PNX0000001"},
-                        {"boxes.parts.nxid": "PNX0000001"},
+                        {"parts.nxid": deleted},
+                        {"fulfilled_list.parts.nxid": deleted},
+                        {"boxes.parts.nxid": deleted},
                     ]
                 }).exec()
             })
@@ -2522,29 +1704,6 @@ const partManager = {
             return res.status(500).send("API could not handle your request: " + err);
         }
     },
-    // makePartSerialized: async (req: Request, res: Response) => {
-    //     try{
-    //         let {nxid} = req.query
-    //         Part.findOne({nxid}).exec()
-    //         .then((part)=>{
-    //             if(part){
-    //                 part.serialized = true
-    //                 return Part.findOneAndUpdate({nxid}, part).exec()
-    //             }
-    //             return
-    //         })
-    //         .then(()=>{
-    //             res.status(200).send("Success")
-    //         })
-    //         .catch((err)=>{
-    //             return res.status(500).send("API could not handle your request: " + err);
-    //         })
-
-    //     } catch(err) {
-    //         handleError(err)
-    //         return res.status(500).send("API could not handle your request: " + err);
-    //     }
-    // }
 };
 
 export default partManager;

@@ -36,7 +36,10 @@ const partRecord = new mongoose.Schema({
     date_created: { type: Date, default: new Date() },
     date_replaced: { type: Date, default: null },
     // This will greatly optimize analytics requests
-    next_owner: { type: String }
+    next_owner: { type: String },
+    buy_price: { type: Number },
+    sale_price: { type: Number },
+    order_id: { type: String }
 });
 // Add index here
 export default mongoose.model<PartRecordSchema>("partRecord", partRecord);

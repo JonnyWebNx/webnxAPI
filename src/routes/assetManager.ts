@@ -23,6 +23,19 @@ import { getNumPages, getPageNumAndSize, getSearchSort, getTextSearchParams } fr
 import { cartItemsValidAsync, combineAndRemoveDuplicateCartItems, sanitizeCartItems } from "../methods/partMethods.js";
 
 const assetManager = {
+    countAssets: async(req: Request, res: Response) =>{
+        try {
+            Asset.find({next:{$in: [null, 'sold']}}).count().exec().then((count)=>{
+                res.status(200).json(count);
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     addUntrackedAsset: async (req: Request, res: Response) => {
         try {
             // Get asset from request
@@ -514,7 +527,7 @@ const assetManager = {
                 return res.status(400).send("Invalid request");
             // If NXID
             if (isValidAssetTag(id)) {
-                Asset.findOne({asset_tag: id, next: null}, returnAssetHistory(pageNum, pageSize, res))
+                Asset.findOne({asset_tag: id, next: {$in: [null, 'sold']}}, returnAssetHistory(pageNum, pageSize, res))
             }
             // If mongo ID
             else {

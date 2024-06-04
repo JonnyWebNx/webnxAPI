@@ -15,7 +15,19 @@ import Box from "../model/box.js";
 
 
 const palletManager = {
-
+    countPallets: async(req: Request, res: Response) =>{
+        try {
+            Pallet.find({next:null}).count().exec().then((count)=>{
+                res.status(200).json(count);
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     createPallet: async (req: Request, res: Response) => {
         try {
             // Cleanse pallet
