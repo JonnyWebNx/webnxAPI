@@ -83,6 +83,7 @@ export interface AssetSchema {
     by?: string | Types.ObjectId,
     sid?: number,
     notes?: string,
+    ebay?: string,
 
     units?: number,
     num_psu?: number,
@@ -122,6 +123,9 @@ export interface PartRecordSchema {
     by?: string | Types.ObjectId,
     date_created?: string | number | Date,
     date_replaced?: string | number | Date,
+    buy_price?: number,
+    sale_price?: number,
+    order_id?: string
 }
 
 // User state interface
@@ -257,6 +261,23 @@ export interface PartRequestSchema {
     fullfilled_by?: string,
     cancelled?: boolean
     build_kit_id?: string,
+}
+
+export interface PartOrderSchema {
+    _id?: Types.ObjectId,
+    building: number,
+    per_unit_costs: {nxid: string, cost: number}[],
+    // Order info
+    ordered_parts: CartItem[],
+    created_by: string,
+    create_notes: string,
+    date_created: Date,
+    cancelled: boolean,
+    // Received info
+    received_by: string,
+    received_notes: string,
+    date_received: Date,
+    received_parts: CartItem[],
 }
 
 export interface BuildKitSchema {

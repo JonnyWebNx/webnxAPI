@@ -44,6 +44,35 @@ const userManager = {
         }
     },
 
+    getNumberOfUsersPerRole: async (_req: Request, res: Response) => {
+        try {
+            User.distinct("roles").exec()
+            .then((roles)=>{
+                return Promise.all(roles.map(async(role)=>{
+                    let count = await User.count().where({roles: role})
+                    return { role, count }
+                }))
+            })
+            .then((roleCount)=>{
+                let returnObj = {} as any
+                for(let rc of roleCount) {
+                    returnObj[rc.role] = rc.count
+                }
+                return returnObj
+            })
+            .then((roles)=>{
+                res.status(200).json(roles)
+            })
+            .catch((err)=>{
+                res.status(500).send("API could not handle your request: "+err);
+            })
+        } catch(err) {
+            // Database error
+            res.status(500).send("API could not handle your request: "+err);
+            return 
+        }
+    },
+
     getAllUsers: async (_: Request, res: Response) => {
         try{
             // Get all users

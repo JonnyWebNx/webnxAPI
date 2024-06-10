@@ -426,14 +426,18 @@ export function updatePartsAsync(createOptions: PartRecordSchema, searchOptions:
                 // Check if serial already exists
                 let existing = await PartRecord.findOne({nxid: p.nxid, serial: p.serial, next: null})
                 // Skip creation - avoid duplication
-                if(existing)
+                if(existing) {
                     return
+                }
             } else {
                 // Check if prev exists
                 let prev = await PartRecord.findOne(sOptions)
-                if(!prev)
+                if(!prev) {
                     return
+                }
                 cOptions.prev = prev._id
+                if(prev.buy_price)
+                    cOptions.buy_price = prev.buy_price
             }
             PartRecord.create(cOptions, callbackHandler.updateRecord)
             return
@@ -447,10 +451,14 @@ export function updatePartsAsync(createOptions: PartRecordSchema, searchOptions:
             else {
                 sOptions.serial = null
                 let toBeUpdated = await PartRecord.find(sOptions)
-                if (toBeUpdated.length < p.quantity)
+                if (toBeUpdated.length < p.quantity) {
                     return
+                }
                 for (let i = 0; i < p.quantity; i++) {
                     cOptions.prev = toBeUpdated[i]._id
+
+                    if(toBeUpdated[i].buy_price)
+                        cOptions.buy_price = toBeUpdated[i].buy_price
                     PartRecord.create(cOptions, callbackHandler.updateRecord)
                 }
             }
@@ -485,6 +493,8 @@ export function updatePartsClearSerialsAsync(createOptions: PartRecordSchema, se
                 if(!prev)
                     return
                 cOptions.prev = prev._id
+                if(prev.buy_price)
+                    cOptions.buy_price = prev.buy_price
             }
             PartRecord.create(cOptions, callbackHandler.updateRecord)
             return
@@ -503,6 +513,8 @@ export function updatePartsClearSerialsAsync(createOptions: PartRecordSchema, se
                     return
                 for (let i = 0; i < p.quantity; i++) {
                     cOptions.prev = toBeUpdated[i]._id
+                    if(toBeUpdated[i].buy_price)
+                        cOptions.buy_price = toBeUpdated[i].buy_price
                     PartRecord.create(cOptions, callbackHandler.updateRecord)
                 }
                 return
@@ -595,7 +607,7 @@ export async function updatePartsAddSerialsDryRunAsync(searchOptions: PartRecord
     return getUpdatedAndSkippedOnUpdate(parts)
 }
 
-export async function updatePartsAddSerialsAsync(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: InventoryEntry[]) {
+export async function updatePartsAddSerialsAsync(createOptions: PartRecordSchema, searchOptions: PartRecordSchema, arr: InventoryEntry[], prices?: Map<string, number>) {
     let parts = await Promise.all(arr.map(async (p)=>{
         let count = 0
         let serials = [] as string[]
@@ -619,6 +631,11 @@ export async function updatePartsAddSerialsAsync(createOptions: PartRecordSchema
             if(toBeUpdated[i]) {
                 // Update record
                 cOptions.prev = toBeUpdated[i]._id
+                if(toBeUpdated[i].buy_price)
+                    cOptions.buy_price = toBeUpdated[i].buy_price
+                if(prices&&prices.has(p.nxid!))
+                    cOptions.sale_price = prices.get(p.nxid!)!
+
                 PartRecord.create(cOptions, callbackHandler.updateRecord)
                 count++
             }
@@ -650,6 +667,10 @@ export async function updatePartsAddSerialsAsync(createOptions: PartRecordSchema
             }
             // Set prvious
             cOptions.prev = prev._id
+            if(prev.buy_price)
+                cOptions.buy_price = prev.buy_price
+            if(prices&&prices.has(p.nxid!))
+                cOptions.sale_price = prices.get(p.nxid!)!
             // Update record
             PartRecord.create(cOptions, callbackHandler.updateRecord)
             serials.push(serial)
@@ -795,7 +816,9 @@ export async function getAssetEventAsync(asset_tag: string, d: Date, nxids?: str
     if(current_asset==null)
         current_asset = await Asset.findOne({asset_tag: asset_tag, date_created: { $lte: d }, $or:[
             {next: null},
-            {next:"deleted"}
+            {next:"deleted"},
+            {next:"sold"},
+
         ]}) as AssetSchema
     // Who updated
     let by = ""

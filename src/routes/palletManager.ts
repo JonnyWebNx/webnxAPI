@@ -9,13 +9,25 @@ import { getAddedAndRemoved, partRecordsToCartItems, updatePartsAsync, userHasIn
 import { CallbackError } from "mongoose";
 import { cartItemsValidAsync, sanitizeCartItems } from "../methods/partMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
-import { getNumPages, getPageNumAndSize, getTextSearchParams, objectToRegex } from "../methods/genericMethods.js";
+import { getNumPages, getPageNumAndSize, getSearchSort, getTextSearchParams, objectToRegex } from "../methods/genericMethods.js";
 import { addAssetsToPallet, addBoxesToPallet, cleansePallet, getPalletSearchRegex, isLocationValid, isValidPalletTag, palletsAreSimilar, parseAssetTags, parseBoxTags, returnPallet, returnPalletHistory, returnPalletSearch } from "../methods/palletMethods.js";
 import Box from "../model/box.js";
 
 
 const palletManager = {
-
+    countPallets: async(req: Request, res: Response) =>{
+        try {
+            Pallet.find({next:null}).count().exec().then((count)=>{
+                res.status(200).json(count);
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     createPallet: async (req: Request, res: Response) => {
         try {
             // Cleanse pallet
@@ -71,6 +83,7 @@ const palletManager = {
         try {
             // Parse search info
             let { pageSize, pageSkip } = getPageNumAndSize(req)
+            let sort = getSearchSort(req)
             // Get asset object from request
             let pallet = objectToRegex(cleansePallet(req.query as unknown as PalletSchema));
             pallet.next = null;
@@ -78,6 +91,7 @@ const palletManager = {
             let numPages = getNumPages(pageSize, numPallets)
             // Send request to database
             Pallet.find(pallet)
+                .sort(sort)
                 .skip(pageSkip)
                 .limit(pageSize)
                 .exec(returnPalletSearch(res, numPages, numPallets))
@@ -106,15 +120,18 @@ const palletManager = {
             // Search data
             // Limit
             // Page skip
-            let { searchString, pageSize, pageSkip } = getTextSearchParams(req);
+            let { searchString, pageSize, pageSkip, sort } = getTextSearchParams(req);
             // Find parts
             if(searchString == "") {
+                if(JSON.stringify(sort)==JSON.stringify({ relevance: -1 })) 
+                    sort = {pallet_tag:1}
                 // Count all parts
                 let numPallets = await Pallet.count({next: null})
                 // Calc number of pages
                 let numPages = getNumPages(pageSize, numPallets)
                 // Get all parts
                 Pallet.find({next: null})
+                    .sort(sort)
                     // Skip - gets requested page number
                     .skip(pageSkip)
                     // Limit - returns only enough elements to fill page
@@ -144,12 +161,6 @@ const palletManager = {
                         }
                     }
                 },
-                {
-                    $sort: { relevance: -1 }
-                },
-                {
-                    $project: { relevance: 0 }
-                }
             ] as any
             // Aggregate count
             let countQuery = await Pallet.aggregate(aggregateQuery).count("numPallets")
@@ -159,6 +170,7 @@ const palletManager = {
             let numPages = getNumPages(pageSize, numPallets)
             // Find pallets
             Pallet.aggregate(aggregateQuery)
+                .sort(sort)
                 .skip(pageSkip)
                 .limit(pageSize)
                 .exec(returnPalletSearch(res, numPages, numPallets))

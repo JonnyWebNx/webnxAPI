@@ -3,7 +3,7 @@ import AssetTemplate from "../model/assetTemplate.js";
 import PartRecord from "../model/partRecord.js";
 import handleError from "../util/handleError.js";
 import { Request, Response } from "express";
-import { AssetSchema, PartRecordSchema } from "../interfaces.js";
+import { AssetSchema, PartQuery, PartRecordSchema } from "../interfaces.js";
 import { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { 
     isValidAssetTag,
@@ -19,10 +19,23 @@ import {
     partRecordsToCartItems
 } from "../methods/assetMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
-import { getNumPages, getPageNumAndSize, getTextSearchParams } from "../methods/genericMethods.js";
+import { getNumPages, getPageNumAndSize, getSearchSort, getTextSearchParams, objectToRegex } from "../methods/genericMethods.js";
 import { cartItemsValidAsync, combineAndRemoveDuplicateCartItems, sanitizeCartItems } from "../methods/partMethods.js";
 
 const assetManager = {
+    countAssets: async(req: Request, res: Response) =>{
+        try {
+            Asset.find({next:{$in: [null, 'sold']}}).count().exec().then((count)=>{
+                res.status(200).json(count);
+            })
+            .catch((err)=>{
+                return res.status(500).send("API could not handle your request: " + err);
+            })
+        } catch (err) {
+            handleError(err)
+            return res.status(500).send("API could not handle your request: " + err);
+        }
+    },
     addUntrackedAsset: async (req: Request, res: Response) => {
         try {
             // Get asset from request
@@ -162,16 +175,48 @@ const assetManager = {
         try {
             // Parse search info
             let { pageSize, pageSkip } = getPageNumAndSize(req)
+            let sort = getSearchSort(req)
             // Get asset object from request
             let asset = cleanseAsset(req.query as AssetSchema);
             asset.next = null;
-            let numAssets = await Asset.count(asset)
-            let numPages = getNumPages(pageSize, numAssets)
-            // Send request to database
-            Asset.find(asset)
-                .skip(pageSkip)
-                .limit(pageSize)
-                .exec(returnAssetSearch(res, numPages, numAssets))
+
+            let regexObject = {} as PartQuery
+            Object.keys(asset).forEach((k)=>{
+                // early return for empty strings
+                if(asset[k]=='')
+                    return
+                // ALlow array partial matches
+                if(Array.isArray(asset[k])&&!(asset[k]!.length==0)) {
+                    // Use $all with array of case insensitive regexes
+                    return regexObject[k] = { $all: asset[k] }
+                }
+                regexObject[k] = asset[k]
+            })
+            let numAssets = await Asset.count(regexObject)
+            if(numAssets>0) {
+                let numPages = getNumPages(pageSize, numAssets)
+                // Send request to database
+                Asset.find(regexObject)
+                    .sort(sort)
+                    .skip(pageSkip)
+                    .limit(pageSize)
+                    .exec(returnAssetSearch(res, numPages, numAssets))
+            } else {
+                let search_asset = objectToRegex(asset)
+                search_asset.next = null
+
+                numAssets = await Asset.count(search_asset)
+                
+                let numPages = getNumPages(pageSize, numAssets)
+
+                Asset.find(search_asset)
+                    .sort(sort)
+                    .skip(pageSkip)
+                    .limit(pageSize)
+                    .exec(returnAssetSearch(res, numPages, numAssets))
+            }
+
+
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);
@@ -184,7 +229,7 @@ const assetManager = {
             // Test regex for NXID
             if (isValidAssetTag(id)||id=='test') {
                 // Find by NXID
-                Asset.findOne({asset_tag: id, next: null}, returnAsset(res));
+                Asset.findOne({asset_tag: id, next: { $in: [null, 'sold'] }}, returnAsset(res));
             }
             // If id is not NXID
             else {
@@ -202,7 +247,7 @@ const assetManager = {
             // Search data
             // Limit
             // Page number
-            let { searchString, pageSize, pageSkip } = getTextSearchParams(req);
+            let { searchString, pageSize, pageSkip, sort } = getTextSearchParams(req);
             // Find parts
             let fullText = false
             // Check if text search yields results            
@@ -217,7 +262,8 @@ const assetManager = {
                 let numPages = getNumPages(pageSize, numAssets)
 
                 Asset.find(searchString != ''? { $text: { $search: searchString } } : {})
-                    .where({next: null})
+                    .where({next: {$in: [null, 'sold']}})
+                    .sort(sort)
                     .skip(pageSkip)
                     .limit(pageSize)
                     .exec(returnAssetSearch(res, numPages, numAssets))
@@ -258,14 +304,20 @@ const assetManager = {
                 let numAssets = countQuery.length > 0&&countQuery[0].numAssets ? countQuery[0].numAssets : 0
                 // Ternary that hurts my eyes
                 let numPages = getNumPages(pageSize, numAssets)
-                Asset.aggregate([{ $match: {
-                    $and: [
-                        { $or: searchOptions },
-                        { next: null }
-                    ]
-                    
+                Asset.aggregate([
+                    {
+                        $match: {
+                            $and: [
+                                { $or: searchOptions },
+                                { next: {
+                                    $in: [null,'sold']
+                                    }
+                                }
+                            ]
                         } 
-                    }])
+                    }
+                ])
+                    .sort(sort)
                     .skip(pageSkip)
                     .limit(pageSize)
                     .exec(returnAssetSearch(res, numPages, numAssets))
@@ -435,8 +487,9 @@ const assetManager = {
             // Check if valid
             if (!asset_tag||!isValidAssetTag(asset_tag))
                 return res.status(400).send("Invalid request");
+            let ebayAsset = await Asset.findOne({asset_tag, next: 'sold'})
             // Find all parts records associated with asset tag
-            PartRecord.find({asset_tag, next: null}, async (err: CallbackError, records: PartRecordSchema[]) => {
+            PartRecord.find({asset_tag, next: ebayAsset ? 'sold' : null}, async (err: CallbackError, records: PartRecordSchema[]) => {
                 // If mongoose returns error
                 if (err) {
                     // Handle error
@@ -504,7 +557,7 @@ const assetManager = {
                 return res.status(400).send("Invalid request");
             // If NXID
             if (isValidAssetTag(id)) {
-                Asset.findOne({asset_tag: id, next: null}, returnAssetHistory(pageNum, pageSize, res))
+                Asset.findOne({asset_tag: id, next: {$in: [null, 'sold']}}, returnAssetHistory(pageNum, pageSize, res))
             }
             // If mongo ID
             else {

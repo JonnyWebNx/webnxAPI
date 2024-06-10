@@ -18,7 +18,7 @@ export function getPageNumAndSize(req: Request) {
 }
 
 export function getSearchSort(req: Request) {
-    let sortBy = req.query.sortBy as string
+    let sortBy = req.query.sortString as string
     let sortDir = parseInt(req.query.sortDir as string)
     let sort = { relevance: -1 } as any
     if(sortBy) {
@@ -85,7 +85,7 @@ export function objectToRegex(obj: any) {
             return regexObject[k] = { $all: arr }
         }
         // Check if value is integer
-        if(typeof(obj[k])=='string'&&!isNaN(obj[k] as any)) {
+        if(typeof(obj[k])=='string'&&!isNaN(parseFloat(obj[k] as any))) {
             // Parse integer
             return regexObject[k] = parseFloat(obj[k] as string)
         }

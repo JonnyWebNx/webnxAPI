@@ -19,6 +19,9 @@ import palletManager from './routes/palletManager.js';
 import notifs from './routes/notifs.js';
 import analytics from './routes/analytics.js';
 import boxManager from './routes/boxManager.js';
+import partRequestManager from './routes/partRequestManager.js';
+import buildKitManager from './routes/buildKitManager.js';
+import partOrderManager from './routes/partOrderManager.js';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance
@@ -72,19 +75,23 @@ app.post("/api/checkout", auth, sanitize, checkRoles(["is_kiosk"]), partManager.
 app.post("/api/checkin", auth, sanitize, checkRoles(["is_kiosk"]), partManager.checkin)
 app.post("/api/checkin/queue", auth, sanitize, checkRoles(["process_checkins"]), partManager.processCheckinRequest)
 app.post("/api/part/move", auth, sanitize, checkRoles(["own_parts"]), partManager.movePartRecords);
-app.post("/api/part/request/create", auth, sanitize, checkRoles(["request_parts"]), partManager.createPartRequest)
-app.post("/api/part/request/cancel", auth, sanitize, checkRoles(["request_parts"]), partManager.cancelPartRequest)
-app.post("/api/part/request/fulfill", auth, sanitize, checkRoles(["fulfill_part_requests"]), partManager.fulfillPartRequest)
+app.post("/api/part/request/create", auth, sanitize, checkRoles(["request_parts"]), partRequestManager.createPartRequest)
+app.post("/api/part/request/cancel", auth, sanitize, checkRoles(["request_parts"]), partRequestManager.cancelPartRequest)
+app.post("/api/part/request/fulfill", auth, sanitize, checkRoles(["fulfill_part_requests"]), partRequestManager.fulfillPartRequest)
+app.post("/api/part/order/create", auth, sanitize, partOrderManager.createPartOrder)
+app.post("/api/part/order/cancel", auth, sanitize, partOrderManager.cancelPartOrder)
+app.post("/api/part/order/receive", auth, sanitize, partOrderManager.receiveOrder)
 app.post("/api/part/sell", auth, sanitize, checkRoles(["sell_on_ebay"]), partManager.sellOnEbay);
-app.post("/api/buildKit", auth, sanitize, checkRoles(["create_build_kit"]), partManager.createBuildKit)
-app.post("/api/buildKit/request", auth, sanitize, checkRoles(["request_build_kit"]), partManager.requestBuildKit)
-app.post("/api/buildKit/request/process", auth, sanitize, checkRoles(["fulfill_part_requests"]), partManager.processBuildKitRequest)
-app.post("/api/buildKit/delete", auth, sanitize, checkRoles(["create_build_kit"]), partManager.deleteBuildKit);
+app.post("/api/buildKit", auth, sanitize, checkRoles(["create_build_kit"]), buildKitManager.createBuildKit)
+app.post("/api/buildKit/request", auth, sanitize, checkRoles(["request_build_kit"]), buildKitManager.requestBuildKit)
+app.post("/api/buildKit/request/process", auth, sanitize, checkRoles(["fulfill_part_requests"]), buildKitManager.processBuildKitRequest)
+app.post("/api/buildKit/delete", auth, sanitize, checkRoles(["create_build_kit"]), buildKitManager.deleteBuildKit);
 app.post("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.auditPart)
 app.post("/api/part/merge", auth, sanitize, checkRoles(["manage_parts"]), partManager.mergeParts)
 
 app.get("/api/checkin/queue", auth, sanitize, checkRoles(["process_checkins"]), partManager.getCheckinQueue)
 app.get("/api/part", auth, sanitize, partManager.getPart);
+app.get("/api/part/count", auth, sanitize, partManager.countParts);
 app.get("/images/parts/:nxid", sanitize, partManager.getPartImage)
 app.get("/api/part/id", auth, sanitize, partManager.getPartByID)
 app.get("/api/part/nextNXID", auth, sanitize, partManager.nextSequentialNXID)
@@ -97,14 +104,18 @@ app.get("/api/partRecord/history", auth, sanitize, partManager.getPartHistoryByI
 app.get("/api/partRecord/distinct", auth, sanitize, partManager.getDistinctOnPartRecords);
 app.get("/api/part/audit", auth, sanitize, checkRoles(["manage_parts"]), partManager.getAudits)
 app.get("/api/part/quantities", auth, sanitize, partManager.getKioskQuantities)
-app.get("/api/part/requests/active", auth, sanitize, partManager.getActivePartRequests)
-app.get("/api/part/requests/fulfilled", auth, sanitize, partManager.getFulfilledPartRequests)
-app.get("/api/buildKit/search", auth, sanitize, partManager.getBuildKits)
-app.get("/api/buildKit", auth, sanitize, partManager.getBuildKitByID)
+app.get("/api/part/requests/active", auth, sanitize, partRequestManager.getActivePartRequests)
+app.get("/api/part/requests/fulfilled", auth, sanitize, partRequestManager.getFulfilledPartRequests)
+app.get("/api/part/orders/active", auth, sanitize, partOrderManager.getActivePartOrders)
+app.get("/api/part/order", auth, sanitize, partOrderManager.getPartOrderByID)
+app.get("/api/part/orders/received", auth, sanitize, partOrderManager.getReceivedPartOrders) 
+
+app.get("/api/buildKit/search", auth, sanitize, buildKitManager.getBuildKits)
+app.get("/api/buildKit", auth, sanitize, buildKitManager.getBuildKitByID)
 
 app.put("/api/part", auth, sanitize, checkRoles(["manage_parts"]), partManager.updatePartInfo);
 app.put("/images/parts", auth, sanitize, checkRoles(["manage_parts"]), uploadImage, updatePartImage);
-app.put("/api/buildKit", auth, sanitize, partManager.claimBuildKit);
+app.put("/api/buildKit", auth, sanitize, buildKitManager.claimBuildKit);
 
 app.delete("/api/part", auth, sanitize, checkRoles(["manage_parts"]), partManager.deletePart);
 app.delete("/api/partRecord", auth, sanitize, checkRoles(["manage_parts"]), partManager.deleteFromPartsRoom);
@@ -116,6 +127,7 @@ app.get("/api/user", auth, sanitize, userManager.getUser);
 app.get("/api/user/all", auth, sanitize, userManager.getAllUsers)
 app.get('/api/user/inventory', auth, sanitize, partManager.getUserInventory)
 app.get('/api/user/roles', auth, sanitize, userManager.checkRoles)
+app.get('/api/user/roles/count', auth, sanitize, userManager.getNumberOfUsersPerRole)
 
 app.put("/api/user", auth, sanitize, checkRoles(["manage_users"]), userManager.updateUser);
 app.put("/images/users", auth, sanitize, uploadImage, updateUserImage);
@@ -130,6 +142,7 @@ app.post("/api/asset/template", auth, sanitize, checkRoles(["edit_assets"]), ass
 
 app.get("/api/asset/template", auth, sanitize, checkRoles(["edit_assets"]), assetManager.getAssetTemplates);
 app.get("/api/asset", auth, sanitize, checkRoles(["view_assets"]), assetManager.getAssets);
+app.get("/api/asset/count", auth, sanitize, assetManager.countAssets);
 app.get("/api/asset/parts", auth, sanitize, checkRoles(["view_assets"]), assetManager.getPartsOnAsset);
 app.get("/api/asset/id", auth, sanitize, assetManager.getAssetByID);
 app.get('/api/asset/search', auth, sanitize, checkRoles(["view_assets"]), assetManager.searchAssets);
@@ -142,28 +155,23 @@ app.delete("/api/asset", auth, sanitize, checkRoles(["correct_assets"]), assetMa
 app.delete("/api/asset/template", auth, sanitize, checkRoles(["edit_assets"]), assetManager.deleteAssetTemplate);
 
 // *** History ***
-app.get("/api/history/sales", auth, sanitize, checkRoles(["sell_on_ebay", "view_analytics"]), analytics.getEbaySalesHistory)
-app.get('/api/history/checkins', auth, sanitize, checkRoles(["process_checkins", "view_analytics"]), analytics.getCheckinHistory)
-app.get("/api/history/checkouts", auth, sanitize, checkRoles(["process_checkins", "view_analytics"]), analytics.getCheckoutHistory) 
-app.get('/api/history/alltechs', auth, sanitize, checkRoles(["view_analytics"]), analytics.getAllTechsHistory)
-app.get('/api/history/assetsUpdated', auth, sanitize, checkRoles(["view_analytics"]), analytics.getAssetUpdates)
-app.get('/api/history/assetsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getAssetUpdatesNoDetails)
-app.get('/api/history/newAssets', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewAssets)
-app.get('/api/history/newAssets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewAssetsNoDetails)
-app.get('/api/history/part', auth, sanitize, checkRoles(["view_analytics", "manage_parts"]), analytics.getPartCreationAndDeletionHistory)
-app.get('/api/history/palletsUpdated', auth, sanitize, checkRoles(["view_analytics"]), analytics.getPalletUpdates)
-app.get('/api/history/palletsUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getPalletUpdatesNoDetails)
-app.get('/api/history/newPallets', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewPallets)
-app.get('/api/history/newPallets/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewPalletsNoDetails)
-app.get('/api/history/boxesUpdated', auth, sanitize, checkRoles(["view_analytics"]), analytics.getBoxUpdates)
-app.get('/api/history/boxesUpdated/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getBoxUpdatesNoDetails)
-app.get('/api/history/newBoxes', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewBoxes)
-app.get('/api/history/newBoxes/noDetails', auth, sanitize, checkRoles(["view_analytics"]), analytics.getNewBoxesNoDetails)
+app.get("/api/history/sales", auth, sanitize, analytics.getEbaySalesHistory)
+app.get('/api/history/checkins', auth, sanitize, analytics.getCheckinHistory)
+app.get("/api/history/checkouts", auth, sanitize, analytics.getCheckoutHistory) 
+app.get('/api/history/alltechs', auth, sanitize, analytics.getAllTechsHistory)
+app.get('/api/history/assetsUpdated', auth, sanitize, analytics.getAssetUpdates)
+app.get('/api/history/newAssets', auth, sanitize, analytics.getNewAssets)
+app.get('/api/history/part', auth, sanitize, analytics.getPartCreationAndDeletionHistory)
+app.get('/api/history/palletsUpdated', auth, sanitize, analytics.getPalletUpdates)
+app.get('/api/history/newPallets', auth, sanitize, analytics.getNewPallets)
+app.get('/api/history/boxesUpdated', auth, sanitize, analytics.getBoxUpdates)
+app.get('/api/history/newBoxes', auth, sanitize, analytics.getNewBoxes)
 
 // ***      Pallets     ***
 app.post("/api/pallet", auth, sanitize, checkRoles(["edit_pallets"]), palletManager.createPallet);
 
 app.get("/api/pallet", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getPallets);
+app.get("/api/pallet/count", auth, sanitize, palletManager.countPallets);
 app.get("/api/pallet/parts", auth, sanitize, checkRoles(["view_pallets"]), palletManager.getItemsOnPallet);
 app.get("/api/pallet/id", auth, sanitize, palletManager.getPalletByID);
 app.get('/api/pallet/search', auth, sanitize, checkRoles(["view_pallets"]), palletManager.searchPallets);
@@ -177,6 +185,7 @@ app.delete("/api/pallet", auth, sanitize, checkRoles(["correct_pallets"]), palle
 app.post("/api/box", auth, sanitize, checkRoles(["edit_boxes"]), boxManager.createBox);
 
 app.get("/api/box", auth, sanitize, checkRoles(["view_boxes"]), boxManager.getBoxes);
+app.get("/api/box/count", auth, sanitize, boxManager.countBoxes);
 app.get("/api/box/parts", auth, sanitize, checkRoles(["view_boxes"]), boxManager.getPartsOnBox);
 app.get("/api/box/id", auth, sanitize, boxManager.getBoxByID);
 app.get('/api/box/search', auth, sanitize, checkRoles(["view_boxes"]), boxManager.searchBoxes);

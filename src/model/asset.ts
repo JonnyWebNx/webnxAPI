@@ -18,6 +18,7 @@ const asset = new mongoose.Schema({
     manufacturer: { type: String },
     // Model name
     model: { type: String },
+    ebay: { type: String },
     // Serial number
     serial: { type: String },
     // Has rails
