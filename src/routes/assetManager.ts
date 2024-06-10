@@ -3,7 +3,7 @@ import AssetTemplate from "../model/assetTemplate.js";
 import PartRecord from "../model/partRecord.js";
 import handleError from "../util/handleError.js";
 import { Request, Response } from "express";
-import { AssetSchema, PartRecordSchema } from "../interfaces.js";
+import { AssetSchema, PartQuery, PartRecordSchema } from "../interfaces.js";
 import { CallbackError, isValidObjectId, MongooseError } from "mongoose";
 import { 
     isValidAssetTag,
@@ -19,7 +19,7 @@ import {
     partRecordsToCartItems
 } from "../methods/assetMethods.js";
 import callbackHandler from "../util/callbackHandlers.js";
-import { getNumPages, getPageNumAndSize, getSearchSort, getTextSearchParams } from "../methods/genericMethods.js";
+import { getNumPages, getPageNumAndSize, getSearchSort, getTextSearchParams, objectToRegex } from "../methods/genericMethods.js";
 import { cartItemsValidAsync, combineAndRemoveDuplicateCartItems, sanitizeCartItems } from "../methods/partMethods.js";
 
 const assetManager = {
@@ -179,14 +179,44 @@ const assetManager = {
             // Get asset object from request
             let asset = cleanseAsset(req.query as AssetSchema);
             asset.next = null;
-            let numAssets = await Asset.count(asset)
-            let numPages = getNumPages(pageSize, numAssets)
-            // Send request to database
-            Asset.find(asset)
-                .sort(sort)
-                .skip(pageSkip)
-                .limit(pageSize)
-                .exec(returnAssetSearch(res, numPages, numAssets))
+
+            let regexObject = {} as PartQuery
+            Object.keys(asset).forEach((k)=>{
+                // early return for empty strings
+                if(asset[k]=='')
+                    return
+                // ALlow array partial matches
+                if(Array.isArray(asset[k])&&!(asset[k]!.length==0)) {
+                    // Use $all with array of case insensitive regexes
+                    return regexObject[k] = { $all: asset[k] }
+                }
+                regexObject[k] = asset[k]
+            })
+            let numAssets = await Asset.count(regexObject)
+            if(numAssets>0) {
+                let numPages = getNumPages(pageSize, numAssets)
+                // Send request to database
+                Asset.find(regexObject)
+                    .sort(sort)
+                    .skip(pageSkip)
+                    .limit(pageSize)
+                    .exec(returnAssetSearch(res, numPages, numAssets))
+            } else {
+                let search_asset = objectToRegex(asset)
+                search_asset.next = null
+
+                numAssets = await Asset.count(search_asset)
+                
+                let numPages = getNumPages(pageSize, numAssets)
+
+                Asset.find(search_asset)
+                    .sort(sort)
+                    .skip(pageSkip)
+                    .limit(pageSize)
+                    .exec(returnAssetSearch(res, numPages, numAssets))
+            }
+
+
         } catch(err) {
             handleError(err)
             return res.status(500).send("API could not handle your request: "+err);
