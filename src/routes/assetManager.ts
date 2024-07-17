@@ -251,7 +251,7 @@ const assetManager = {
             // Find parts
             let fullText = false
             // Check if text search yields results            
-            let ass = await Asset.findOne(searchString != ''? { $text: { $search: searchString } } : {})
+            let ass = await Asset.findOne(searchString != ''? { $text: { $search: searchString } } : {}).where({next: null})
             // Set fulltext if text search yields results
             if(ass!=null)
                 fullText = true
