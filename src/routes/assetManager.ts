@@ -260,6 +260,7 @@ const assetManager = {
                 let numAssets = await Asset.count(searchString != ''? { $text: { $search: searchString } } : {}).where({next: null})
                 // Ternary that hurts my eyes
                 let numPages = getNumPages(pageSize, numAssets)
+                console.log("full text")
 
                 Asset.find(searchString != ''? { $text: { $search: searchString } } : {})
                     .where({next: {$in: [null, 'sold']}})
@@ -269,6 +270,7 @@ const assetManager = {
                     .exec(returnAssetSearch(res, numPages, numAssets))
             }
             else {
+                console.log("regex")
                 // Keyword search
                 let keywords = []
                 keywords.push(searchString)
@@ -300,6 +302,8 @@ const assetManager = {
                     
                         } 
                 }]).count("numAssets")
+
+                console.log(searchOptions)
                 // This is stupid but it works
                 let numAssets = countQuery.length > 0&&countQuery[0].numAssets ? countQuery[0].numAssets : 0
                 // Ternary that hurts my eyes
