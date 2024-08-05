@@ -22,6 +22,7 @@ import boxManager from './routes/boxManager.js';
 import partRequestManager from './routes/partRequestManager.js';
 import buildKitManager from './routes/buildKitManager.js';
 import partOrderManager from './routes/partOrderManager.js';
+import tenantAPI from './routes/tenantAPI.js';
 
 const { ROOT_DIRECTORY } = config;
 // Create express instance
@@ -67,6 +68,9 @@ app.post("/api/register", sanitize, register);
 app.get("/api/password/reset", sanitize, userManager.sendPasswordResetEmail)
 
 app.post("/api/password/reset", sanitize, userManager.updatePassword)
+
+
+app.get("/api/avail", auth, sanitize, tenantAPI.getAvail);
 
 // ***   Parts   ***
 app.post("/api/part", auth, sanitize, checkRoles(["create_parts"]), partManager.createPart);
