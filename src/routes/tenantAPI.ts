@@ -31,8 +31,8 @@ const tenantAPI = {
 
                 arr.push({
                     name: s.servername,
-                    mobo: key == "Unknown" ? "Unknown" : s.detailedHardwareInformation.mainboard.model,
-                    ram: key == "Unknown" ? "Unknown" : mbToGB(s.detailedHardwareInformation.memory.value),
+                    mobo: s.detailedHardwareInformation&&s.detailedHardwareInformation.mainboard&&s.detailedHardwareInformation.mainboard.model ? s.detailedHardwareInformation.mainboard.model : "Unknown",
+                    ram: s.detailedHardwareInformation&&s.detailedHardwareInformation.memory&&s.detailedHardwareInformation.memory.value ? mbToGB(s.detailedHardwareInformation.memory.value) : "Unknown",
                     inventory,
                     tenant_link: `https://manage.${urlTLD}.com/servers/${s.id}`,
                     brand
