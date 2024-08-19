@@ -101,8 +101,7 @@ export async function getPalletUpdateDates(pallet_tag: string) {
     // Get all the dates of asset related events
     dates = dates.concat(await PartRecord.find({pallet_tag}).distinct("date_created") as Date[])
     dates = dates.concat(await PartRecord.find({pallet_tag}).distinct("date_replaced") as Date[])
-    dates = dates.concat(await Asset.find({pallet: pallet_tag, prevPallet: { $ne: pallet_tag }}).distinct("date_created") as Date[])
-    dates = dates.concat(await Asset.find({pallet: pallet_tag, nextPallet: { $ne: pallet_tag }}).distinct("date_replaced") as Date[])
+    dates = dates.concat(await Asset.find({pallet: pallet_tag, next_pallet: { $ne: pallet_tag }}).distinct("date_replaced") as Date[])
     dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_created") as Date[])
     dates = dates.concat(await Pallet.find({pallet_tag}).distinct("date_replaced") as Date[])
     dates = dates.concat(await Box.find({ location: pallet_tag, prev_location: { $ne: pallet_tag } }).distinct("date_created") as Date[])
