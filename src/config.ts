@@ -74,3 +74,4 @@ const config = getConfig();
 const sanitizedConfig = getSanitizedConfig(config);
 
 export default sanitizedConfig;
+// Testing test
